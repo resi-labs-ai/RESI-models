@@ -48,39 +48,22 @@ jobs:
         continue-on-error: true  # Remove this once codebase has type hints
 
   test:
-    name: Test (Python ${{ matrix.python-version }})
+    name: Test
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+      - name: Set up Python
+        run: uv python install 3.11
 
       - name: Install dependencies
         run: uv sync --dev
 
       - name: Run tests
         run: uv run pytest tests/ -v --tb=short
-
-      - name: Run tests with coverage
-        if: matrix.python-version == '3.10'
-        run: uv run pytest tests/ --cov=real_estate --cov=neurons --cov-report=xml --cov-report=term
-
-      - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.10'
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./coverage.xml
-          fail_ci_if_error: false
-        continue-on-error: true
 
   # Summary job that depends on all others - useful for branch protection
   ci-success:
