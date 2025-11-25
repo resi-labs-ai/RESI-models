@@ -33,18 +33,6 @@ dev = [
     "ruff>=0.3",
 ]
 
-# ============================================================================
-# uv - Fast Python package manager
-# ============================================================================
-[tool.uv]
-dev-dependencies = [
-    "pytest>=8",
-    "pytest-asyncio>=0.23",
-    "pytest-cov>=4",
-    "mypy>=1.8",
-    "ruff>=0.3",
-]
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
