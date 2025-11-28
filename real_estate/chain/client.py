@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 import httpx
 
@@ -39,7 +38,7 @@ class PylonClient:
     - Fetching metagraph (neurons)
 
     All chain interactions go through Pylon's REST API.
-    Pylon handles caching and connection management internally.
+    Each method creates its own connection - safe for long-running services.
     """
 
     def __init__(self, config: PylonConfig):
@@ -50,11 +49,10 @@ class PylonClient:
             config: Pylon connection configuration
         """
         self._config = config
-        self._client: httpx.AsyncClient | None = None
 
-    async def __aenter__(self) -> PylonClient:
-        """Async context manager entry."""
-        self._client = httpx.AsyncClient(
+    def _client(self) -> httpx.AsyncClient:
+        """Create a new HTTP client for a request."""
+        return httpx.AsyncClient(
             base_url=self._config.url,
             headers={
                 "Authorization": f"Bearer {self._config.token}",
@@ -62,21 +60,6 @@ class PylonClient:
             },
             timeout=self._config.timeout,
         )
-        return self
-
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Async context manager exit."""
-        if self._client:
-            await self._client.aclose()
-            self._client = None
-
-    def _ensure_client(self) -> httpx.AsyncClient:
-        """Ensure client is initialized."""
-        if self._client is None:
-            raise ChainConnectionError(
-                "PylonClient not initialized. Use 'async with PylonClient(config) as client:'"
-            )
-        return self._client
 
     async def get_all_commitments(self) -> dict[str, Commitment]:
         """
@@ -85,30 +68,29 @@ class PylonClient:
         Returns:
             Dictionary mapping hotkey -> Commitment
         """
-        client = self._ensure_client()
+        async with self._client() as client:
+            try:
+                response = await client.get("/api/v1/commitments")
+                response.raise_for_status()
+                data = response.json()
 
-        try:
-            response = await client.get("/api/v1/commitments")
-            response.raise_for_status()
-            data = response.json()
+                commitments = {}
+                for hotkey, hex_data in data.get("commitments", {}).items():
+                    commitments[hotkey] = Commitment(
+                        hotkey=hotkey,
+                        data=hex_data,
+                        block=0,  # Block not returned in bulk fetch
+                    )
 
-            commitments = {}
-            for hotkey, hex_data in data.get("commitments", {}).items():
-                commitments[hotkey] = Commitment(
-                    hotkey=hotkey,
-                    data=hex_data,
-                    block=0,  # Block not returned in bulk fetch
-                )
+                logger.debug(f"Fetched {len(commitments)} commitments")
+                return commitments
 
-            logger.debug(f"Fetched {len(commitments)} commitments")
-            return commitments
-
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                raise AuthenticationError("Invalid Pylon token") from e
-            raise ChainConnectionError(f"Failed to fetch commitments: {e}") from e
-        except httpx.RequestError as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    raise AuthenticationError("Invalid Pylon token") from e
+                raise ChainConnectionError(f"Failed to fetch commitments: {e}") from e
+            except httpx.RequestError as e:
+                raise ChainConnectionError(f"Connection error: {e}") from e
 
     async def get_commitment(self, hotkey: str) -> Commitment | None:
         """
@@ -120,30 +102,29 @@ class PylonClient:
         Returns:
             Commitment if found, None otherwise
         """
-        client = self._ensure_client()
+        async with self._client() as client:
+            try:
+                response = await client.get(f"/api/v1/commitments/{hotkey}")
 
-        try:
-            response = await client.get(f"/api/v1/commitments/{hotkey}")
+                if response.status_code == 404:
+                    logger.debug(f"No commitment found for hotkey {hotkey}")
+                    return None
 
-            if response.status_code == 404:
-                logger.debug(f"No commitment found for hotkey {hotkey}")
-                return None
+                response.raise_for_status()
+                data = response.json()
 
-            response.raise_for_status()
-            data = response.json()
+                return Commitment(
+                    hotkey=data.get("hotkey", hotkey),
+                    data=data.get("data", ""),
+                    block=data.get("block", 0),
+                )
 
-            return Commitment(
-                hotkey=data.get("hotkey", hotkey),
-                data=data.get("data", ""),
-                block=data.get("block", 0),
-            )
-
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                raise AuthenticationError("Invalid Pylon token") from e
-            raise CommitmentError(f"Failed to fetch commitment: {e}") from e
-        except httpx.RequestError as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    raise AuthenticationError("Invalid Pylon token") from e
+                raise CommitmentError(f"Failed to fetch commitment: {e}") from e
+            except httpx.RequestError as e:
+                raise ChainConnectionError(f"Connection error: {e}") from e
 
     async def get_model_metadata(self, hotkey: str) -> ChainModelMetadata | None:
         """
@@ -177,27 +158,26 @@ class PylonClient:
         Returns:
             True if successful
         """
-        client = self._ensure_client()
+        async with self._client() as client:
+            try:
+                response = await client.post(
+                    "/api/v1/commitments",
+                    json={"data": data},
+                )
 
-        try:
-            response = await client.post(
-                "/api/v1/commitments",
-                json={"data": data},
-            )
+                if response.status_code == 201:
+                    logger.info("Commitment set successfully")
+                    return True
 
-            if response.status_code == 201:
-                logger.info("Commitment set successfully")
+                response.raise_for_status()
                 return True
 
-            response.raise_for_status()
-            return True
-
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                raise AuthenticationError("Invalid Pylon token") from e
-            raise CommitmentError(f"Failed to set commitment: {e}") from e
-        except httpx.RequestError as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    raise AuthenticationError("Invalid Pylon token") from e
+                raise CommitmentError(f"Failed to set commitment: {e}") from e
+            except httpx.RequestError as e:
+                raise ChainConnectionError(f"Connection error: {e}") from e
 
     async def get_metagraph(self, netuid: int) -> Metagraph:
         """
@@ -209,24 +189,26 @@ class PylonClient:
         Returns:
             Metagraph with all neurons
         """
-        client = self._ensure_client()
+        async with self._client() as client:
+            try:
+                response = await client.get("/api/v1/neurons/latest")
+                response.raise_for_status()
+                data = response.json()
 
-        try:
-            response = await client.get("/api/v1/neurons/latest")
-            response.raise_for_status()
-            data = response.json()
+                metagraph = Metagraph.from_pylon_response(netuid, data)
+                logger.debug(
+                    f"Fetched metagraph with {len(metagraph.neurons)} neurons "
+                    f"at block {metagraph.block}"
+                )
 
-            metagraph = Metagraph.from_pylon_response(netuid, data)
-            logger.debug(f"Fetched metagraph with {len(metagraph.neurons)} neurons at block {metagraph.block}")
+                return metagraph
 
-            return metagraph
-
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                raise AuthenticationError("Invalid Pylon token") from e
-            raise MetagraphError(f"Failed to fetch metagraph: {e}") from e
-        except httpx.RequestError as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    raise AuthenticationError("Invalid Pylon token") from e
+                raise MetagraphError(f"Failed to fetch metagraph: {e}") from e
+            except httpx.RequestError as e:
+                raise ChainConnectionError(f"Connection error: {e}") from e
 
     async def get_all_miners(self, netuid: int) -> list[str]:
         """
@@ -264,8 +246,6 @@ class PylonClient:
             Weights are set by the identity configured in Pylon.
             The validator hotkey must be registered and have permission.
         """
-        client = self._ensure_client()
-
         # Validate inputs
         if len(uids) != len(weights):
             raise WeightSettingError(
@@ -275,27 +255,28 @@ class PylonClient:
         if not uids:
             return
 
-        try:
-            response = await client.post(
-                "/api/v1/weights",
-                json={
-                    "netuid": netuid,
-                    "uids": uids,
-                    "weights": weights,
-                },
-            )
-            response.raise_for_status()
+        async with self._client() as client:
+            try:
+                response = await client.post(
+                    "/api/v1/weights",
+                    json={
+                        "netuid": netuid,
+                        "uids": uids,
+                        "weights": weights,
+                    },
+                )
+                response.raise_for_status()
 
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                raise AuthenticationError("Invalid Pylon token") from e
-            if e.response.status_code == 403:
-                raise WeightSettingError(
-                    "Permission denied - validator may not be registered or have stake"
-                ) from e
-            raise WeightSettingError(f"Failed to set weights: {e}") from e
-        except httpx.RequestError as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    raise AuthenticationError("Invalid Pylon token") from e
+                if e.response.status_code == 403:
+                    raise WeightSettingError(
+                        "Permission denied - validator may not be registered or have stake"
+                    ) from e
+                raise WeightSettingError(f"Failed to set weights: {e}") from e
+            except httpx.RequestError as e:
+                raise ChainConnectionError(f"Connection error: {e}") from e
 
     async def health_check(self) -> bool:
         """
@@ -304,10 +285,9 @@ class PylonClient:
         Returns:
             True if healthy, False otherwise
         """
-        client = self._ensure_client()
-
-        try:
-            response = await client.get("/schema/swagger")
-            return response.status_code == 200
-        except Exception:
-            return False
+        async with self._client() as client:
+            try:
+                response = await client.get("/schema/swagger")
+                return response.status_code == 200
+            except Exception:
+                return False

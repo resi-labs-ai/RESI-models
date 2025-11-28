@@ -5,6 +5,7 @@ Validator configuration management.
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -168,3 +169,11 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "wandb_project": config.wandb_project,
         "wandb_entity": config.wandb_entity,
     }
+
+
+def setup_logging(level: str) -> None:
+    """Configure logging."""
+    logging.basicConfig(
+        level=getattr(logging, level),
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    )

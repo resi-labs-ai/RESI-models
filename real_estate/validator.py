@@ -16,7 +16,7 @@ import numpy as np
 
 from real_estate.chain import PylonClient, PylonConfig
 from real_estate.chain.models import Metagraph
-from real_estate.config import check_config, config_to_dict, get_config
+from real_estate.config import check_config, config_to_dict, get_config, setup_logging
 from real_estate.utils.misc import ttl_get_block
 
 logger = logging.getLogger(__name__)
@@ -49,10 +49,12 @@ class Validator:
 
         logger.info(f"Config: {config_to_dict(config)}")
 
-        # Pylon client config
-        self.pylon_config = PylonConfig(
-            url=self.config.pylon_url,
-            token=self.config.pylon_token,
+        # Pylon client for chain interactions
+        self.pylon = PylonClient(
+            PylonConfig(
+                url=self.config.pylon_url,
+                token=self.config.pylon_token,
+            )
         )
 
         # Subtensor for block fetching (persistent websocket connection)
@@ -64,23 +66,10 @@ class Validator:
         self.scores: np.ndarray = np.array([], dtype=np.float32)
         self.hotkeys: list[str] = []
         self.uid: int | None = None
-        self.step: int = 0
+        self.hotkey: str = self.config.hotkey
 
         # Block tracker for weight setting
         self._last_weight_set_block: int = 0
-
-    @property
-    def hotkey(self) -> str:
-        """Our hotkey address."""
-        value: str = self.config.hotkey
-        return value
-
-    @property
-    def is_registered(self) -> bool:
-        """Check if we're registered on the subnet."""
-        if self.metagraph is None:
-            return False
-        return self.hotkey in self.metagraph.hotkeys
 
     @property
     def block(self) -> int:
@@ -88,31 +77,26 @@ class Validator:
         result: int = ttl_get_block(self)
         return result
 
-    async def get_metagraph(self) -> Metagraph:
+    async def update_metagraph(self) -> None:
         """
-        Get fresh metagraph from Pylon.
+        Fetch fresh metagraph from Pylon and update local state.
 
-        This is the primary way to get metagraph data. Call this
-        whenever you need current chain state (e.g., before evaluating miners).
-        Handles hotkey/score updates automatically.
+        Updates self.metagraph, hotkeys, scores, and uid.
 
-        Returns:
-            Fresh metagraph from chain.
+        Raises:
+            Exception: If metagraph fetch fails.
         """
         logger.debug("Fetching fresh metagraph...")
 
-        async with PylonClient(self.pylon_config) as client:
-            self.metagraph = await client.get_metagraph(self.config.netuid)
+        self.metagraph = await self.pylon.get_metagraph(self.config.netuid)
 
         logger.info(
-            f"Metagraph fetched: {len(self.metagraph.neurons)} neurons "
+            f"Metagraph updated: {len(self.metagraph.neurons)} neurons "
             f"at block {self.metagraph.block}"
         )
 
         # Update local state (hotkeys, scores, uid)
         self._on_metagraph_updated()
-
-        return self.metagraph
 
     def _on_metagraph_updated(self) -> None:
         """Handle metagraph changes - update hotkeys and scores."""
@@ -156,14 +140,12 @@ class Validator:
         self.hotkeys = new_hotkeys.copy()
         self.uid = self.metagraph.get_uid(self.hotkey)
 
-    def check_registered(self) -> None:
-        """Verify we're registered. Exits if not."""
-        if not self.is_registered:
-            logger.error(
-                f"Hotkey {self.hotkey} is not registered on subnet {self.config.netuid}. "
-                f"Please register with `btcli subnets register`"
-            )
-            raise SystemExit(1)
+    def is_registered(self) -> bool:
+        """Check if our hotkey is registered on the subnet."""
+        if self.metagraph is None:
+            logger.error("Cannot check registration - no metagraph")
+            return False
+        return self.hotkey in self.hotkeys
 
     async def set_weights(self) -> None:
         """
@@ -205,12 +187,11 @@ class Validator:
         logger.info(f"Setting weights for {len(uids)} UIDs")
 
         try:
-            async with PylonClient(self.pylon_config) as client:
-                await client.set_weights(
-                    netuid=self.config.netuid,
-                    uids=uids,
-                    weights=weight_values,
-                )
+            await self.pylon.set_weights(
+                netuid=self.config.netuid,
+                uids=uids,
+                weights=weight_values,
+            )
             logger.info("set_weights on chain successfully!")
             self._last_weight_set_block = self.block
         except Exception as e:
@@ -292,9 +273,6 @@ class Validator:
         """
         Check if enough blocks have elapsed to set weights.
         """
-        if self.step == 0:
-            return False
-
         disable_set_weights: bool = self.config.disable_set_weights
         if disable_set_weights:
             return False
@@ -307,13 +285,23 @@ class Validator:
         """
         Main entry point - single loop that handles everything.
 
-        Metagraph is fetched on-demand via get_metagraph() when needed.
+        Metagraph is updated on-demand via update_metagraph() when needed.
         """
         logger.info(f"Starting validator for subnet {self.config.netuid}")
 
-        # Initial metagraph fetch
-        await self.get_metagraph()
-        self.check_registered()
+        # Initial metagraph fetch - required for startup
+        try:
+            await self.update_metagraph()
+        except Exception as e:
+            logger.error(f"Failed to fetch initial metagraph: {e}")
+            raise SystemExit(1)
+
+        if not self.is_registered():
+            raise SystemExit(
+                f"Hotkey {self.hotkey} is not registered on subnet {self.config.netuid}. "
+                f"Please register with `btcli subnets register`"
+            )
+
         self.load_state()
 
         # Initialize weight tracking block
@@ -324,33 +312,24 @@ class Validator:
         # Main loop
         try:
             while True:
-                logger.info(f"Step {self.step}")
-
                 # Set weights if needed
                 if self.should_set_weights():
-                    await self.get_metagraph()
-                    self.check_registered()
-                    await self.set_weights()
+                    try:
+                        await self.update_metagraph()
+                        if not self.is_registered():
+                            raise ValueError(
+                                f"Hotkey {self.hotkey} is not registered on subnet {self.config.netuid}."
+                                f"Please register with `btcli subnets register`"
+                            )
+                        await self.set_weights()
+                    except Exception as e:
+                        logger.warning(f"Weight setting failed: {e}")
 
                 self.save_state()
-                self.step += 1
-
-                # Sleep between iterations
                 await asyncio.sleep(60)
 
         except KeyboardInterrupt:
             logger.info("Validator stopped by keyboard interrupt")
-        except Exception as e:
-            logger.error(f"Error in main loop: {e}")
-            raise
-
-
-def setup_logging(level: str) -> None:
-    """Configure logging."""
-    logging.basicConfig(
-        level=getattr(logging, level),
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    )
 
 
 async def main() -> None:
