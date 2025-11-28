@@ -225,17 +225,13 @@ class PylonClient:
 
     async def set_weights(
         self,
-        netuid: int,
-        uids: list[int],
-        weights: list[float],
+        weights: dict[str, float],
     ) -> None:
         """
         Set weights on chain.
 
         Args:
-            netuid: Subnet UID
-            uids: List of miner UIDs
-            weights: Corresponding weights (should sum to 1.0)
+            weights: Dictionary mapping hotkey -> weight (should sum to 1.0)
 
         Raises:
             WeightSettingError: If weight setting fails.
@@ -246,24 +242,14 @@ class PylonClient:
             Weights are set by the identity configured in Pylon.
             The validator hotkey must be registered and have permission.
         """
-        # Validate inputs
-        if len(uids) != len(weights):
-            raise WeightSettingError(
-                f"UIDs and weights length mismatch: {len(uids)} vs {len(weights)}"
-            )
-
-        if not uids:
+        if not weights:
             return
 
         async with self._client() as client:
             try:
-                response = await client.post(
-                    "/api/v1/weights",
-                    json={
-                        "netuid": netuid,
-                        "uids": uids,
-                        "weights": weights,
-                    },
+                response = await client.put(
+                    "/api/v1/subnet/weights",
+                    json={"weights": weights},
                 )
                 response.raise_for_status()
 

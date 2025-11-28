@@ -170,9 +170,10 @@ class Metagraph:
         block_data = data.get("block", {})
         neurons_data = data.get("neurons", {})
 
+        # neurons dict is keyed by hotkey, uid is inside neuron_data
         neurons = [
-            Neuron.from_pylon_response(int(uid), neuron_data)
-            for uid, neuron_data in neurons_data.items()
+            Neuron.from_pylon_response(neuron_data.get("uid", 0), neuron_data)
+            for neuron_data in neurons_data.values()
         ]
 
         return cls(

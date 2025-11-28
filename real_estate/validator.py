@@ -110,7 +110,7 @@ class Validator:
             self.hotkeys = new_hotkeys.copy()
             self.scores = np.zeros(len(new_hotkeys), dtype=np.float32)
             self.uid = self.metagraph.get_uid(self.hotkey)
-            logger.info(f"Initialized with {len(self.hotkeys)} hotkeys, our UID: {self.uid}")
+            logger.info(f"Initialized with {len(self.hotkeys)} hotkeys, this validator's UID: {self.uid}")
             return
 
         # Check for changes
@@ -169,29 +169,23 @@ class Validator:
             logger.warning("All scores are zero, skipping weight setting")
             return
 
-        weights = self.scores / total
+        normalized_weights = self.scores / total
 
-        # Build UID -> weight mapping for non-zero weights
-        uids: list[int] = []
-        weight_values: list[float] = []
+        # Build hotkey -> weight mapping for non-zero weights
+        weights: dict[str, float] = {}
+        for uid, weight in enumerate(normalized_weights):
+            if weight > 0 and uid < len(self.hotkeys):
+                hotkey = self.hotkeys[uid]
+                weights[hotkey] = float(weight)
 
-        for uid, weight in enumerate(weights):
-            if weight > 0:
-                uids.append(uid)
-                weight_values.append(float(weight))
-
-        if not uids:
+        if not weights:
             logger.warning("No non-zero weights to set")
             return
 
-        logger.info(f"Setting weights for {len(uids)} UIDs")
+        logger.info(f"Setting weights for {len(weights)} hotkeys")
 
         try:
-            await self.pylon.set_weights(
-                netuid=self.config.netuid,
-                uids=uids,
-                weights=weight_values,
-            )
+            await self.pylon.set_weights(weights)
             logger.info("set_weights on chain successfully!")
             self._last_weight_set_block = self.block
         except Exception as e:
@@ -312,6 +306,9 @@ class Validator:
         # Main loop
         try:
             while True:
+                # TODO: REMOVE - temporary hardcoded scores for testing
+                self.scores = np.array([0.3, 0.7], dtype=np.float32)
+
                 # Set weights if needed
                 if self.should_set_weights():
                     try:
@@ -326,7 +323,7 @@ class Validator:
                         logger.warning(f"Weight setting failed: {e}")
 
                 self.save_state()
-                await asyncio.sleep(60)
+                await asyncio.sleep(5)  # TODO: change back to 60 after testing
 
         except KeyboardInterrupt:
             logger.info("Validator stopped by keyboard interrupt")
