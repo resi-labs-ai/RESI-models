@@ -288,7 +288,7 @@ class Validator:
             await self.update_metagraph()
         except Exception as e:
             logger.error(f"Failed to fetch initial metagraph: {e}")
-            raise SystemExit(1)
+            raise SystemExit(1) from e
 
         if not self.is_registered():
             raise SystemExit(

@@ -123,10 +123,10 @@ async def test_commitments(pylon_url: str, token: str, netuid: int) -> bool:
         try:
             commitment = await client.get_commitment(test_hotkey)
             if commitment:
-                print(f"   PASS: Found commitment")
+                print("   PASS: Found commitment")
                 print(f"   Data: {commitment.data[:50]}...")
             else:
-                print(f"   PASS: No commitment (not set yet)")
+                print("   PASS: No commitment (not set yet)")
         except Exception as e:
             print(f"   FAIL: {e}")
             all_passed = False
@@ -137,11 +137,11 @@ async def test_commitments(pylon_url: str, token: str, netuid: int) -> bool:
         try:
             metadata = await client.get_model_metadata(test_hotkey)
             if metadata:
-                print(f"   PASS: Got metadata")
-                print(f"   Repo: {metadata.repo}")
-                print(f"   Hash: {metadata.hash}")
+                print("   PASS: Got metadata")
+                print(f"   Repo: {metadata.hf_repo_id}")
+                print(f"   Hash: {metadata.model_hash}")
             else:
-                print(f"   PASS: No metadata (not set yet)")
+                print("   PASS: No metadata (not set yet)")
         except CommitmentError as e:
             print(f"   WARN: Failed to parse: {e}")
         except Exception as e:
