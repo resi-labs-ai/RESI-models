@@ -110,7 +110,9 @@ class Validator:
             self.hotkeys = new_hotkeys.copy()
             self.scores = np.zeros(len(new_hotkeys), dtype=np.float32)
             self.uid = self.metagraph.get_uid(self.hotkey)
-            logger.info(f"Initialized with {len(self.hotkeys)} hotkeys, this validator's UID: {self.uid}")
+            logger.info(
+                f"Initialized with {len(self.hotkeys)} hotkeys, this validator's UID: {self.uid}"
+            )
             return
 
         # Check for changes
@@ -202,7 +204,9 @@ class Validator:
         rewards = np.asarray(rewards, dtype=np.float32)
 
         if len(uids) != len(rewards):
-            raise ValueError(f"UIDs ({len(uids)}) and rewards ({len(rewards)}) length mismatch")
+            raise ValueError(
+                f"UIDs ({len(uids)}) and rewards ({len(rewards)}) length mismatch"
+            )
 
         if len(uids) == 0:
             return

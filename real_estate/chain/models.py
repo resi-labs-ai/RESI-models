@@ -27,7 +27,9 @@ class ChainModelMetadata:
         return self.block_number < block
 
     @classmethod
-    def from_commitment_data(cls, hotkey: str, data: dict[str, Any]) -> ChainModelMetadata:
+    def from_commitment_data(
+        cls, hotkey: str, data: dict[str, Any]
+    ) -> ChainModelMetadata:
         """
         Parse commitment data dict into ChainModelMetadata.
 
@@ -48,7 +50,9 @@ class ChainModelMetadata:
         )
 
     @classmethod
-    def from_hex(cls, hotkey: str, hex_data: str, block_number: int = 0) -> ChainModelMetadata:
+    def from_hex(
+        cls, hotkey: str, hex_data: str, block_number: int = 0
+    ) -> ChainModelMetadata:
         """
         Parse hex-encoded commitment data.
 
