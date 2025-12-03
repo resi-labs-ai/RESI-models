@@ -57,6 +57,14 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
+        "--pylon.identity",
+        dest="pylon_identity",
+        type=str,
+        help="Identity name configured in Pylon.",
+        default=os.environ.get("PYLON_IDENTITY", ""),
+    )
+
+    parser.add_argument(
         "--epoch_length",
         type=int,
         help="Number of blocks between metagraph syncs and weight setting.",
@@ -145,6 +153,9 @@ def check_config(config: argparse.Namespace) -> None:
     if not config.pylon_token:
         raise ValueError("--pylon.token is required (or set PYLON_TOKEN env var)")
 
+    if not config.pylon_identity:
+        raise ValueError("--pylon.identity is required (or set PYLON_IDENTITY env var)")
+
     if config.moving_average_alpha < 0 or config.moving_average_alpha > 1:
         raise ValueError("--moving_average_alpha must be between 0 and 1")
 
@@ -160,6 +171,7 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "subtensor_network": config.subtensor_network,
         "pylon_url": config.pylon_url,
         "pylon_token": "***" if config.pylon_token else "",
+        "pylon_identity": config.pylon_identity,
         "epoch_length": config.epoch_length,
         "disable_set_weights": config.disable_set_weights,
         "state_path": str(config.state_path),

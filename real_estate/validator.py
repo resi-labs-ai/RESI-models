@@ -54,6 +54,8 @@ class Validator:
             PylonConfig(
                 url=self.config.pylon_url,
                 token=self.config.pylon_token,
+                identity=self.config.pylon_identity,
+                netuid=self.config.netuid,
             )
         )
 
@@ -88,7 +90,7 @@ class Validator:
         """
         logger.debug("Fetching fresh metagraph...")
 
-        self.metagraph = await self.pylon.get_metagraph(self.config.netuid)
+        self.metagraph = await self.pylon.get_metagraph()
 
         logger.info(
             f"Metagraph updated: {len(self.metagraph.neurons)} neurons "

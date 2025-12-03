@@ -25,6 +25,8 @@ class PylonConfig:
 
     url: str  # e.g., "http://localhost:8000"
     token: str  # Authentication token
+    identity: str  # Identity name configured in pylon
+    netuid: int  # Subnet UID
     timeout: float = 30.0  # Request timeout in seconds
 
 
@@ -70,17 +72,27 @@ class PylonClient:
         """
         async with self._client() as client:
             try:
-                response = await client.get("/api/v1/commitments")
+                url = f"/api/v1/subnet/{self._config.netuid}/block/latest/commitments"
+                response = await client.get(url)
                 response.raise_for_status()
                 data = response.json()
 
                 commitments = {}
-                for hotkey, hex_data in data.get("commitments", {}).items():
-                    commitments[hotkey] = Commitment(
-                        hotkey=hotkey,
-                        data=hex_data,
-                        block=0,  # Block not returned in bulk fetch
-                    )
+                for hotkey, commitment_data in data.get("commitments", {}).items():
+                    # Response format: {"hotkey": {"data": "hex...", "block": 123}}
+                    if isinstance(commitment_data, dict):
+                        commitments[hotkey] = Commitment(
+                            hotkey=hotkey,
+                            data=commitment_data.get("data", ""),
+                            block=commitment_data.get("block", 0),
+                        )
+                    else:
+                        # Fallback for simple format
+                        commitments[hotkey] = Commitment(
+                            hotkey=hotkey,
+                            data=commitment_data,
+                            block=0,
+                        )
 
                 logger.debug(f"Fetched {len(commitments)} commitments")
                 return commitments
@@ -104,7 +116,8 @@ class PylonClient:
         """
         async with self._client() as client:
             try:
-                response = await client.get(f"/api/v1/commitments/{hotkey}")
+                url = f"/api/v1/subnet/{self._config.netuid}/block/latest/commitments/{hotkey}"
+                response = await client.get(url)
 
                 if response.status_code == 404:
                     logger.debug(f"No commitment found for hotkey {hotkey}")
@@ -157,12 +170,18 @@ class PylonClient:
 
         Returns:
             True if successful
+
+        Raises:
+            CommitmentError: If commitment could not be set (including after pylon retries)
+            AuthenticationError: If Pylon token is invalid
+            ChainConnectionError: If connection to Pylon fails
         """
         async with self._client() as client:
             try:
+                url = f"/api/v1/identity/{self._config.identity}/subnet/{self._config.netuid}/commitments"
                 response = await client.post(
-                    "/api/v1/commitments",
-                    json={"data": data},
+                    url,
+                    json={"commitment": data},
                 )
 
                 if response.status_code == 201:
@@ -175,23 +194,31 @@ class PylonClient:
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 401:
                     raise AuthenticationError("Invalid Pylon token") from e
+                if e.response.status_code == 502:
+                    # BadGatewayException from pylon - commitment failed after retries
+                    detail = e.response.json().get("detail", "Unknown error")
+                    raise CommitmentError(f"Failed to set commitment on chain: {detail}") from e
                 raise CommitmentError(f"Failed to set commitment: {e}") from e
             except httpx.RequestError as e:
                 raise ChainConnectionError(f"Connection error: {e}") from e
 
-    async def get_metagraph(self, netuid: int) -> Metagraph:
+    async def get_metagraph(self, netuid: int | None = None) -> Metagraph:
         """
         Fetch current metagraph (all neurons).
 
         Args:
-            netuid: Subnet UID
+            netuid: Subnet UID (uses config netuid if not provided)
 
         Returns:
             Metagraph with all neurons
         """
+        if netuid is None:
+            netuid = self._config.netuid
+
         async with self._client() as client:
             try:
-                response = await client.get("/api/v1/neurons/latest")
+                url = f"/api/v1/subnet/{netuid}/neurons/latest"
+                response = await client.get(url)
                 response.raise_for_status()
                 data = response.json()
 
@@ -210,12 +237,12 @@ class PylonClient:
             except httpx.RequestError as e:
                 raise ChainConnectionError(f"Connection error: {e}") from e
 
-    async def get_all_miners(self, netuid: int) -> list[str]:
+    async def get_all_miners(self, netuid: int | None = None) -> list[str]:
         """
         Get all registered miner hotkeys.
 
         Args:
-            netuid: Subnet UID
+            netuid: Subnet UID (uses config netuid if not provided)
 
         Returns:
             List of hotkey addresses
@@ -247,8 +274,9 @@ class PylonClient:
 
         async with self._client() as client:
             try:
+                url = f"/api/v1/identity/{self._config.identity}/subnet/{self._config.netuid}/weights"
                 response = await client.put(
-                    "/api/v1/subnet/weights",
+                    url,
                     json={"weights": weights},
                 )
                 response.raise_for_status()

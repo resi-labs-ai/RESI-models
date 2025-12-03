@@ -4,11 +4,12 @@ Test PylonClient commitment read/write functionality.
 Usage:
     uv run python scripts/test_pylon_client.py
     uv run python scripts/test_pylon_client.py --pylon-url http://localhost:8000
-    uv run python scripts/test_pylon_client.py --netuid 2 --token my_token
+    uv run python scripts/test_pylon_client.py --netuid 2 --token my_token --identity validator
 
 Environment variables (alternative to CLI args):
     PYLON_URL       - Pylon server URL
     PYLON_TOKEN     - Authentication token
+    PYLON_IDENTITY  - Identity name configured in pylon
     NETUID          - Subnet UID
 
 Requirements:
@@ -31,6 +32,7 @@ from real_estate.chain.errors import (
 # Defaults
 DEFAULT_PYLON_URL = "http://localhost:8000"
 DEFAULT_TOKEN = "test_token_123"
+DEFAULT_IDENTITY = "validator"
 DEFAULT_NETUID = 1
 
 
@@ -47,6 +49,11 @@ def parse_args() -> argparse.Namespace:
         "--token",
         default=os.environ.get("PYLON_TOKEN", DEFAULT_TOKEN),
         help="Pylon authentication token",
+    )
+    parser.add_argument(
+        "--identity",
+        default=os.environ.get("PYLON_IDENTITY", DEFAULT_IDENTITY),
+        help=f"Pylon identity name (default: {DEFAULT_IDENTITY})",
     )
     parser.add_argument(
         "--netuid",
@@ -69,14 +76,15 @@ def step(num: int, desc: str) -> None:
     print(f"{num}. {desc}")
 
 
-async def test_commitments(pylon_url: str, token: str, netuid: int) -> bool:
+async def test_commitments(pylon_url: str, token: str, identity: str, netuid: int) -> bool:
     """Test PylonClient commitment read/write functionality."""
 
     header("PylonClient Commitment Tests")
     print(f"Pylon: {pylon_url}")
+    print(f"Identity: {identity}")
     print(f"NetUID: {netuid}")
 
-    config = PylonConfig(url=pylon_url, token=token)
+    config = PylonConfig(url=pylon_url, token=token, identity=identity, netuid=netuid)
     client = PylonClient(config)
     all_passed = True
 
@@ -111,7 +119,7 @@ async def test_commitments(pylon_url: str, token: str, netuid: int) -> bool:
     step(3, "Fetching commitment for specific hotkey...")
     test_hotkey = None
     try:
-        metagraph = await client.get_metagraph(netuid)
+        metagraph = await client.get_metagraph()
         if metagraph.hotkeys:
             test_hotkey = metagraph.hotkeys[0]
             print(f"   Using hotkey: {test_hotkey[:24]}...")
@@ -206,7 +214,7 @@ async def test_commitments(pylon_url: str, token: str, netuid: int) -> bool:
 
 def main() -> None:
     args = parse_args()
-    success = asyncio.run(test_commitments(args.pylon_url, args.token, args.netuid))
+    success = asyncio.run(test_commitments(args.pylon_url, args.token, args.identity, args.netuid))
     sys.exit(0 if success else 1)
 
 
