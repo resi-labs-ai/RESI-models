@@ -284,8 +284,9 @@ class TestUpdateMetagraph:
     async def test_update_metagraph_fetches_from_pylon(
         self, validator: Validator, mock_config: MagicMock
     ) -> None:
-        """Successfully fetches metagraph from Pylon."""
-        mock_metagraph = create_mock_metagraph(["hotkey_0", "hotkey_1"], block=1000)
+        """Successfully fetches metagraph from Pylon and updates local state."""
+        hotkeys = ["hotkey_0", "hotkey_1"]
+        mock_metagraph = create_mock_metagraph(hotkeys)
         
         with patch.object(
             validator.pylon, "get_metagraph", return_value=mock_metagraph
@@ -293,4 +294,86 @@ class TestUpdateMetagraph:
             await validator.update_metagraph()
             
             mock_get_metagraph.assert_called_once_with(mock_config.netuid)
+            assert validator.metagraph == mock_metagraph  # This already verifies metagraph.block
+            assert validator.hotkeys == hotkeys
+            assert len(validator.scores) == len(hotkeys)
+            np.testing.assert_array_equal(validator.scores, np.zeros(len(hotkeys), dtype=np.float32))            
 
+    @pytest.mark.asyncio
+    async def test_update_metagraph_propagates_pylon_exception(
+        self, validator: Validator, mock_config: MagicMock
+    ) -> None:
+        """Exception from pylon.get_metagraph() propagates up, state unchanged."""
+        with patch.object(
+            validator.pylon, "get_metagraph", side_effect=Exception("Pylon error")
+        ):
+            with pytest.raises(Exception, match="Pylon error"):
+                await validator.update_metagraph()
+            
+            # State should remain unchanged
+            assert validator.metagraph is None
+            assert validator.hotkeys == []
+            
+class TestIsRegistered:
+    """Tests for is_registered method."""
+
+    @pytest.fixture
+    def mock_config(self) -> MagicMock:
+        """Create a mock config for Validator."""
+        config = MagicMock()
+        config.pylon_url = "http://test.pylon"
+        config.pylon_token = "test_token"
+        config.subtensor_network = "test"
+        config.netuid = 1
+        config.hotkey = "our_hotkey"
+        config.state_path = MagicMock()
+        config.disable_set_weights = False
+        config.epoch_length = 100
+        config.moving_average_alpha = 0.1
+        return config
+
+    @pytest.fixture
+    def validator(self, mock_config: MagicMock) -> Validator:
+        """Create a Validator instance with mocked dependencies."""
+        with (
+            patch("real_estate.validator.check_config"),
+            patch("real_estate.validator.bt.subtensor") as mock_subtensor,
+        ):
+            mock_subtensor.return_value = MagicMock(chain_endpoint="mock_endpoint")
+            return Validator(mock_config)
+
+    def test_returns_false_when_metagraph_is_none(
+        self, validator: Validator
+    ) -> None:
+        """Returns False when metagraph hasn't been synced."""
+        validator.metagraph = None
+        
+        assert validator.is_registered() is False
+
+    def test_returns_true_when_hotkey_in_hotkeys(
+        self, validator: Validator
+    ) -> None:
+        """Returns True when validator's hotkey is registered."""
+        hotkeys = ["hotkey_0", "our_hotkey", "hotkey_2"]
+        validator.metagraph = create_mock_metagraph(hotkeys)
+        validator.hotkeys = hotkeys
+        
+        assert validator.is_registered() is True
+
+    def test_returns_false_when_hotkey_not_in_hotkeys(
+        self, validator: Validator
+    ) -> None:
+        """Returns False when validator's hotkey is not registered."""
+        validator.metagraph = create_mock_metagraph(["hotkey_0", "hotkey_1", "hotkey_2"])
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
+        
+        assert validator.is_registered() is False
+        
+    def test_returns_false_when_hotkeys_list_empty(
+        self, validator: Validator
+    ) -> None:
+        """Returns False when hotkeys list is empty."""
+        validator.metagraph = create_mock_metagraph([])
+        validator.hotkeys = []
+        
+        assert validator.is_registered() is False
