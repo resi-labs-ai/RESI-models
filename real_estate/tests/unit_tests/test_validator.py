@@ -231,3 +231,66 @@ class TestOnMetagraphUpdated:
         expected_scores = np.array([0.5, 0.8, 0.3, 0.0, 0.0], dtype=np.float32)
         np.testing.assert_array_equal(validator.scores, expected_scores)
         assert validator.hotkeys == new_hotkeys
+        
+    def test_validator_deregistered_uid_becomes_none(
+        self, validator: Validator
+    ) -> None:
+        """Test that when validator's hotkey is removed from metagraph, uid becomes None."""
+        # Ensure validator's hotkey is set correctly
+        assert validator.hotkey == "our_hotkey", f"Expected hotkey to be 'our_hotkey', got '{validator.hotkey}'"
+        
+        # Initialize with validator at UID 2
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey", "hotkey_3"]
+        validator.scores = np.array([0.5, 0.8, 0.3, 0.9], dtype=np.float32)
+        validator.uid = 2
+        
+        # Validator's hotkey removed from metagraph
+        new_hotkeys = ["hotkey_0", "hotkey_1", "new_hotkey_2", "hotkey_3"]
+        validator.metagraph = create_mock_metagraph(new_hotkeys)
+        
+        validator._on_metagraph_updated()
+        
+        # Validator's uid should now be None (deregistered)
+        assert validator.uid is None
+
+class TestUpdateMetagraph:
+    """Tests for update_metagraph method."""
+    @pytest.fixture
+    def mock_config(self) -> MagicMock:
+        """Create a mock config for Validator."""
+        config = MagicMock()
+        config.pylon_url = "http://test.pylon"
+        config.pylon_token = "test_token"
+        config.subtensor_network = "test"
+        config.netuid = 1
+        config.hotkey = "our_hotkey"
+        config.state_path = MagicMock()
+        config.disable_set_weights = False
+        config.epoch_length = 100
+        config.moving_average_alpha = 0.1  # <-- ADD THIS LINE
+        return config
+            
+    @pytest.fixture
+    def validator(self, mock_config: MagicMock) -> Validator:
+        """Create a Validator instance with mocked dependencies."""
+        with (
+            patch("real_estate.validator.check_config"),
+            patch("real_estate.validator.bt.subtensor") as mock_subtensor,
+        ):
+            mock_subtensor.return_value = MagicMock(chain_endpoint="mock_endpoint")
+            return Validator(mock_config)
+
+    @pytest.mark.asyncio
+    async def test_update_metagraph_fetches_from_pylon(
+        self, validator: Validator, mock_config: MagicMock
+    ) -> None:
+        """Successfully fetches metagraph from Pylon."""
+        mock_metagraph = create_mock_metagraph(["hotkey_0", "hotkey_1"], block=1000)
+        
+        with patch.object(
+            validator.pylon, "get_metagraph", return_value=mock_metagraph
+        ) as mock_get_metagraph:
+            await validator.update_metagraph()
+            
+            mock_get_metagraph.assert_called_once_with(mock_config.netuid)
+
