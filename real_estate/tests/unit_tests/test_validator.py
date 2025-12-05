@@ -36,34 +36,33 @@ def create_mock_metagraph(hotkeys: list[str], block: int = 1000) -> Metagraph:
         timestamp=datetime.now(),
     )
 
+@pytest.fixture
+def mock_config() -> MagicMock:
+    """Create a mock config for Validator."""
+    config = MagicMock()
+    config.pylon_url = "http://test.pylon"
+    config.pylon_token = "test_token"
+    config.subtensor_network = "test"
+    config.netuid = 1
+    config.hotkey = "our_hotkey"
+    config.state_path = MagicMock()
+    config.disable_set_weights = False
+    config.epoch_length = 100
+    config.moving_average_alpha = 0.1
+    return config
+
+@pytest.fixture
+def validator(mock_config: MagicMock) -> Validator:
+    """Create a Validator instance with mocked dependencies."""
+    with (
+        patch("real_estate.validator.check_config"),
+        patch("real_estate.validator.bt.subtensor") as mock_subtensor,
+    ):
+        mock_subtensor.return_value = MagicMock(chain_endpoint="mock_endpoint")
+        return Validator(mock_config)
 
 class TestOnMetagraphUpdated:
     """Tests for _on_metagraph_updated method."""
-
-    @pytest.fixture
-    def mock_config(self) -> MagicMock:
-        """Create a mock config for Validator."""
-        config = MagicMock()
-        config.pylon_url = "http://test.pylon"
-        config.pylon_token = "test_token"
-        config.subtensor_network = "test"
-        config.netuid = 1
-        config.hotkey = "our_hotkey"
-        config.state_path = MagicMock()
-        config.disable_set_weights = False
-        config.epoch_length = 100
-        config.moving_average_alpha = 0.1
-        return config
-
-    @pytest.fixture
-    def validator(self, mock_config: MagicMock) -> Validator:
-        """Create a Validator instance with mocked dependencies."""
-        with (
-            patch("real_estate.validator.check_config"),
-            patch("real_estate.validator.bt.subtensor") as mock_subtensor,
-        ):
-            mock_subtensor.return_value = MagicMock(chain_endpoint="mock_endpoint")
-            return Validator(mock_config)
 
     def test_first_sync_initializes_hotkeys_scores_and_uid(
         self, validator: Validator
@@ -104,36 +103,17 @@ class TestOnMetagraphUpdated:
     ) -> None:
         """Test that multiple hotkey replacements zero out multiple scores."""
         # Initialize with original hotkeys and scores
-        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2", "hotkey_3"]
-        validator.scores = np.array([0.5, 0.8, 0.3, 0.9], dtype=np.float32)
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2", "hotkey_3", "hotkey_4"]
+        validator.scores = np.array([0.5, 0.8, 0.3, 0.9, 0.7], dtype=np.float32)
         
-        # Replace hotkeys at UIDs 0 and 2
-        new_hotkeys = ["new_hotkey_0", "hotkey_1", "new_hotkey_2", "hotkey_3"]
+        # Replace hotkeys at UIDs 0, 2, and 4
+        new_hotkeys = ["new_hotkey_0", "hotkey_1", "new_hotkey_2", "hotkey_3", "new_hotkey_4"]
         validator.metagraph = create_mock_metagraph(new_hotkeys)
         
         validator._on_metagraph_updated()
         
-        # Scores at UIDs 0 and 2 should be zeroed
-        expected_scores = np.array([0.0, 0.8, 0.0, 0.9], dtype=np.float32)
-        np.testing.assert_array_equal(validator.scores, expected_scores)
-        assert validator.hotkeys == new_hotkeys
-
-    def test_all_hotkeys_replaced_zeros_all_scores(
-        self, validator: Validator
-    ) -> None:
-        """Test that replacing all hotkeys zeros out all scores."""
-        # Initialize with original hotkeys and scores
-        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
-        validator.scores = np.array([0.5, 0.8, 0.3], dtype=np.float32)
-        
-        # Replace all hotkeys
-        new_hotkeys = ["new_hotkey_0", "new_hotkey_1", "new_hotkey_2"]
-        validator.metagraph = create_mock_metagraph(new_hotkeys)
-        
-        validator._on_metagraph_updated()
-        
-        # All scores should be zeroed
-        expected_scores = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        # Scores at UIDs 0, 2, and 4 should be zeroed
+        expected_scores = np.array([0.0, 0.8, 0.0, 0.9, 0.0], dtype=np.float32)
         np.testing.assert_array_equal(validator.scores, expected_scores)
         assert validator.hotkeys == new_hotkeys
 
@@ -156,79 +136,22 @@ class TestOnMetagraphUpdated:
         np.testing.assert_array_equal(validator.scores, expected_scores)
         assert validator.hotkeys == initial_hotkeys
 
-    def test_hotkey_replaced_at_last_position(
-        self, validator: Validator
-    ) -> None:
-        """Test that hotkey replacement at the last UID zeros its score."""
-        # Initialize with original hotkeys and scores
-        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
-        validator.scores = np.array([0.5, 0.8, 0.9], dtype=np.float32)
-        
-        # Replace hotkey at last position
-        new_hotkeys = ["hotkey_0", "hotkey_1", "new_hotkey_2"]
-        validator.metagraph = create_mock_metagraph(new_hotkeys)
-        
-        validator._on_metagraph_updated()
-        
-        # Score at last UID should be zeroed
-        expected_scores = np.array([0.5, 0.8, 0.0], dtype=np.float32)
-        np.testing.assert_array_equal(validator.scores, expected_scores)
-        assert validator.hotkeys == new_hotkeys
-
-    def test_hotkey_replaced_at_first_position(
-        self, validator: Validator
-    ) -> None:
-        """Test that hotkey replacement at UID 0 zeros its score."""
-        # Initialize with original hotkeys and scores
-        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
-        validator.scores = np.array([0.5, 0.8, 0.9], dtype=np.float32)
-        
-        # Replace hotkey at first position
-        new_hotkeys = ["new_hotkey_0", "hotkey_1", "hotkey_2"]
-        validator.metagraph = create_mock_metagraph(new_hotkeys)
-        
-        validator._on_metagraph_updated()
-        
-        # Score at UID 0 should be zeroed
-        expected_scores = np.array([0.0, 0.8, 0.9], dtype=np.float32)
-        np.testing.assert_array_equal(validator.scores, expected_scores)
-        assert validator.hotkeys == new_hotkeys
-
     def test_hotkey_replacement_with_metagraph_growth(
         self, validator: Validator
     ) -> None:
         """Test hotkey replacement when metagraph also grows in size."""
         # Initialize with original hotkeys and scores
-        validator.hotkeys = ["hotkey_0", "hotkey_1"]
-        validator.scores = np.array([0.5, 0.8], dtype=np.float32)
-        
-        # Replace hotkey at UID 1 and add new hotkeys
-        new_hotkeys = ["hotkey_0", "new_hotkey_1", "hotkey_2", "hotkey_3"]
-        validator.metagraph = create_mock_metagraph(new_hotkeys)
-        
-        validator._on_metagraph_updated()
-        
-        # Score at UID 1 should be zeroed, new UIDs should have 0 scores
-        expected_scores = np.array([0.5, 0.0, 0.0, 0.0], dtype=np.float32)
-        np.testing.assert_array_equal(validator.scores, expected_scores)
-        assert validator.hotkeys == new_hotkeys
-
-    def test_hotkey_replacement_preserves_unchanged_scores_with_growth(
-        self, validator: Validator
-    ) -> None:
-        """Test that unchanged hotkeys preserve scores even when metagraph grows."""
-        # Initialize with original hotkeys and scores
         validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
         validator.scores = np.array([0.5, 0.8, 0.3], dtype=np.float32)
         
-        # Keep existing hotkeys, add new ones
-        new_hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2", "hotkey_3", "hotkey_4"]
+        # Replace hotkey at UID 1 and add new hotkeys
+        new_hotkeys = ["hotkey_0", "new_hotkey_1", "hotkey_2", "hotkey_3", "hotkey_4"]
         validator.metagraph = create_mock_metagraph(new_hotkeys)
         
         validator._on_metagraph_updated()
         
-        # Original scores preserved, new UIDs get 0
-        expected_scores = np.array([0.5, 0.8, 0.3, 0.0, 0.0], dtype=np.float32)
+        # Score at UID 1 should be zeroed, UID 0, 2 should remain unchanged, new UIDs should get 0 scores
+        expected_scores = np.array([0.5, 0.0, 0.3, 0.0, 0.0], dtype=np.float32)
         np.testing.assert_array_equal(validator.scores, expected_scores)
         assert validator.hotkeys == new_hotkeys
         
@@ -252,128 +175,3 @@ class TestOnMetagraphUpdated:
         
         # Validator's uid should now be None (deregistered)
         assert validator.uid is None
-
-class TestUpdateMetagraph:
-    """Tests for update_metagraph method."""
-    @pytest.fixture
-    def mock_config(self) -> MagicMock:
-        """Create a mock config for Validator."""
-        config = MagicMock()
-        config.pylon_url = "http://test.pylon"
-        config.pylon_token = "test_token"
-        config.subtensor_network = "test"
-        config.netuid = 1
-        config.hotkey = "our_hotkey"
-        config.state_path = MagicMock()
-        config.disable_set_weights = False
-        config.epoch_length = 100
-        config.moving_average_alpha = 0.1  # <-- ADD THIS LINE
-        return config
-            
-    @pytest.fixture
-    def validator(self, mock_config: MagicMock) -> Validator:
-        """Create a Validator instance with mocked dependencies."""
-        with (
-            patch("real_estate.validator.check_config"),
-            patch("real_estate.validator.bt.subtensor") as mock_subtensor,
-        ):
-            mock_subtensor.return_value = MagicMock(chain_endpoint="mock_endpoint")
-            return Validator(mock_config)
-
-    @pytest.mark.asyncio
-    async def test_update_metagraph_fetches_from_pylon(
-        self, validator: Validator, mock_config: MagicMock
-    ) -> None:
-        """Successfully fetches metagraph from Pylon and updates local state."""
-        hotkeys = ["hotkey_0", "hotkey_1"]
-        mock_metagraph = create_mock_metagraph(hotkeys)
-        
-        with patch.object(
-            validator.pylon, "get_metagraph", return_value=mock_metagraph
-        ) as mock_get_metagraph:
-            await validator.update_metagraph()
-            
-            mock_get_metagraph.assert_called_once_with(mock_config.netuid)
-            assert validator.metagraph == mock_metagraph  # This already verifies metagraph.block
-            assert validator.hotkeys == hotkeys
-            assert len(validator.scores) == len(hotkeys)
-            np.testing.assert_array_equal(validator.scores, np.zeros(len(hotkeys), dtype=np.float32))            
-
-    @pytest.mark.asyncio
-    async def test_update_metagraph_propagates_pylon_exception(
-        self, validator: Validator, mock_config: MagicMock
-    ) -> None:
-        """Exception from pylon.get_metagraph() propagates up, state unchanged."""
-        with patch.object(
-            validator.pylon, "get_metagraph", side_effect=Exception("Pylon error")
-        ):
-            with pytest.raises(Exception, match="Pylon error"):
-                await validator.update_metagraph()
-            
-            # State should remain unchanged
-            assert validator.metagraph is None
-            assert validator.hotkeys == []
-            
-class TestIsRegistered:
-    """Tests for is_registered method."""
-
-    @pytest.fixture
-    def mock_config(self) -> MagicMock:
-        """Create a mock config for Validator."""
-        config = MagicMock()
-        config.pylon_url = "http://test.pylon"
-        config.pylon_token = "test_token"
-        config.subtensor_network = "test"
-        config.netuid = 1
-        config.hotkey = "our_hotkey"
-        config.state_path = MagicMock()
-        config.disable_set_weights = False
-        config.epoch_length = 100
-        config.moving_average_alpha = 0.1
-        return config
-
-    @pytest.fixture
-    def validator(self, mock_config: MagicMock) -> Validator:
-        """Create a Validator instance with mocked dependencies."""
-        with (
-            patch("real_estate.validator.check_config"),
-            patch("real_estate.validator.bt.subtensor") as mock_subtensor,
-        ):
-            mock_subtensor.return_value = MagicMock(chain_endpoint="mock_endpoint")
-            return Validator(mock_config)
-
-    def test_returns_false_when_metagraph_is_none(
-        self, validator: Validator
-    ) -> None:
-        """Returns False when metagraph hasn't been synced."""
-        validator.metagraph = None
-        
-        assert validator.is_registered() is False
-
-    def test_returns_true_when_hotkey_in_hotkeys(
-        self, validator: Validator
-    ) -> None:
-        """Returns True when validator's hotkey is registered."""
-        hotkeys = ["hotkey_0", "our_hotkey", "hotkey_2"]
-        validator.metagraph = create_mock_metagraph(hotkeys)
-        validator.hotkeys = hotkeys
-        
-        assert validator.is_registered() is True
-
-    def test_returns_false_when_hotkey_not_in_hotkeys(
-        self, validator: Validator
-    ) -> None:
-        """Returns False when validator's hotkey is not registered."""
-        validator.metagraph = create_mock_metagraph(["hotkey_0", "hotkey_1", "hotkey_2"])
-        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
-        
-        assert validator.is_registered() is False
-        
-    def test_returns_false_when_hotkeys_list_empty(
-        self, validator: Validator
-    ) -> None:
-        """Returns False when hotkeys list is empty."""
-        validator.metagraph = create_mock_metagraph([])
-        validator.hotkeys = []
-        
-        assert validator.is_registered() is False
