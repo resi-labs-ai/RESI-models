@@ -54,6 +54,8 @@ class Validator:
             PylonConfig(
                 url=self.config.pylon_url,
                 token=self.config.pylon_token,
+                identity=self.config.pylon_identity,
+                netuid=self.config.netuid,
             )
         )
 
@@ -88,7 +90,7 @@ class Validator:
         """
         logger.debug("Fetching fresh metagraph...")
 
-        self.metagraph = await self.pylon.get_metagraph(self.config.netuid)
+        self.metagraph = await self.pylon.get_metagraph()
 
         logger.info(
             f"Metagraph updated: {len(self.metagraph.neurons)} neurons "
@@ -110,7 +112,9 @@ class Validator:
             self.hotkeys = new_hotkeys.copy()
             self.scores = np.zeros(len(new_hotkeys), dtype=np.float32)
             self.uid = self.metagraph.get_uid(self.hotkey)
-            logger.info(f"Initialized with {len(self.hotkeys)} hotkeys, this validator's UID: {self.uid}")
+            logger.info(
+                f"Initialized with {len(self.hotkeys)} hotkeys, this validator's UID: {self.uid}"
+            )
             return
 
         # Check for changes
@@ -191,44 +195,6 @@ class Validator:
         except Exception as e:
             logger.error(f"set_weights failed: {e}")
 
-    def update_scores(self, uids: list[int], rewards: np.ndarray) -> None:
-        """
-        Update scores using exponential moving average.
-
-        Args:
-            uids: List of miner UIDs
-            rewards: Corresponding reward values
-        """
-        rewards = np.asarray(rewards, dtype=np.float32)
-
-        if len(uids) != len(rewards):
-            raise ValueError(f"UIDs ({len(uids)}) and rewards ({len(rewards)}) length mismatch")
-
-        if len(uids) == 0:
-            return
-
-        # Handle NaN
-        if np.isnan(rewards).any():
-            logger.warning("Rewards contain NaN, replacing with 0")
-            rewards = np.nan_to_num(rewards, nan=0)
-
-        # Scatter rewards to full array
-        scattered = np.zeros_like(self.scores)
-        for uid, reward in zip(uids, rewards):
-            if uid < len(scattered):
-                scattered[uid] = reward
-
-        # Exponential moving average
-        alpha = self.config.moving_average_alpha
-        self.scores = alpha * scattered + (1 - alpha) * self.scores
-
-        logger.debug(f"Updated scores for {len(uids)} UIDs")
-
-    def set_score(self, uid: int, score: float) -> None:
-        """Set score for a single UID directly."""
-        if uid < len(self.scores):
-            self.scores[uid] = score
-
     def save_state(self) -> None:
         """Save validator state to disk."""
         state_file = self.config.state_path / "state.npz"
@@ -288,7 +254,7 @@ class Validator:
             await self.update_metagraph()
         except Exception as e:
             logger.error(f"Failed to fetch initial metagraph: {e}")
-            raise SystemExit(1)
+            raise SystemExit(1) from e
 
         if not self.is_registered():
             raise SystemExit(

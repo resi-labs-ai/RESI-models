@@ -27,7 +27,9 @@ class ChainModelMetadata:
         return self.block_number < block
 
     @classmethod
-    def from_commitment_data(cls, hotkey: str, data: dict[str, Any]) -> ChainModelMetadata:
+    def from_commitment_data(
+        cls, hotkey: str, data: dict[str, Any]
+    ) -> ChainModelMetadata:
         """
         Parse commitment data dict into ChainModelMetadata.
 
@@ -48,7 +50,9 @@ class ChainModelMetadata:
         )
 
     @classmethod
-    def from_hex(cls, hotkey: str, hex_data: str, block_number: int = 0) -> ChainModelMetadata:
+    def from_hex(
+        cls, hotkey: str, hex_data: str, block_number: int = 0
+    ) -> ChainModelMetadata:
         """
         Parse hex-encoded commitment data.
 
@@ -58,7 +62,8 @@ class ChainModelMetadata:
             block_number: Block number where commitment was made
         """
         # Decode hex to bytes, then to string, then parse JSON
-        raw_bytes = bytes.fromhex(hex_data)
+        hex_str = hex_data[2:] if hex_data.startswith("0x") else hex_data
+        raw_bytes = bytes.fromhex(hex_str)
         json_str = raw_bytes.decode("utf-8")
         data = json.loads(json_str)
 
@@ -81,7 +86,8 @@ class Commitment:
 
     def decode(self) -> dict[str, Any]:
         """Decode hex data to dictionary."""
-        raw_bytes = bytes.fromhex(self.data)
+        hex_data = self.data[2:] if self.data.startswith("0x") else self.data
+        raw_bytes = bytes.fromhex(hex_data)
         json_str = raw_bytes.decode("utf-8")
         result: dict[str, Any] = json.loads(json_str)
         return result
@@ -135,7 +141,6 @@ class Metagraph:
     Contains all neurons and their current state.
     """
 
-    netuid: int
     block: int
     neurons: list[Neuron]
     timestamp: datetime
@@ -165,8 +170,12 @@ class Metagraph:
         return None
 
     @classmethod
-    def from_pylon_response(cls, netuid: int, data: dict[str, Any]) -> Metagraph:
-        """Parse Pylon neurons response into Metagraph."""
+    def from_pylon_response(cls, data: dict[str, Any]) -> Metagraph:
+        """
+        Parse Pylon neurons response into Metagraph.
+
+        Note: netuid is configured at Pylon service level, not in response.
+        """
         block_data = data.get("block", {})
         neurons_data = data.get("neurons", {})
 
@@ -177,7 +186,6 @@ class Metagraph:
         ]
 
         return cls(
-            netuid=netuid,
             block=block_data.get("number", 0),
             neurons=neurons,
             timestamp=datetime.now(),

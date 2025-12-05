@@ -8,6 +8,7 @@ from functools import lru_cache, update_wrapper
 from math import floor
 from typing import TYPE_CHECKING, Any
 
+# Import only for type checking (mypy) to avoid circular import at runtime
 if TYPE_CHECKING:
     from real_estate.validator import Validator
 
