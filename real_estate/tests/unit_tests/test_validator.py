@@ -175,3 +175,24 @@ class TestOnMetagraphUpdated:
         
         # Validator's uid should now be None (deregistered)
         assert validator.uid is None
+        
+class TestSetWeights:
+    """Tests for set_weights method."""
+
+    @pytest.mark.asyncio
+    async def test_set_weights_normalizes_and_maps_to_hotkeys(
+        self, validator: Validator
+    ) -> None:
+        """Test normalization math and hotkey-to-weight mapping."""
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
+        validator.scores = np.array([1.0, 3.0, 0.0], dtype=np.float32)
+        validator.metagraph = create_mock_metagraph(validator.hotkeys)
+
+        with patch.object(validator.pylon, "set_weights") as mock_set_weights:
+            await validator.set_weights()
+
+            # [1, 3, 0] / 4 = [0.25, 0.75, 0] → only non-zero in dict
+            mock_set_weights.assert_called_once_with({
+                "hotkey_0": 0.25,
+                "hotkey_1": 0.75,
+            })
