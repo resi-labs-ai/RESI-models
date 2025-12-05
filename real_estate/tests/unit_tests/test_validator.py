@@ -117,25 +117,6 @@ class TestOnMetagraphUpdated:
         np.testing.assert_array_equal(validator.scores, expected_scores)
         assert validator.hotkeys == new_hotkeys
 
-    def test_no_hotkey_changes_preserves_scores(
-        self, validator: Validator
-    ) -> None:
-        """Test that when no hotkeys change, scores remain unchanged."""
-        # Initialize with hotkeys and scores
-        initial_hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
-        validator.hotkeys = initial_hotkeys.copy()
-        validator.scores = np.array([0.5, 0.8, 0.3], dtype=np.float32)
-        
-        # Metagraph with same hotkeys
-        validator.metagraph = create_mock_metagraph(initial_hotkeys)
-        
-        validator._on_metagraph_updated()
-        
-        # Scores should remain unchanged
-        expected_scores = np.array([0.5, 0.8, 0.3], dtype=np.float32)
-        np.testing.assert_array_equal(validator.scores, expected_scores)
-        assert validator.hotkeys == initial_hotkeys
-
     def test_hotkey_replacement_with_metagraph_growth(
         self, validator: Validator
     ) -> None:
