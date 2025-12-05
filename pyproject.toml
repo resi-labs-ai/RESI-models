@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Real Estate Price Prediction Subnet for Bittensor"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     {name = "Your Name", email = "your@email.com"},
 ]
@@ -22,6 +22,10 @@ dependencies = [
     "pydantic>=2",
     "numpy>=1",
     "torch>=2",
+    "turbobt>=0.3.0",
+    "bittensor-wallet>=4.0.1",
+    "httpx>=0.26.0",
+    "tenacity>=9.1.2",
 ]
 
 [dependency-groups]

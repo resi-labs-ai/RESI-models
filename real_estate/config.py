@@ -1,0 +1,191 @@
+"""
+Validator configuration management.
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import os
+from pathlib import Path
+from typing import Any
+
+
+def add_args(parser: argparse.ArgumentParser) -> None:
+    """
+    Add validator arguments to the parser.
+
+    Arguments can be overridden by environment variables.
+    """
+
+    parser.add_argument(
+        "--netuid",
+        type=int,
+        help="Subnet netuid to validate on.",
+        default=int(os.environ.get("NETUID", "1")),
+    )
+
+    parser.add_argument(
+        "--hotkey",
+        type=str,
+        help="SS58 address of the validator hotkey.",
+        default=os.environ.get("HOTKEY", ""),
+    )
+
+    parser.add_argument(
+        "--subtensor.network",
+        dest="subtensor_network",
+        type=str,
+        help="Subtensor network (finney, test, local, or ws:// endpoint).",
+        default=os.environ.get("SUBTENSOR_NETWORK", "finney"),
+    )
+
+    parser.add_argument(
+        "--pylon.url",
+        dest="pylon_url",
+        type=str,
+        help="URL of the Pylon service.",
+        default=os.environ.get("PYLON_URL", "http://localhost:8000"),
+    )
+
+    parser.add_argument(
+        "--pylon.token",
+        dest="pylon_token",
+        type=str,
+        help="Authentication token for Pylon.",
+        default=os.environ.get("PYLON_TOKEN", ""),
+    )
+
+    parser.add_argument(
+        "--pylon.identity",
+        dest="pylon_identity",
+        type=str,
+        help="Identity name configured in Pylon.",
+        default=os.environ.get("PYLON_IDENTITY", ""),
+    )
+
+    parser.add_argument(
+        "--epoch_length",
+        type=int,
+        help="Number of blocks between metagraph syncs and weight setting.",
+        default=int(os.environ.get("EPOCH_LENGTH", "100")),
+    )
+
+    parser.add_argument(
+        "--disable_set_weights",
+        action="store_true",
+        help="Disable automatic weight setting.",
+        default=os.environ.get("DISABLE_SET_WEIGHTS", "false").lower() == "true",
+    )
+
+    parser.add_argument(
+        "--state_path",
+        type=str,
+        help="Path to store validator state.",
+        default=os.environ.get("STATE_PATH", "./validator_state"),
+    )
+
+    parser.add_argument(
+        "--moving_average_alpha",
+        type=float,
+        help="Alpha for exponential moving average of scores.",
+        default=float(os.environ.get("MOVING_AVERAGE_ALPHA", "0.1")),
+    )
+
+    parser.add_argument(
+        "--log_level",
+        type=str,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging level.",
+        default=os.environ.get("LOG_LEVEL", "INFO"),
+    )
+
+    parser.add_argument(
+        "--wandb.off",
+        dest="wandb_off",
+        action="store_true",
+        help="Disable WandB logging.",
+        default=os.environ.get("WANDB_OFF", "false").lower() == "true",
+    )
+
+    parser.add_argument(
+        "--wandb.project",
+        dest="wandb_project",
+        type=str,
+        help="WandB project name.",
+        default=os.environ.get("WANDB_PROJECT", "real-estate-subnet"),
+    )
+
+    parser.add_argument(
+        "--wandb.entity",
+        dest="wandb_entity",
+        type=str,
+        help="WandB entity.",
+        default=os.environ.get("WANDB_ENTITY", ""),
+    )
+
+
+def get_config() -> argparse.Namespace:
+    """Parse arguments and return configuration."""
+    parser = argparse.ArgumentParser(
+        description="Real Estate Subnet Validator",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    add_args(parser)
+    config = parser.parse_args()
+
+    # Convert state_path to Path
+    config.state_path = Path(config.state_path)
+
+    return config
+
+
+def check_config(config: argparse.Namespace) -> None:
+    """
+    Validate configuration.
+
+    Raises:
+        ValueError: If configuration is invalid.
+    """
+    if not config.hotkey:
+        raise ValueError("--hotkey is required (or set HOTKEY env var)")
+
+    if not config.pylon_token:
+        raise ValueError("--pylon.token is required (or set PYLON_TOKEN env var)")
+
+    if not config.pylon_identity:
+        raise ValueError("--pylon.identity is required (or set PYLON_IDENTITY env var)")
+
+    if config.moving_average_alpha < 0 or config.moving_average_alpha > 1:
+        raise ValueError("--moving_average_alpha must be between 0 and 1")
+
+    # Ensure state directory exists
+    config.state_path.mkdir(parents=True, exist_ok=True)
+
+
+def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
+    """Convert config to dictionary for logging."""
+    return {
+        "netuid": config.netuid,
+        "hotkey": config.hotkey,
+        "subtensor_network": config.subtensor_network,
+        "pylon_url": config.pylon_url,
+        "pylon_token": "***" if config.pylon_token else "",
+        "pylon_identity": config.pylon_identity,
+        "epoch_length": config.epoch_length,
+        "disable_set_weights": config.disable_set_weights,
+        "state_path": str(config.state_path),
+        "moving_average_alpha": config.moving_average_alpha,
+        "log_level": config.log_level,
+        "wandb_off": config.wandb_off,
+        "wandb_project": config.wandb_project,
+        "wandb_entity": config.wandb_entity,
+    }
+
+
+def setup_logging(level: str) -> None:
+    """Configure logging."""
+    logging.basicConfig(
+        level=getattr(logging, level),
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    )
