@@ -32,7 +32,7 @@ _retry_on_connection_error = retry(
 )
 
 
-@dataclass
+@dataclass(frozen=True)
 class PylonConfig:
     """Configuration for Pylon client."""
 
