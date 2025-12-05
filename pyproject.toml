@@ -25,6 +25,7 @@ dependencies = [
     "turbobt>=0.3.0",
     "bittensor-wallet>=4.0.1",
     "httpx>=0.26.0",
+    "tenacity>=9.1.2",
 ]
 
 [dependency-groups]

@@ -30,7 +30,6 @@ def create_mock_metagraph(hotkeys: list[str], block: int = 1000) -> Metagraph:
     """Create a mock Metagraph for testing."""
     neurons = [create_mock_neuron(uid, hotkey) for uid, hotkey in enumerate(hotkeys)]
     return Metagraph(
-        netuid=1,
         block=block,
         neurons=neurons,
         timestamp=datetime.now(),
@@ -46,6 +45,7 @@ class TestOnMetagraphUpdatedFirstSync:
         config = MagicMock()
         config.pylon_url = "http://test.pylon"
         config.pylon_token = "test_token"
+        config.pylon_identity = "test_identity"
         config.subtensor_network = "test"
         config.netuid = 1
         config.hotkey = "our_hotkey"

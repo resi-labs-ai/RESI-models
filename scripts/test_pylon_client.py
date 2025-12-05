@@ -4,13 +4,16 @@ Test PylonClient commitment read/write functionality.
 Usage:
     uv run python scripts/test_pylon_client.py
     uv run python scripts/test_pylon_client.py --pylon-url http://localhost:8000
-    uv run python scripts/test_pylon_client.py --netuid 2 --token my_token --identity validator
+    uv run python scripts/test_pylon_client.py --token my_token --identity validator --netuid 1
+    uv run python scripts/test_pylon_client.py --hotkey <SS58-address>
+    uv run python scripts/test_pylon_client.py --commitment '{"h":"sha256:abc","r":"user/repo","v":"1.0"}'
 
 Environment variables (alternative to CLI args):
     PYLON_URL       - Pylon server URL
     PYLON_TOKEN     - Authentication token
-    PYLON_IDENTITY  - Identity name configured in pylon
-    NETUID          - Subnet UID
+    PYLON_IDENTITY  - Identity name configured in Pylon
+    NETUID          - Subnet netuid
+    TEST_HOTKEY     - Hotkey to test commitment read
 
 Requirements:
     - Pylon running and accessible
@@ -58,8 +61,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--netuid",
         type=int,
-        default=int(os.environ.get("NETUID", DEFAULT_NETUID)),
-        help=f"Subnet UID (default: {DEFAULT_NETUID})",
+        default=int(os.environ.get("NETUID", str(DEFAULT_NETUID))),
+        help=f"Subnet netuid (default: {DEFAULT_NETUID})",
+    )
+    parser.add_argument(
+        "--hotkey",
+        default=os.environ.get("TEST_HOTKEY", ""),
+        help="Hotkey to test commitment read (if not set, uses first from metagraph)",
+    )
+    parser.add_argument(
+        "--commitment",
+        default="",
+        help='Commitment JSON to set (e.g. \'{"h":"sha256:abc","r":"user/repo","v":"1.0"}\')',
     )
     return parser.parse_args()
 
@@ -76,13 +89,12 @@ def step(num: int, desc: str) -> None:
     print(f"{num}. {desc}")
 
 
-async def test_commitments(pylon_url: str, token: str, identity: str, netuid: int) -> bool:
+async def test_commitments(pylon_url: str, token: str, identity: str, netuid: int, hotkey: str, commitment_json: str) -> bool:
     """Test PylonClient commitment read/write functionality."""
 
     header("PylonClient Commitment Tests")
     print(f"Pylon: {pylon_url}")
-    print(f"Identity: {identity}")
-    print(f"NetUID: {netuid}")
+    print(f"Identity: {identity}, Netuid: {netuid}")
 
     config = PylonConfig(url=pylon_url, token=token, identity=identity, netuid=netuid)
     client = PylonClient(config)
@@ -117,14 +129,21 @@ async def test_commitments(pylon_url: str, token: str, identity: str, netuid: in
 
     # 3. Get commitment for specific hotkey
     step(3, "Fetching commitment for specific hotkey...")
-    test_hotkey = None
-    try:
-        metagraph = await client.get_metagraph()
-        if metagraph.hotkeys:
-            test_hotkey = metagraph.hotkeys[0]
-            print(f"   Using hotkey: {test_hotkey[:24]}...")
-    except Exception as e:
-        print(f"   WARN: Could not get metagraph: {e}")
+    if hotkey:
+        test_hotkey = hotkey
+        print(f"   Using provided hotkey: {test_hotkey[:24]}...")
+    else:
+        try:
+            metagraph = await client.get_metagraph()
+            if metagraph.hotkeys:
+                test_hotkey = metagraph.hotkeys[0]
+                print(f"   Using first hotkey from metagraph: {test_hotkey[:24]}...")
+            else:
+                print("   WARN: No hotkeys in metagraph")
+                test_hotkey = None
+        except Exception as e:
+            print(f"   WARN: Could not get metagraph: {e}")
+            test_hotkey = None
 
     if test_hotkey:
         try:
@@ -159,11 +178,14 @@ async def test_commitments(pylon_url: str, token: str, identity: str, netuid: in
     step(5, "Setting a test commitment...")
     commitment_hex = ""
     try:
-        model_metadata = {
-            "h": "sha256:abc123def456",
-            "r": "testuser/resi-model",
-            "v": "1.0.0",
-        }
+        if commitment_json:
+            model_metadata = json.loads(commitment_json)
+        else:
+            model_metadata = {
+                "h": "sha256:abc123def456",
+                "r": "testuser/resi-model",
+                "v": "1.0.0",
+            }
         commitment_bytes = json.dumps(model_metadata, separators=(",", ":")).encode("utf-8")
         commitment_hex = commitment_bytes.hex()
 
@@ -214,7 +236,7 @@ async def test_commitments(pylon_url: str, token: str, identity: str, netuid: in
 
 def main() -> None:
     args = parse_args()
-    success = asyncio.run(test_commitments(args.pylon_url, args.token, args.identity, args.netuid))
+    success = asyncio.run(test_commitments(args.pylon_url, args.token, args.identity, args.netuid, args.hotkey, args.commitment))
     sys.exit(0 if success else 1)
 
 

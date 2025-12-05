@@ -6,17 +6,30 @@ import logging
 from dataclasses import dataclass
 
 import httpx
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 from .errors import (
     AuthenticationError,
     ChainConnectionError,
     CommitmentError,
-    MetagraphError,
     WeightSettingError,
 )
 from .models import ChainModelMetadata, Commitment, Metagraph
 
 logger = logging.getLogger(__name__)
+
+# Retry decorator for GET requests: 3 attempts with exponential backoff + jitter
+_retry_on_connection_error = retry(
+    wait=wait_exponential_jitter(initial=0.1, jitter=0.2),
+    stop=stop_after_attempt(3),
+    retry=retry_if_exception_type(ChainConnectionError),
+    reraise=True,
+)
 
 
 @dataclass
@@ -63,12 +76,15 @@ class PylonClient:
             timeout=self._config.timeout,
         )
 
+    @_retry_on_connection_error
     async def get_all_commitments(self) -> dict[str, Commitment]:
         """
         Fetch all commitments from chain.
 
         Returns:
             Dictionary mapping hotkey -> Commitment
+
+        Retries on transient connection errors (3 attempts with exponential backoff).
         """
         async with self._client() as client:
             try:
@@ -77,22 +93,15 @@ class PylonClient:
                 response.raise_for_status()
                 data = response.json()
 
+                # Response format: {"block": {...}, "commitments": {"hotkey": "0xhexdata", ...}}
+                block_number = data.get("block", {}).get("number", 0)
                 commitments = {}
-                for hotkey, commitment_data in data.get("commitments", {}).items():
-                    # Response format: {"hotkey": {"data": "hex...", "block": 123}}
-                    if isinstance(commitment_data, dict):
-                        commitments[hotkey] = Commitment(
-                            hotkey=hotkey,
-                            data=commitment_data.get("data", ""),
-                            block=commitment_data.get("block", 0),
-                        )
-                    else:
-                        # Fallback for simple format
-                        commitments[hotkey] = Commitment(
-                            hotkey=hotkey,
-                            data=commitment_data,
-                            block=0,
-                        )
+                for hotkey, hex_data in data.get("commitments", {}).items():
+                    commitments[hotkey] = Commitment(
+                        hotkey=hotkey,
+                        data=hex_data,
+                        block=block_number,
+                    )
 
                 logger.debug(f"Fetched {len(commitments)} commitments")
                 return commitments
@@ -104,6 +113,7 @@ class PylonClient:
             except httpx.RequestError as e:
                 raise ChainConnectionError(f"Connection error: {e}") from e
 
+    @_retry_on_connection_error
     async def get_commitment(self, hotkey: str) -> Commitment | None:
         """
         Fetch commitment for a specific hotkey.
@@ -113,6 +123,8 @@ class PylonClient:
 
         Returns:
             Commitment if found, None otherwise
+
+        Retries on transient connection errors (3 attempts with exponential backoff).
         """
         async with self._client() as client:
             try:
@@ -126,16 +138,21 @@ class PylonClient:
                 response.raise_for_status()
                 data = response.json()
 
+                # Response format: {"hotkey": "...", "commitment": "0xhexdata"}
+                hex_data = data.get("commitment")
+                if hex_data is None:
+                    return None
+
                 return Commitment(
                     hotkey=data.get("hotkey", hotkey),
-                    data=data.get("data", ""),
-                    block=data.get("block", 0),
+                    data=hex_data,
+                    block=0,
                 )
 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 401:
                     raise AuthenticationError("Invalid Pylon token") from e
-                raise CommitmentError(f"Failed to fetch commitment: {e}") from e
+                raise ChainConnectionError(f"Failed to fetch commitment: {e}") from e
             except httpx.RequestError as e:
                 raise ChainConnectionError(f"Connection error: {e}") from e
 
@@ -161,12 +178,12 @@ class PylonClient:
             logger.warning(f"Failed to parse commitment for {hotkey}: {e}")
             raise CommitmentError(f"Invalid commitment data for {hotkey}: {e}") from e
 
-    async def set_commitment(self, data: str) -> bool:
+    async def set_commitment(self, data: str | bytes) -> bool:
         """
         Set commitment on chain.
 
         Args:
-            data: Hex-encoded commitment data (must be <= 128 bytes)
+            data: Commitment data as hex string (with or without 0x prefix) or bytes
 
         Returns:
             True if successful
@@ -176,6 +193,12 @@ class PylonClient:
             AuthenticationError: If Pylon token is invalid
             ChainConnectionError: If connection to Pylon fails
         """
+        # Convert bytes to hex string if needed
+        if isinstance(data, bytes):
+            data = "0x" + data.hex()
+        elif not data.startswith("0x"):
+            data = "0x" + data
+
         async with self._client() as client:
             try:
                 url = f"/api/v1/identity/{self._config.identity}/subnet/{self._config.netuid}/commitments"
@@ -197,32 +220,31 @@ class PylonClient:
                 if e.response.status_code == 502:
                     # BadGatewayException from pylon - commitment failed after retries
                     detail = e.response.json().get("detail", "Unknown error")
-                    raise CommitmentError(f"Failed to set commitment on chain: {detail}") from e
+                    raise CommitmentError(
+                        f"Failed to set commitment on chain: {detail}"
+                    ) from e
                 raise CommitmentError(f"Failed to set commitment: {e}") from e
             except httpx.RequestError as e:
                 raise ChainConnectionError(f"Connection error: {e}") from e
 
-    async def get_metagraph(self, netuid: int | None = None) -> Metagraph:
+    @_retry_on_connection_error
+    async def get_metagraph(self) -> Metagraph:
         """
         Fetch current metagraph (all neurons).
 
-        Args:
-            netuid: Subnet UID (uses config netuid if not provided)
-
         Returns:
             Metagraph with all neurons
-        """
-        if netuid is None:
-            netuid = self._config.netuid
 
+        Retries on transient connection errors (3 attempts with exponential backoff).
+        """
         async with self._client() as client:
             try:
-                url = f"/api/v1/subnet/{netuid}/neurons/latest"
+                url = f"/api/v1/subnet/{self._config.netuid}/neurons/latest"
                 response = await client.get(url)
                 response.raise_for_status()
                 data = response.json()
 
-                metagraph = Metagraph.from_pylon_response(netuid, data)
+                metagraph = Metagraph.from_pylon_response(data)
                 logger.debug(
                     f"Fetched metagraph with {len(metagraph.neurons)} neurons "
                     f"at block {metagraph.block}"
@@ -233,21 +255,18 @@ class PylonClient:
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 401:
                     raise AuthenticationError("Invalid Pylon token") from e
-                raise MetagraphError(f"Failed to fetch metagraph: {e}") from e
+                raise ChainConnectionError(f"Failed to fetch metagraph: {e}") from e
             except httpx.RequestError as e:
                 raise ChainConnectionError(f"Connection error: {e}") from e
 
-    async def get_all_miners(self, netuid: int | None = None) -> list[str]:
+    async def get_all_miners(self) -> list[str]:
         """
         Get all registered miner hotkeys.
-
-        Args:
-            netuid: Subnet UID (uses config netuid if not provided)
 
         Returns:
             List of hotkey addresses
         """
-        metagraph = await self.get_metagraph(netuid)
+        metagraph = await self.get_metagraph()
         return metagraph.hotkeys
 
     async def set_weights(
@@ -292,16 +311,19 @@ class PylonClient:
             except httpx.RequestError as e:
                 raise ChainConnectionError(f"Connection error: {e}") from e
 
+    @_retry_on_connection_error
     async def health_check(self) -> bool:
         """
         Check if Pylon is running and accessible.
 
         Returns:
             True if healthy, False otherwise
+
+        Retries on transient connection errors (3 attempts with exponential backoff).
         """
         async with self._client() as client:
             try:
                 response = await client.get("/schema/swagger")
                 return response.status_code == 200
-            except Exception:
-                return False
+            except httpx.RequestError as e:
+                raise ChainConnectionError(f"Health check failed: {e}") from e
