@@ -24,7 +24,7 @@ from .models import ValidationDataset
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class ScraperConfig:
     """Configuration for scraper client."""
 

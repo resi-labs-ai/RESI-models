@@ -16,9 +16,7 @@ numeric_fields:
 # Feature transforms - derived features computed from raw data
 # Each field name must have a matching @feature_transform decorator
 feature_transforms:
-  days_since_last_sale:
-    source: last_sale_date
-    default: 0  # Used when last_sale_date is null
+  - days_since_last_sale
 
 # Categorical fields - mapped to integers via JSON files
 categorical_fields:

@@ -3,7 +3,9 @@
 from .errors import (
     DataError,
     FeatureConfigError,
+    InvalidTransformValueError,
     MissingFieldError,
+    MissingTransformFieldError,
     ScraperAuthError,
     ScraperError,
     ScraperRequestError,
@@ -26,7 +28,9 @@ __all__ = [
     # Errors
     "DataError",
     "FeatureConfigError",
+    "InvalidTransformValueError",
     "MissingFieldError",
+    "MissingTransformFieldError",
     "ScraperAuthError",
     "ScraperError",
     "ScraperRequestError",

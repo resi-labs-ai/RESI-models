@@ -51,17 +51,8 @@ class FeatureEncoder:
 
     def _load_config(self) -> None:
         """Load feature configuration from YAML."""
-        try:
-            with open(self._config_path) as f:
-                self._config = yaml.safe_load(f)
-        except FileNotFoundError as e:
-            raise FeatureConfigError(
-                f"Feature config file not found: {self._config_path}"
-            ) from e
-        except yaml.YAMLError as e:
-            raise FeatureConfigError(
-                f"Invalid YAML in feature config: {e}"
-            ) from e
+        with open(self._config_path) as f:
+            self._config = yaml.safe_load(f)
 
     def _validate_feature_transforms(self) -> None:
         """Validate all feature transforms in config have registered functions."""
@@ -134,7 +125,7 @@ class FeatureEncoder:
                 features.append(float(prop[field]))
 
             elif field in feature_transforms:
-                value = self._apply_transform(field, prop, feature_transforms[field])
+                value = _FEATURE_TRANSFORM_REGISTRY[field](prop)
                 features.append(value)
 
             elif field in categorical_fields:
@@ -144,12 +135,6 @@ class FeatureEncoder:
                 features.append(float(value))
 
         return features
-
-    def _apply_transform(
-        self, field: str, prop_dict: dict[str, Any], config: dict[str, Any]
-    ) -> float:
-        """Apply feature transform using registered function."""
-        return _FEATURE_TRANSFORM_REGISTRY[field](prop_dict, config)
 
     def _encode_categorical(self, field: str, value: str) -> int:
         """Encode categorical value to integer."""

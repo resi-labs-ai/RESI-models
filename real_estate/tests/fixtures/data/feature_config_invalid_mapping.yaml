@@ -1,0 +1,14 @@
+# Config with invalid JSON mapping file
+version: "1.0.0"
+
+numeric_fields:
+  - price
+
+feature_transforms: {}
+
+categorical_fields:
+  city: cities_invalid.json
+
+feature_order:
+  - price
+  - city

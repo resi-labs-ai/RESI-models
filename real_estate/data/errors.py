@@ -48,6 +48,33 @@ class UnknownCategoryError(DataError):
     pass
 
 
+# --- Feature transform errors ---
+
+
+class MissingTransformFieldError(DataError):
+    """
+    Raised when a required field for a transform is missing.
+
+    This can happen when:
+    - Property dict doesn't have the source field needed by transform
+    - Field is None when a value is required
+    """
+
+    pass
+
+
+class InvalidTransformValueError(DataError):
+    """
+    Raised when a field value cannot be parsed by a transform.
+
+    This can happen when:
+    - Date string is not in ISO format
+    - Value is wrong type for the transform
+    """
+
+    pass
+
+
 # --- Scraper client errors ---
 
 

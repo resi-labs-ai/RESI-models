@@ -6,12 +6,11 @@ The name must match a key in feature_config.yaml's feature_transforms section.
 These are derived features computed from raw property data.
 """
 
-import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from .errors import InvalidTransformValueError, MissingTransformFieldError
 
 
 def _default_clock() -> datetime:
@@ -23,15 +22,15 @@ def _default_clock() -> datetime:
 _get_now: Callable[[], datetime] = _default_clock
 
 # Registry for feature transform functions
-# Each function takes (prop_dict, config) and returns float
-_FEATURE_TRANSFORM_REGISTRY: dict[str, Callable[[dict[str, Any], dict[str, Any]], float]] = {}
+# Each function takes prop_dict and returns float
+_FEATURE_TRANSFORM_REGISTRY: dict[str, Callable[[dict[str, Any]], float]] = {}
 
 
 def feature_transform(name: str):
     """
     Decorator to register a feature transform function.
 
-    The `name` argument MUST match a key in `feature_transforms` section of
+    The `name` argument MUST match an entry in `feature_transforms` list of
     feature_config.yaml. This binding is validated at encoder initialization.
 
     Args:
@@ -39,18 +38,17 @@ def feature_transform(name: str):
 
     Usage:
         @feature_transform("days_since_last_sale")
-        def compute_days_since_last_sale(prop_dict: dict, config: dict) -> float:
+        def compute_days_since_last_sale(prop_dict: dict) -> float:
             ...
 
     The function receives:
         - prop_dict: Property data as dictionary
-        - config: The field's config from feature_config.yaml (e.g. source, default)
 
     Returns:
         float: The computed value
     """
 
-    def decorator(func: Callable[[dict[str, Any], dict[str, Any]], float]):
+    def decorator(func: Callable[[dict[str, Any]], float]):
         _FEATURE_TRANSFORM_REGISTRY[name] = func
         return func
 
@@ -78,23 +76,32 @@ def reset_clock() -> None:
 
 
 @feature_transform("days_since_last_sale")
-def _compute_days_since_last_sale(prop_dict: dict[str, Any], config: dict[str, Any]) -> float:
+def _compute_days_since_last_sale(prop_dict: dict[str, Any]) -> float:
     """Calculate days between last sale and now."""
-    last_sale_date = prop_dict.get(config.get("source", "last_sale_date"))
-    default = config.get("default", 0)
+    if "last_sale_date" not in prop_dict:
+        raise MissingTransformFieldError(
+            "Missing required field 'last_sale_date' for days_since_last_sale transform"
+        )
 
-    if not last_sale_date:
-        logger.debug(f"No last_sale_date found, using default: {default}")
-        return float(default)
+    last_sale_date = prop_dict["last_sale_date"]
+
+    if last_sale_date is None:
+        raise MissingTransformFieldError(
+            "Field 'last_sale_date' is None for days_since_last_sale transform"
+        )
 
     try:
         last_sale = datetime.fromisoformat(last_sale_date)
-        # Ensure timezone-aware comparison
-        if last_sale.tzinfo is None:
-            last_sale = last_sale.replace(tzinfo=UTC)
-        now = _get_now()
-        delta = now - last_sale
-        return float(delta.days)
     except (ValueError, TypeError) as e:
-        logger.debug(f"Failed to parse last_sale_date '{last_sale_date}': {e}, using default: {default}")
-        return float(default)
+        raise InvalidTransformValueError(
+            f"Cannot parse '{last_sale_date}' as ISO date for days_since_last_sale transform: {e}"
+        ) from e
+
+    if last_sale.tzinfo is None:
+        raise InvalidTransformValueError(
+            f"Datetime '{last_sale_date}' must include timezone for days_since_last_sale transform"
+        )
+
+    now = _get_now()
+    delta = now - last_sale
+    return float(delta.days)
