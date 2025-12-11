@@ -17,6 +17,7 @@ import numpy as np
 from real_estate.chain import PylonClient, PylonConfig
 from real_estate.chain.models import Metagraph
 from real_estate.config import check_config, config_to_dict, get_config, setup_logging
+from real_estate.data import ScraperClient, ScraperConfig, ValidationDataset
 from real_estate.utils.misc import ttl_get_block
 
 logger = logging.getLogger(__name__)
@@ -63,12 +64,33 @@ class Validator:
         self.subtensor = bt.subtensor(network=self.config.subtensor_network)
         logger.info(f"Connected to subtensor: {self.subtensor.chain_endpoint}")
 
+        # Wallet for signing
+        self.wallet = bt.wallet(
+            name=self.config.wallet_name,
+            hotkey=self.config.wallet_hotkey,
+        )
+        self.hotkey: str = self.wallet.hotkey.ss58_address
+        logger.info(f"Loaded wallet: {self.wallet.name}/{self.wallet.hotkey_str}")
+
+        # Scraper client for fetching validation data
+        self.scraper = ScraperClient(
+            ScraperConfig(
+                url=self.config.scraper_url,
+                realm=self.config.realm,
+                schedule_hour=self.config.scraper_schedule_hour,
+                schedule_minute=self.config.scraper_schedule_minute,
+                max_retries=self.config.scraper_max_retries,
+                retry_delay_seconds=self.config.scraper_retry_delay,
+            ),
+            self.wallet.hotkey,
+        )
+
         # State
         self.metagraph: Metagraph | None = None
+        self.validation_data: ValidationDataset | None = None
         self.scores: np.ndarray = np.array([], dtype=np.float32)
         self.hotkeys: list[str] = []
         self.uid: int | None = None
-        self.hotkey: str = self.config.hotkey
 
         # Block tracker for weight setting
         self._last_weight_set_block: int = 0
@@ -241,6 +263,11 @@ class Validator:
         epoch_length: int = self.config.epoch_length
         return elapsed > epoch_length
 
+    def _on_validation_data_fetched(self, data: ValidationDataset) -> None:
+        """Callback when new validation data is fetched."""
+        self.validation_data = data
+        logger.info(f"Validation data updated: {len(data)} properties")
+
     async def run(self) -> None:
         """
         Main entry point - single loop that handles everything.
@@ -269,6 +296,19 @@ class Validator:
 
         logger.info(f"Validator ready - UID {self.uid}, {len(self.hotkeys)} miners")
 
+        # Initial validation data fetch
+        logger.info("Performing initial validation data fetch...")
+        try:
+            data = await self.scraper.fetch_with_retry()
+            self._on_validation_data_fetched(data)
+        except Exception as e:
+            logger.warning(f"Initial validation data fetch failed: {e}")
+
+        # Start scheduled daily data fetcher (cron job)
+        scheduler = self.scraper.start_scheduled(
+            on_fetch=self._on_validation_data_fetched,
+        )
+
         # Main loop
         try:
             while True:
@@ -293,6 +333,8 @@ class Validator:
 
         except KeyboardInterrupt:
             logger.info("Validator stopped by keyboard interrupt")
+        finally:
+            scheduler.shutdown()
 
 
 async def main() -> None:

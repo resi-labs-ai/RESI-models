@@ -1,0 +1,11 @@
+{
+  "single_family": 0,
+  "condo": 1,
+  "townhouse": 2,
+  "multi_family": 3,
+  "apartment": 4,
+  "land": 5,
+  "mobile": 6,
+  "coop": 7,
+  "farm": 8
+}

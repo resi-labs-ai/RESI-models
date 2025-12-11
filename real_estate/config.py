@@ -19,6 +19,14 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     """
 
     parser.add_argument(
+        "--realm",
+        type=str,
+        choices=["devnet", "testnet", "mainnet"],
+        help="Bittensor network realm.",
+        default=os.environ.get("REALM", "devnet"),
+    )
+
+    parser.add_argument(
         "--netuid",
         type=int,
         help="Subnet netuid to validate on.",
@@ -26,10 +34,19 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--hotkey",
+        "--wallet.name",
+        dest="wallet_name",
         type=str,
-        help="SS58 address of the validator hotkey.",
-        default=os.environ.get("HOTKEY", ""),
+        help="Name of the wallet to use.",
+        default=os.environ.get("WALLET_NAME", "default"),
+    )
+
+    parser.add_argument(
+        "--wallet.hotkey",
+        dest="wallet_hotkey",
+        type=str,
+        help="Name of the hotkey to use.",
+        default=os.environ.get("WALLET_HOTKEY", "default"),
     )
 
     parser.add_argument(
@@ -46,6 +63,46 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         type=str,
         help="URL of the Pylon service.",
         default=os.environ.get("PYLON_URL", "http://localhost:8000"),
+    )
+
+    parser.add_argument(
+        "--scraper.url",
+        dest="scraper_url",
+        type=str,
+        help="URL of the scraper service.",
+        default=os.environ.get("SCRAPER_URL", "http://localhost:8001"),
+    )
+
+    parser.add_argument(
+        "--scraper.schedule_hour",
+        dest="scraper_schedule_hour",
+        type=int,
+        help="Hour (UTC) for daily data fetch (0-23).",
+        default=int(os.environ.get("SCRAPER_SCHEDULE_HOUR", "16")),
+    )
+
+    parser.add_argument(
+        "--scraper.schedule_minute",
+        dest="scraper_schedule_minute",
+        type=int,
+        help="Minute for daily data fetch (0-59).",
+        default=int(os.environ.get("SCRAPER_SCHEDULE_MINUTE", "0")),
+    )
+
+    parser.add_argument(
+        "--scraper.max_retries",
+        dest="scraper_max_retries",
+        type=int,
+        help="Max retry attempts for failed data fetches.",
+        default=int(os.environ.get("SCRAPER_MAX_RETRIES", "3")),
+    )
+
+    parser.add_argument(
+        "--scraper.retry_delay",
+        dest="scraper_retry_delay",
+        type=int,
+        help="Delay in seconds between retry attempts.",
+        default=int(os.environ.get("SCRAPER_RETRY_DELAY", "600")),
     )
 
     parser.add_argument(
@@ -147,8 +204,11 @@ def check_config(config: argparse.Namespace) -> None:
     Raises:
         ValueError: If configuration is invalid.
     """
-    if not config.hotkey:
-        raise ValueError("--hotkey is required (or set HOTKEY env var)")
+    if not config.wallet_name:
+        raise ValueError("--wallet.name is required (or set WALLET_NAME env var)")
+
+    if not config.wallet_hotkey:
+        raise ValueError("--wallet.hotkey is required (or set WALLET_HOTKEY env var)")
 
     if not config.pylon_token:
         raise ValueError("--pylon.token is required (or set PYLON_TOKEN env var)")
@@ -166,12 +226,19 @@ def check_config(config: argparse.Namespace) -> None:
 def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
     """Convert config to dictionary for logging."""
     return {
+        "realm": config.realm,
         "netuid": config.netuid,
-        "hotkey": config.hotkey,
+        "wallet_name": config.wallet_name,
+        "wallet_hotkey": config.wallet_hotkey,
         "subtensor_network": config.subtensor_network,
         "pylon_url": config.pylon_url,
         "pylon_token": "***" if config.pylon_token else "",
         "pylon_identity": config.pylon_identity,
+        "scraper_url": config.scraper_url,
+        "scraper_schedule_hour": config.scraper_schedule_hour,
+        "scraper_schedule_minute": config.scraper_schedule_minute,
+        "scraper_max_retries": config.scraper_max_retries,
+        "scraper_retry_delay": config.scraper_retry_delay,
         "epoch_length": config.epoch_length,
         "disable_set_weights": config.disable_set_weights,
         "state_path": str(config.state_path),

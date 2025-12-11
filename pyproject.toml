@@ -26,6 +26,7 @@ dependencies = [
     "bittensor-wallet>=4.0.1",
     "httpx>=0.26.0",
     "tenacity>=9.1.2",
+    "apscheduler>=3.11.1",
 ]
 
 [dependency-groups]
