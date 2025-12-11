@@ -5,13 +5,13 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-import yaml
 
 from real_estate.data import (
     FeatureConfigError,
     FeatureEncoder,
     MissingFieldError,
     UnknownCategoryError,
+    reset_clock,
     set_clock,
 )
 
@@ -45,8 +45,8 @@ class TestInit:
             FeatureEncoder(config_path=FIXTURES_DIR / "feature_config_missing_mapping.yaml")
 
     def test_unregistered_transform_raises_error(self):
-        """Unregistered transform raises ValueError."""
-        with pytest.raises(ValueError, match="no registered functions"):
+        """Unregistered transform raises FeatureConfigError."""
+        with pytest.raises(FeatureConfigError, match="no registered functions"):
             FeatureEncoder(
                 config_path=FIXTURES_DIR / "feature_config_unregistered_transform.yaml"
             )
@@ -61,6 +61,10 @@ class TestInit:
 
 class TestEncode:
     """Tests for encoding properties."""
+
+    def teardown_method(self):
+        """Reset clock after each test."""
+        reset_clock()
 
     def test_encode_numeric_fields(self, encoder):
         """Numeric fields are encoded correctly."""
@@ -175,6 +179,6 @@ class TestHelpers:
         assert "NewCity" not in encoder.get_categorical_mapping("city")
 
     def test_get_categorical_mapping_unknown_field_raises_error(self, encoder):
-        """get_categorical_mapping raises ValueError for unknown field."""
-        with pytest.raises(ValueError, match="No mapping for field"):
+        """get_categorical_mapping raises FeatureConfigError for unknown field."""
+        with pytest.raises(FeatureConfigError, match="No mapping for field"):
             encoder.get_categorical_mapping("nonexistent")

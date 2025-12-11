@@ -51,8 +51,27 @@ class FeatureEncoder:
 
     def _load_config(self) -> None:
         """Load feature configuration from YAML."""
-        with open(self._config_path) as f:
-            self._config = yaml.safe_load(f)
+        try:
+            with open(self._config_path) as f:
+                self._config = yaml.safe_load(f)
+        except FileNotFoundError as e:
+            raise FeatureConfigError(
+                f"Config file not found: {self._config_path}"
+            ) from e
+        except yaml.YAMLError as e:
+            raise FeatureConfigError(f"Invalid YAML in feature config: {e}") from e
+
+        required_keys = {
+            "numeric_fields",
+            "categorical_fields",
+            "feature_order",
+            "feature_transforms",
+        }
+        missing = required_keys - self._config.keys()
+        if missing:
+            raise FeatureConfigError(
+                f"Feature config missing required keys: {sorted(missing)}"
+            )
 
     def _validate_feature_transforms(self) -> None:
         """Validate all feature transforms in config have registered functions."""
@@ -62,7 +81,7 @@ class FeatureEncoder:
                 missing.append(field)
 
         if missing:
-            raise ValueError(
+            raise FeatureConfigError(
                 f"Feature transforms in config have no registered functions: {missing}. "
                 f"Available registered functions: {list(_FEATURE_TRANSFORM_REGISTRY.keys())}. "
                 f"Use @feature_transform('{missing[0]}') decorator to register."
@@ -97,6 +116,7 @@ class FeatureEncoder:
             np.ndarray of shape (len(properties), num_features), dtype float32
 
         Raises:
+            MissingFieldError: If a required field is missing
             UnknownCategoryError: If a categorical value is not in the mapping
         """
         logger.debug(f"Encoding {len(properties)} properties")
@@ -121,7 +141,9 @@ class FeatureEncoder:
         for field in self._config["feature_order"]:
             if field in numeric_fields:
                 if field not in prop:
-                    raise MissingFieldError(f"Missing required numeric field: '{field}'")
+                    raise MissingFieldError(
+                        f"Missing required numeric field: '{field}'"
+                    )
                 features.append(float(prop[field]))
 
             elif field in feature_transforms:
@@ -130,7 +152,9 @@ class FeatureEncoder:
 
             elif field in categorical_fields:
                 if field not in prop:
-                    raise MissingFieldError(f"Missing required categorical field: '{field}'")
+                    raise MissingFieldError(
+                        f"Missing required categorical field: '{field}'"
+                    )
                 value = self._encode_categorical(field, prop[field])
                 features.append(float(value))
 
@@ -140,7 +164,7 @@ class FeatureEncoder:
         """Encode categorical value to integer."""
         mapping = self._mappings.get(field)
         if mapping is None:
-            raise ValueError(f"No mapping found for field: {field}")
+            raise FeatureConfigError(f"No mapping found for categorical field: {field}")
 
         if value not in mapping:
             raise UnknownCategoryError(
@@ -161,5 +185,5 @@ class FeatureEncoder:
     def get_categorical_mapping(self, field: str) -> dict[str, int]:
         """Return mapping for a categorical field."""
         if field not in self._mappings:
-            raise ValueError(f"No mapping for field: {field}")
+            raise FeatureConfigError(f"No mapping for field: {field}")
         return self._mappings[field].copy()

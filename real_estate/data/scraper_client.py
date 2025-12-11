@@ -1,9 +1,10 @@
 """Scraper service client with hotkey-signed authentication."""
 
+import asyncio
 import json
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -142,20 +143,16 @@ class ScraperClient:
                 )
 
                 if response.status_code == 401:
-                    raise ScraperAuthError(
-                        f"Authentication failed: {response.text}"
-                    )
+                    raise ScraperAuthError(f"Authentication failed: {response.text}")
 
                 if response.status_code == 403:
-                    raise ScraperAuthError(
-                        f"Hotkey not authorized: {response.text}"
-                    )
+                    raise ScraperAuthError(f"Hotkey not authorized: {response.text}")
 
                 response.raise_for_status()
 
                 try:
                     return response.json()
-                except json.JSONDecodeError as e:
+                except ValueError as e:
                     raise ScraperRequestError(
                         f"Invalid JSON response from scraper: {e}"
                     ) from e
@@ -173,10 +170,17 @@ class ScraperClient:
 
         Returns:
             ValidationDataset with properties
+
+        Raises:
+            ScraperAuthError: If authentication fails
+            ScraperRequestError: If request fails or response is invalid
         """
         logger.info("Fetching validation data from scraper...")
 
         data = await self._request("POST", self._config.validation_endpoint)
+
+        if "properties" not in data:
+            raise ScraperRequestError("Response missing 'properties' key")
 
         return ValidationDataset(properties=data["properties"])
 
@@ -198,7 +202,7 @@ class ScraperClient:
 
     def start_scheduled(
         self,
-        on_fetch: Callable[[ValidationDataset], None],
+        on_fetch: Callable[[ValidationDataset], None | Awaitable[None]],
     ) -> AsyncIOScheduler:
         """
         Start scheduled data fetching using APScheduler.
@@ -206,7 +210,8 @@ class ScraperClient:
         Fetches data daily at the configured time (default 4 PM UTC).
 
         Args:
-            on_fetch: Callback called with ValidationDataset after each successful fetch
+            on_fetch: Callback called with ValidationDataset after each successful fetch.
+                      Can be sync or async.
 
         Returns:
             The scheduler instance (call scheduler.shutdown() to stop)
@@ -217,7 +222,9 @@ class ScraperClient:
             logger.info("Running scheduled validation data fetch...")
             try:
                 data = await self.fetch_with_retry()
-                on_fetch(data)
+                result = on_fetch(data)
+                if asyncio.iscoroutine(result):
+                    await result
             except (ScraperAuthError, ScraperRequestError) as e:
                 logger.error(f"Scheduled fetch failed: {e}")
 

@@ -7,6 +7,7 @@ import pytest
 from real_estate.data import (
     InvalidTransformValueError,
     MissingTransformFieldError,
+    reset_clock,
     set_clock,
 )
 from real_estate.data.feature_transforms import _FEATURE_TRANSFORM_REGISTRY
@@ -18,6 +19,10 @@ class TestDaysSinceLastSale:
     def setup_method(self):
         """Get the transform function."""
         self.transform = _FEATURE_TRANSFORM_REGISTRY["days_since_last_sale"]
+
+    def teardown_method(self):
+        """Reset clock after each test."""
+        reset_clock()
 
     def test_valid_date(self):
         """Computes correct days between dates."""
