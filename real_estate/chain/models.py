@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -188,5 +188,5 @@ class Metagraph:
         return cls(
             block=block_data.get("number", 0),
             neurons=neurons,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(UTC),
         )

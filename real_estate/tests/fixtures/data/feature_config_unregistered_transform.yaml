@@ -1,0 +1,16 @@
+# Config with unregistered transform for testing error handling
+version: "1.0.0"
+
+numeric_fields:
+  - price
+
+feature_transforms:
+  nonexistent_transform:
+    source: some_field
+    default: 0
+
+categorical_fields: {}
+
+feature_order:
+  - price
+  - nonexistent_transform

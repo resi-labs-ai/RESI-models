@@ -1,0 +1,43 @@
+version: "1.0.0"
+
+# Numeric fields - passed through as-is to the model
+numeric_fields:
+  - price
+  - beds
+  - baths
+  - sqft
+  - lot_size
+  - year_built
+  - days_on_market
+  - latitude
+  - longitude
+  - hoa_dues
+
+# Feature transforms - derived features computed from raw data
+# Each field name must have a matching @feature_transform decorator
+feature_transforms:
+  - days_since_last_sale
+
+# Categorical fields - mapped to integers via JSON files
+categorical_fields:
+  city: cities.json
+  state: states.json
+  property_type: property_types.json
+
+# Output feature order (must match what miners expect)
+# Total: 10 numeric + 1 computed + 3 categorical = 14 features
+feature_order:
+  - price
+  - beds
+  - baths
+  - sqft
+  - lot_size
+  - year_built
+  - days_on_market
+  - latitude
+  - longitude
+  - hoa_dues
+  - days_since_last_sale
+  - city
+  - state
+  - property_type

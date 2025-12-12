@@ -26,6 +26,7 @@ dependencies = [
     "bittensor-wallet>=4.0.1",
     "httpx>=0.26.0",
     "tenacity>=9.1.2",
+    "apscheduler>=3.11.1",
 ]
 
 [dependency-groups]
@@ -113,14 +114,14 @@ show_error_codes = true
 pretty = true
 
 [[tool.mypy.overrides]]
-module = "tests.*"
+module = "real_estate.tests.*"
 disallow_untyped_defs = false
 
 # ============================================================================
 # Pytest - Testing framework
 # ============================================================================
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["real_estate/tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
@@ -141,7 +142,7 @@ markers = [
 source = ["real_estate", "neurons"]
 branch = true
 omit = [
-    "tests/*",
+    "real_estate/tests/*",
     "*/__pycache__/*",
 ]
 
