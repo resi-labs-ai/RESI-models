@@ -1,6 +1,6 @@
 """Chain interaction layer via Pylon."""
 
-from .client import PylonClient, PylonConfig
+from .client import ChainClient, PylonConfig
 from .errors import (
     AuthenticationError,
     ChainConnectionError,
@@ -9,11 +9,18 @@ from .errors import (
     MetagraphError,
     WeightSettingError,
 )
-from .models import ChainModelMetadata, Commitment, Metagraph, Neuron
+from .models import (
+    ChainModelMetadata,
+    Commitment,
+    ExtrinsicCall,
+    ExtrinsicData,
+    Metagraph,
+    Neuron,
+)
 
 __all__ = [
     # Client
-    "PylonClient",
+    "ChainClient",
     "PylonConfig",
     # Errors
     "AuthenticationError",
@@ -25,6 +32,8 @@ __all__ = [
     # Models
     "ChainModelMetadata",
     "Commitment",
+    "ExtrinsicCall",
+    "ExtrinsicData",
     "Metagraph",
     "Neuron",
 ]
