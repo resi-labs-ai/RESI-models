@@ -63,7 +63,7 @@ jobs:
         run: uv sync --dev
 
       - name: Run tests
-        run: uv run pytest tests/ -v --tb=short
+        run: uv run pytest -v --tb=short
 
   # Summary job that depends on all others - useful for branch protection
   ci-success:

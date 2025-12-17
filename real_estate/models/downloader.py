@@ -162,12 +162,16 @@ class ModelDownloader:
 
             # 9. Move to cache
             actual_size = temp_path.stat().st_size
+            temp_dir = temp_path.parent
             cached_path = self._cache.put(
                 hotkey=hotkey,
                 temp_model_path=temp_path,
                 model_hash=expected_hash,
                 size_bytes=actual_size,
             )
+
+            # 10. Clean up temp directory (file was moved, dir may have HF cache files)
+            self._cleanup_temp_dir(str(temp_dir))
 
             self._record_success()
             logger.info(f"Successfully downloaded and cached model for {hotkey}")
@@ -214,17 +218,13 @@ class ModelDownloader:
 
             except RepositoryNotFoundError as e:
                 self._cleanup_temp_dir(temp_dir)
-                self._record_failure()
-                raise ModelDownloadError(
-                    f"Repository not found: {hf_repo_id}"
-                ) from e
+                # Don't record failure - this is a permanent config error, not transient
+                raise ModelDownloadError(f"Repository not found: {hf_repo_id}") from e
 
             except EntryNotFoundError as e:
                 self._cleanup_temp_dir(temp_dir)
-                self._record_failure()
-                raise ModelDownloadError(
-                    f"model.onnx not found in {hf_repo_id}"
-                ) from e
+                # Don't record failure - this is a permanent config error, not transient
+                raise ModelDownloadError(f"model.onnx not found in {hf_repo_id}") from e
 
             except (HfHubHTTPError, httpx.HTTPError) as e:
                 self._cleanup_temp_dir(temp_dir)
@@ -315,3 +315,15 @@ class ModelDownloader:
         """Get path to cached model if exists."""
         cached = self._cache.get(hotkey)
         return cached.path if cached else None
+
+    def cleanup_stale_cache(self, active_hotkeys: set[str]) -> list[str]:
+        """
+        Remove cached models for hotkeys no longer on chain.
+
+        Args:
+            active_hotkeys: Set of hotkeys with current commitments
+
+        Returns:
+            List of removed hotkeys
+        """
+        return self._cache.cleanup_stale(active_hotkeys)

@@ -302,7 +302,7 @@ class Validator:
                     max_model_size_bytes=self.config.model_max_size_mb * 1024 * 1024,
                 ),
                 scheduler_config=SchedulerConfig(
-                    min_commitment_age_blocks=0,  #TODO For testing - accept all commitments
+                    min_commitment_age_blocks=0,  # TODO For testing - accept all commitments
                 ),
                 required_license=self.config.model_required_license,
             )
@@ -332,7 +332,9 @@ class Validator:
             try:
                 # TODO Use a future eval_time to download immediately without waiting
                 eval_time = datetime.now(UTC) + timedelta(hours=1)
-                self.download_results = await self._model_scheduler.run_pre_download(eval_time)
+                self.download_results = await self._model_scheduler.run_pre_download(
+                    eval_time
+                )
             except Exception as e:
                 logger.warning(f"Initial model download failed: {e}")
 

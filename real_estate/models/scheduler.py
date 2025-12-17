@@ -26,7 +26,9 @@ class SchedulerConfig:
     pre_download_hours: float = 3.0  # Start downloading 3h before eval
     catch_up_minutes: float = 30.0  # Last 30min for catch-up
     min_delay_between_downloads_seconds: float = 5.0  # Minimum gap between downloads
-    min_commitment_age_blocks: int = 7200  # ~24h at 12s/block, only eval older commitments
+    min_commitment_age_blocks: int = (
+        7200  # ~24h at 12s/block, only eval older commitments
+    )
 
 
 class ModelDownloadScheduler:
@@ -91,14 +93,17 @@ class ModelDownloadScheduler:
         # Update known commitments
         self._known_commitments = {c.hotkey: c for c in commitments}
 
+        # Cleanup cache for hotkeys no longer on chain
+        active_hotkeys = {c.hotkey for c in commitments}
+        self._downloader.cleanup_stale_cache(active_hotkeys)
+
         # Filter to models that need downloading and are old enough
         cutoff_block = current_block - self._config.min_commitment_age_blocks
         to_download = self._filter_needs_download(commitments, cutoff_block)
 
         # Calculate download window
         window_seconds = (
-            self._config.pre_download_hours * 3600
-            - self._config.catch_up_minutes * 60
+            self._config.pre_download_hours * 3600 - self._config.catch_up_minutes * 60
         )
 
         # Schedule downloads
@@ -221,7 +226,8 @@ class ModelDownloadScheduler:
         too_recent = len(commitments) - len(eligible)
 
         needs_download = [
-            c for c in eligible
+            c
+            for c in eligible
             if not self._downloader.is_cached(c.hotkey, c.model_hash)
         ]
 
