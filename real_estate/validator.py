@@ -11,12 +11,15 @@ import argparse
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import bittensor as bt
 import numpy as np
 
-from real_estate.chain import ChainClient, PylonConfig
 from real_estate.chain.models import Metagraph
+
+if TYPE_CHECKING:
+    from real_estate.chain import ChainClient
 from real_estate.config import check_config, config_to_dict, get_config, setup_logging
 from real_estate.data import ScraperClient, ScraperConfig, ValidationDataset
 from real_estate.models import (
@@ -58,6 +61,8 @@ class Validator:
         logger.info(f"Config: {config_to_dict(config)}")
 
         # Pylon client config (client created as context manager in run())
+        from real_estate.chain import PylonConfig
+
         self._pylon_config = PylonConfig(
             url=self.config.pylon_url,
             token=self.config.pylon_token,
@@ -290,6 +295,8 @@ class Validator:
         Metagraph is updated on-demand via update_metagraph() when needed.
         """
         logger.info(f"Starting validator for subnet {self.config.netuid}")
+
+        from real_estate.chain import ChainClient
 
         async with ChainClient(self._pylon_config) as chain:
             self.chain = chain
