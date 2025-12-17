@@ -11,7 +11,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import httpx
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import (
     EntryNotFoundError,
@@ -217,7 +216,6 @@ class ModelDownloader:
                     timeout=self._config.download_timeout_seconds,
                 )
 
-                self._record_success()
                 return Path(downloaded_path)
 
             except RepositoryNotFoundError as e:
@@ -243,7 +241,7 @@ class ModelDownloader:
                     await asyncio.sleep(delay)
                     delay *= 2  # Exponential backoff
 
-            except (HfHubHTTPError, httpx.HTTPError) as e:
+            except HfHubHTTPError as e:
                 self._cleanup_temp_dir(temp_dir)
                 last_error = e
                 self._record_failure()

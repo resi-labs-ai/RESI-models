@@ -247,7 +247,7 @@ class ModelVerifier:
         Extract model hash from commitment extrinsic call_args.
 
         Structure: [{'name': 'info', 'value': {'fields': [{'Raw65': '0x...'}]}}]
-        The hex decodes to JSON: {"h": "sha256:abc...", "r": "user/repo", ...}
+        The hex decodes to JSON: {"h": "abc12345", "r": "user/repo", ...}
         """
         for arg in call_args:
             if arg.get("name") == "info":
