@@ -319,6 +319,40 @@ class TestVerifyExtrinsicRecord:
                     expected_hash="abc12345",
                 )
 
+    @pytest.mark.asyncio
+    async def test_raises_error_when_not_commitment_extrinsic(
+        self, mock_chain_client: MagicMock
+    ) -> None:
+        """Raises ExtrinsicVerificationError when extrinsic is not a commitment call."""
+        verifier = ModelVerifier(mock_chain_client)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "extrinsic": "12345-0",
+            "hotkey": "5TestHotkey",
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        # Extrinsic is valid but not a commitment call
+        mock_extrinsic = MagicMock()
+        mock_extrinsic.address = "5TestHotkey"
+        mock_extrinsic.is_commitment_extrinsic.return_value = False  # Not a commitment
+        mock_chain_client.get_extrinsic = AsyncMock(return_value=mock_extrinsic)
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+                return_value=mock_response
+            )
+            with pytest.raises(
+                ExtrinsicVerificationError, match="not a commitment call"
+            ):
+                await verifier.verify_extrinsic_record(
+                    hotkey="5TestHotkey",
+                    hf_repo_id="user/repo",
+                    expected_hash="abc12345",
+                )
+
 
 class TestVerifyHash:
     """Tests for ModelVerifier.verify_hash method."""

@@ -310,6 +310,47 @@ class TestRetryLogic:
         # Should NOT count toward circuit breaker (permanent error, not transient)
         assert downloader._circuit_breaker.consecutive_failures == 0
 
+    @pytest.mark.asyncio
+    async def test_retries_on_timeout(
+        self,
+        download_config: DownloadConfig,
+        mock_cache: MagicMock,
+        mock_verifier: MagicMock,
+    ) -> None:
+        """Retries download when timeout occurs."""
+        import asyncio
+
+        download_config.max_retries = 3
+        download_config.initial_retry_delay_seconds = 0
+        download_config.download_timeout_seconds = 1  # 1 second timeout
+        downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
+
+        call_count = 0
+
+        def slow_download(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            raise asyncio.TimeoutError("Download timed out")
+
+        delays: list[float] = []
+
+        async def mock_sleep(seconds: float) -> None:
+            delays.append(seconds)
+
+        with (
+            patch("asyncio.sleep", new=mock_sleep),
+            patch(
+                "real_estate.models.downloader.hf_hub_download", side_effect=slow_download
+            ),
+            pytest.raises(ModelDownloadError, match="Failed to download model"),
+        ):
+            await downloader._download_with_retry("user/repo")
+
+        # Should retry all attempts
+        assert call_count == 3
+        # Should count toward circuit breaker (transient error)
+        assert downloader._circuit_breaker.consecutive_failures == 3
+
 
 class TestDiskSpaceCheck:
     """Tests for disk space verification."""

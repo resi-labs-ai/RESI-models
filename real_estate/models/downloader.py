@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import shutil
 import tempfile
@@ -196,8 +197,6 @@ class ModelDownloader:
         Raises:
             ModelDownloadError: If all retries exhausted
         """
-        import asyncio
-
         last_error: Exception | None = None
         delay = self._config.initial_retry_delay_seconds
 
@@ -206,11 +205,16 @@ class ModelDownloader:
             try:
                 temp_dir = tempfile.mkdtemp(prefix="model_download_")
 
-                downloaded_path = hf_hub_download(
-                    repo_id=hf_repo_id,
-                    filename="model.onnx",
-                    local_dir=temp_dir,
-                    local_dir_use_symlinks=False,
+                # Run synchronous hf_hub_download in thread pool with timeout
+                downloaded_path = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        hf_hub_download,
+                        repo_id=hf_repo_id,
+                        filename="model.onnx",
+                        local_dir=temp_dir,
+                        local_dir_use_symlinks=False,
+                    ),
+                    timeout=self._config.download_timeout_seconds,
                 )
 
                 self._record_success()
@@ -225,6 +229,19 @@ class ModelDownloader:
                 self._cleanup_temp_dir(temp_dir)
                 # Don't record failure - this is a permanent config error, not transient
                 raise ModelDownloadError(f"model.onnx not found in {hf_repo_id}") from e
+
+            except asyncio.TimeoutError as e:
+                self._cleanup_temp_dir(temp_dir)
+                last_error = e
+                self._record_failure()
+
+                if attempt < self._config.max_retries - 1:
+                    logger.warning(
+                        f"Download attempt {attempt + 1} timed out for {hf_repo_id} "
+                        f"(>{self._config.download_timeout_seconds}s). Retrying in {delay}s..."
+                    )
+                    await asyncio.sleep(delay)
+                    delay *= 2  # Exponential backoff
 
             except (HfHubHTTPError, httpx.HTTPError) as e:
                 self._cleanup_temp_dir(temp_dir)

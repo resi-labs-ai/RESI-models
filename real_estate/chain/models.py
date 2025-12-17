@@ -18,7 +18,7 @@ class ChainModelMetadata:
 
     hotkey: str
     hf_repo_id: str
-    model_hash: str  # SHA-256 prefix (8 chars)
+    model_hash: str  # SHA-1 prefix (8 chars)
     block_number: int
     timestamp: int  # Unix timestamp
 
