@@ -1,173 +1,279 @@
-# The MIT License (MIT)
-# Copyright © 2023 Yuma Rao
-# TODO(developer): Set your name
-# Copyright © 2023 <your name>
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
-# documentation files (the “Software”), to deal in the Software without restriction, including without limitation
-# the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
-# and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in all copies or substantial portions of
-# the Software.
-
-# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
-# THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.
-
+import asyncio
+import copy
 import time
-import typing
+import os
+from pathlib import Path
+
 import bittensor as bt
+from dotenv import load_dotenv
+from huggingface_hub import HfApi, login as hf_login
+import huggingface_hub
+from huggingface_hub import hf_hub_download
+import onnx
+import argparse
+import hashlib
 
-# Bittensor Miner Template:
-import template
+LICENSE_NOTICE = """
+🔒 License Notice:
+To share your model for Safe Scan competition, it must be released under the MIT license.
 
-# import base miner class which takes care of most of the boilerplate
-from template.base.miner import BaseMinerNeuron
+✅ By continuing, you confirm that your model is licensed under the MIT License,
+which allows open use, modification, and distribution with attribution.
 
-
-class Miner(BaseMinerNeuron):
-    """
-    Your miner neuron class. You should use this class to define your miner's behavior. In particular, you should replace the forward function with your own logic. You may also want to override the blacklist and priority functions according to your needs.
-
-    This class inherits from the BaseMinerNeuron class, which in turn inherits from BaseNeuron. The BaseNeuron class takes care of routine tasks such as setting up wallet, subtensor, metagraph, logging directory, parsing config, etc. You can override any of the methods in BaseNeuron if you need to customize the behavior.
-
-    This class provides reasonable default behavior for a miner such as blacklisting unrecognized hotkeys, prioritizing requests based on stake, and forwarding requests to the forward function. If you need to define custom
-    """
-
+📤 Make sure your HuggingFace repository has license set to MIT.
+"""
+class MinerManagerCLI:
     def __init__(self, config=None):
-        super(Miner, self).__init__(config=config)
 
-        # TODO(developer): Anything specific to your use case you can do here
+        # setting basic Bittensor objects
+        base_config = copy.deepcopy(config or BaseNeuron.config())
+        self.config = path_config(self)
+        self.config.merge(base_config)
+        self.config.logging.debug = True
+        BaseNeuron.check_config(self.config)
+        bt.logging.set_config(config=self.config.logging)
 
-    async def forward(
-        self, synapse: template.protocol.Dummy
-    ) -> template.protocol.Dummy:
-        """
-        Processes the incoming 'Dummy' synapse by performing a predefined operation on the input data.
-        This method should be replaced with actual logic relevant to the miner's purpose.
+        self.code_zip_path = None
 
-        Args:
-            synapse (template.protocol.Dummy): The synapse object containing the 'dummy_input' data.
+        self.wallet = None
+        self.subtensor = None
+        self.metagraph = None
+        self.hotkey = None
+        self.metadata_store = None
 
-        Returns:
-            template.protocol.Dummy: The synapse object with the 'dummy_output' field set to twice the 'dummy_input' value.
+    @classmethod
+    def add_args(cls, parser: argparse.ArgumentParser):
+        """Method for injecting miner arguments to the parser."""
+        add_miner_args(cls, parser)
 
-        The 'forward' function is a placeholder and should be overridden with logic that is appropriate for
-        the miner's intended operation. This method demonstrates a basic transformation of input data.
-        """
-        # TODO(developer): Replace with actual implementation logic.
-        synapse.dummy_output = synapse.dummy_input * 2
-        return synapse
+    async def upload_to_hf(self) -> None:
+        """Uploads model and code to Hugging Face."""
+        bt.logging.info("Uploading model to Hugging Face.")
+        hf_api = HfApi()
+        hf_login(token=self.config.hf_token)
 
-    async def blacklist(
-        self, synapse: template.protocol.Dummy
-    ) -> typing.Tuple[bool, str]:
-        """
-        Determines whether an incoming request should be blacklisted and thus ignored. Your implementation should
-        define the logic for blacklisting requests based on your needs and desired security parameters.
+        hf_model_path = self.config.hf_model_name
+        hf_code_path = self.code_zip_path
+        bt.logging.info(f"Model path: {hf_model_path}")
+        bt.logging.info(f"Code path: {hf_code_path}")
 
-        Blacklist runs before the synapse data has been deserialized (i.e. before synapse.data is available).
-        The synapse is instead contracted via the headers of the request. It is important to blacklist
-        requests before they are deserialized to avoid wasting resources on requests that will be ignored.
+        path = hf_api.upload_file(
+            path_or_fileobj=self.config.model_path,
+            path_in_repo=hf_model_path,
+            repo_id=self.config.hf_repo_id,
+            token=self.config.hf_token,
+        )
+        bt.logging.info("Uploading code to Hugging Face.")
+        path = hf_api.upload_file(
+            path_or_fileobj=self.code_zip_path,
+            path_in_repo=Path(hf_code_path).name,
+            repo_id=self.config.hf_repo_id,
+            token=self.config.hf_token,
+        )
+        bt.logging.info(f"Code uploaded to Hugging Face: {path}")
+        bt.logging.info(f"Uploaded model to Hugging Face: {path}")
 
-        Args:
-            synapse (template.protocol.Dummy): A synapse object constructed from the headers of the incoming request.
+    @staticmethod
+    def is_onnx_model(model_path: str) -> bool:
+        """Checks if model is an ONNX model."""
+        if not os.path.exists(model_path):
+            bt.logging.error("Model file does not exist")
+            return False
+        try:
+            onnx.checker.check_model(model_path)
+        except onnx.checker.ValidationError as e:
+            bt.logging.warning(e)
+            return False
+        return True
 
-        Returns:
-            Tuple[bool, str]: A tuple containing a boolean indicating whether the synapse's hotkey is blacklisted,
-                            and a string providing the reason for the decision.
+    async def evaluate_model(self) -> None:
+        bt.logging.info("Evaluate model mode")
 
-        This function is a security measure to prevent resource wastage on undesired requests. It should be enhanced
-        to include checks against the metagraph for entity registration, validator status, and sufficient stake
-        before deserialization of synapse data to minimize processing overhead.
+        run_manager = ModelRunManager(
+            config=self.config, model=ModelInfo(file_path=self.config.model_path)
+        )
 
-        Example blacklist logic:
-        - Reject if the hotkey is not a registered entity within the metagraph.
-        - Consider blacklisting entities that are not validators or have insufficient stake.
+        try:
+            dataset_packages = await get_newest_competition_packages(self.config)
+        except Exception as e:
+            bt.logging.error(f"Error retrieving competition packages: {e}")
+            return
 
-        In practice it would be wise to blacklist requests from entities that are not validators, or do not have
-        enough stake. This can be checked via metagraph.S and metagraph.validator_permit. You can always attain
-        the uid of the sender via a metagraph.hotkeys.index( synapse.dendrite.hotkey ) call.
-
-        Otherwise, allow the request to be processed further.
-        """
-
-        if synapse.dendrite is None or synapse.dendrite.hotkey is None:
-            bt.logging.warning(
-                "Received a request without a dendrite or hotkey."
+        for package in dataset_packages:
+            dataset_manager = DatasetManager(
+                self.config,
+                self.config.competition_id,
+                package["dataset_hf_repo"],
+                package["dataset_hf_filename"],
+                package["dataset_hf_repo_type"],
+                use_auth=False
             )
-            return True, "Missing dendrite or hotkey"
+            await dataset_manager.prepare_dataset()
 
-        # TODO(developer): Define how miners should blacklist requests.
-        uid = self.metagraph.hotkeys.index(synapse.dendrite.hotkey)
-        if (
-            not self.config.blacklist.allow_non_registered
-            and synapse.dendrite.hotkey not in self.metagraph.hotkeys
+            X_test, y_test, metadata = await dataset_manager.get_data()
+
+            competition_handler = COMPETITION_HANDLER_MAPPING[self.config.competition_id](
+                X_test=X_test, y_test=y_test, metadata=metadata, config=self.config
+            )
+
+            # Set preprocessing directory and preprocess data once
+            competition_handler.set_preprocessed_data_dir(self.config.models.dataset_dir)
+            await competition_handler.preprocess_and_serialize_data(X_test)
+
+            y_test = competition_handler.prepare_y_pred(y_test)
+
+            start_time = time.time()
+            # Pass the preprocessed data generator instead of raw paths
+            preprocessed_data_gen = competition_handler.get_preprocessed_data_generator()
+            y_pred = await run_manager.run(preprocessed_data_gen)
+            run_time_s = time.time() - start_time
+
+            # print(y_pred)
+            model_result = competition_handler.get_model_result(y_test, y_pred, run_time_s)
+            bt.logging.info(
+                f"Evalutaion results:\n{model_result.model_dump_json(indent=4)}"
+            )
+
+            # Cleanup preprocessed data
+            competition_handler.cleanup_preprocessed_data()
+
+            if self.config.clean_after_run:
+                dataset_manager.delete_dataset()
+
+    async def compress_code(self) -> None:
+        bt.logging.info("Compressing code")
+        bt.logging.info(f"Code directory: {self.config.code_directory}")
+
+        code_dir = Path(self.config.code_directory)
+        self.code_zip_path = str(code_dir.parent / f"{code_dir.name}.zip")
+
+        out, err = await run_command(
+            f"zip -r {self.code_zip_path} {self.config.code_directory}/*"
+        )
+        if err:
+            bt.logging.info("Error zipping code")
+            bt.logging.error(err)
+            return
+        bt.logging.info(f"Code zip path: {self.code_zip_path}")
+
+    def _compute_model_hash(self, repo_id, model_filename):
+        """Compute an 8-character hexadecimal SHA-1 hash of the model file from Hugging Face."""
+        try:
+            model_path = huggingface_hub.hf_hub_download(
+                repo_id=repo_id,
+                filename=model_filename,
+                repo_type="model",
+            )
+            sha1 = hashlib.sha1()
+            with open(model_path, 'rb') as f:
+                while chunk := f.read(8192):
+                    sha1.update(chunk)
+            full_hash = sha1.hexdigest()
+            truncated_hash = full_hash[:8]  # Take the first 8 characters of the hex digest
+            bt.logging.info(f"Computed 8-character hash: {truncated_hash}")
+            return truncated_hash
+        except Exception as e:
+            bt.logging.error(f"Failed to compute model hash: {e}")
+            return None
+
+    async def submit_model(self) -> None:
+        # Check if the required model and files are present in hugging face repo
+        print(LICENSE_NOTICE)
+        self.wallet = bt.wallet(config=self.config)
+        self.subtensor = bt.subtensor(config=self.config)
+        self.metagraph = self.subtensor.metagraph(self.config.netuid)
+        self.hotkey = self.wallet.hotkey.ss58_address
+
+        bt.logging.info(f"Wallet: {self.wallet}")
+        bt.logging.info(f"Subtensor: {self.subtensor}")
+        bt.logging.info(f"Metagraph: {self.metagraph}")
+
+        if not self.subtensor.is_hotkey_registered(
+            netuid=self.config.netuid,
+            hotkey_ss58=self.wallet.hotkey.ss58_address,
         ):
-            # Ignore requests from un-registered entities.
-            bt.logging.trace(
-                f"Blacklisting un-registered hotkey {synapse.dendrite.hotkey}"
+            bt.logging.error(
+                f"Wallet: {self.wallet} is not registered on netuid {self.config.netuid}."
+                f" Please register the hotkey using `btcli subnets register` before trying again"
             )
-            return True, "Unrecognized hotkey"
+            exit()
 
-        if self.config.blacklist.force_validator_permit:
-            # If the config is set to force validator permit, then we should only allow requests from validators.
-            if not self.metagraph.validator_permit[uid]:
-                bt.logging.warning(
-                    f"Blacklisting a request from non-validator hotkey {synapse.dendrite.hotkey}"
-                )
-                return True, "Non-validator hotkey"
-
-        bt.logging.trace(
-            f"Not Blacklisting recognized hotkey {synapse.dendrite.hotkey}"
+        self.metadata_store = ChainModelMetadata(
+            subtensor=self.subtensor, netuid=self.config.netuid, wallet=self.wallet
         )
-        return False, "Hotkey recognized!"
 
-    async def priority(self, synapse: template.protocol.Dummy) -> float:
-        """
-        The priority function determines the order in which requests are handled. More valuable or higher-priority
-        requests are processed before others. You should design your own priority mechanism with care.
+        if len(self.config.hf_repo_id.encode('utf-8')) > 32:
+            bt.logging.error("hf_repo_id must be 32 bytes or less")
+            return
 
-        This implementation assigns priority to incoming requests based on the calling entity's stake in the metagraph.
+        if len(self.config.hf_model_name.encode('utf-8')) > 32:
+            bt.logging.error("hf_model_filename must be 32 bytes or less")
+            return
 
-        Args:
-            synapse (template.protocol.Dummy): The synapse object that contains metadata about the incoming request.
+        if len(self.config.hf_code_filename.encode('utf-8')) > 31:
+            bt.logging.error("hf_code_filename must be 31 bytes or less")
+            return
 
-        Returns:
-            float: A priority score derived from the stake of the calling entity.
+        if not self._check_hf_file_exists(self.config.hf_repo_id, self.config.hf_model_name, self.config.hf_repo_type):
+            return
 
-        Miners may receive messages from multiple entities at once. This function determines which request should be
-        processed first. Higher values indicate that the request should be processed first. Lower values indicate
-        that the request should be processed later.
+        if not self._check_hf_file_exists(self.config.hf_repo_id, self.config.hf_code_filename, self.config.hf_repo_type):
+            return
 
-        Example priority logic:
-        - A higher stake results in a higher priority value.
-        """
-        if synapse.dendrite is None or synapse.dendrite.hotkey is None:
-            bt.logging.warning(
-                "Received a request without a dendrite or hotkey."
-            )
-            return 0.0
-
-        # TODO(developer): Define how miners should prioritize requests.
-        caller_uid = self.metagraph.hotkeys.index(
-            synapse.dendrite.hotkey
-        )  # Get the caller index.
-        priority = float(
-            self.metagraph.S[caller_uid]
-        )  # Return the stake as the priority.
-        bt.logging.trace(
-            f"Prioritizing {synapse.dendrite.hotkey} with value: {priority}"
+        model_hash = self._compute_model_hash(
+            self.config.hf_repo_id, self.config.hf_model_name
         )
-        return priority
+
+        if not model_hash:
+            bt.logging.error("Failed to compute model hash")
+            return
+
+        # Push model metadata to chain
+        model_id = ChainMinerModel(
+            competition_id=self.config.competition_id,
+            hf_repo_id=self.config.hf_repo_id,
+            hf_model_filename=self.config.hf_model_name,
+            hf_repo_type="model",
+            hf_code_filename=self.config.hf_code_filename,
+            block=None,
+            model_hash=model_hash,
+        )
+        await self.metadata_store.store_model_metadata(model_id)
+        bt.logging.success(
+            f"Successfully pushed model metadata on chain. Model ID: {model_id}"
+        )
+
+    def _check_hf_file_exists(self, repo_id, filename, repo_type):
+        if not huggingface_hub.file_exists(repo_id=repo_id, filename=filename, repo_type=repo_type):
+            bt.logging.error(f"{filename} not found in Hugging Face repo")
+            return False
+        return True
+
+    async def main(self) -> None:
+
+        # bt.logging(config=self.config)
+        if self.config.action != "submit" and not self.config.model_path:
+            bt.logging.error("Missing --model_path argument")
+            return
+        if self.config.action != "submit" and not MinerManagerCLI.is_onnx_model(
+            self.config.model_path
+        ):
+            bt.logging.error("Provided model with is not in ONNX format")
+            return
+
+        match self.config.action:
+            case "submit":
+                await self.submit_model()
+            case "evaluate":
+                await self.evaluate_model()
+            case "upload":
+                await self.compress_code()
+                await self.upload_to_hf()
+            case _:
+                bt.logging.error(f"Unrecognized action: {self.config.action}")
 
 
-# This is the main function, which runs the miner.
 if __name__ == "__main__":
-    with Miner() as miner:
-        while True:
-            bt.logging.info(f"Miner running... {time.time()}")
-            time.sleep(5)
+    load_dotenv()
+    cli_manager = MinerManagerCLI()
+    asyncio.run(cli_manager.main())

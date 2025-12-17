@@ -163,3 +163,4 @@ testing/
 
 # Editors
 .vscode/settings.json
+mcli/
