@@ -181,6 +181,31 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=os.environ.get("WANDB_ENTITY", ""),
     )
 
+    # Model download settings
+    parser.add_argument(
+        "--model.cache_path",
+        dest="model_cache_path",
+        type=str,
+        help="Path to cache downloaded models.",
+        default=os.environ.get("MODEL_CACHE_PATH", "./model_cache"),
+    )
+
+    parser.add_argument(
+        "--model.max_size_mb",
+        dest="model_max_size_mb",
+        type=int,
+        help="Maximum model size in MB.",
+        default=int(os.environ.get("MODEL_MAX_SIZE_MB", "200")),
+    )
+
+    parser.add_argument(
+        "--model.required_license",
+        dest="model_required_license",
+        type=str,
+        help="Required license text for models.",
+        default=os.environ.get("MODEL_REQUIRED_LICENSE", "Lorem Ipsum"),
+    )
+
 
 def get_config() -> argparse.Namespace:
     """Parse arguments and return configuration."""
@@ -191,8 +216,9 @@ def get_config() -> argparse.Namespace:
     add_args(parser)
     config = parser.parse_args()
 
-    # Convert state_path to Path
+    # Convert paths to Path objects
     config.state_path = Path(config.state_path)
+    config.model_cache_path = Path(config.model_cache_path)
 
     return config
 
@@ -247,6 +273,9 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "wandb_off": config.wandb_off,
         "wandb_project": config.wandb_project,
         "wandb_entity": config.wandb_entity,
+        "model_cache_path": str(config.model_cache_path),
+        "model_max_size_mb": config.model_max_size_mb,
+        "model_required_license": config.model_required_license,
     }
 
 

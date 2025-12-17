@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+from datetime import UTC, datetime, timedelta
 
 import bittensor as bt
 import numpy as np
@@ -18,6 +19,12 @@ from real_estate.chain import ChainClient, PylonConfig
 from real_estate.chain.models import Metagraph
 from real_estate.config import check_config, config_to_dict, get_config, setup_logging
 from real_estate.data import ScraperClient, ScraperConfig, ValidationDataset
+from real_estate.models import (
+    DownloadConfig,
+    DownloadResult,
+    SchedulerConfig,
+    create_model_scheduler,
+)
 from real_estate.utils.misc import ttl_get_block
 
 logger = logging.getLogger(__name__)
@@ -83,12 +90,16 @@ class Validator:
             self.wallet.hotkey,
         )
 
+        # Model scheduler (initialized in run() when chain is available)
+        self._model_scheduler = None
+
         # State
         self.metagraph: Metagraph | None = None
         self.validation_data: ValidationDataset | None = None
         self.scores: np.ndarray = np.array([], dtype=np.float32)
         self.hotkeys: list[str] = []
         self.uid: int | None = None
+        self.download_results: dict[str, DownloadResult] = {}  # hotkey -> result
 
         # Block tracker for weight setting
         self._last_weight_set_block: int = 0
@@ -283,6 +294,19 @@ class Validator:
         async with ChainClient(self._pylon_config) as chain:
             self.chain = chain
 
+            # Initialize model scheduler (requires chain client)
+            self._model_scheduler = create_model_scheduler(
+                chain_client=chain,
+                cache_dir=self.config.model_cache_path,
+                download_config=DownloadConfig(
+                    max_model_size_bytes=self.config.model_max_size_mb * 1024 * 1024,
+                ),
+                scheduler_config=SchedulerConfig(
+                    min_commitment_age_blocks=0,  #TODO For testing - accept all commitments
+                ),
+                required_license=self.config.model_required_license,
+            )
+
             # Initial metagraph fetch - required for startup
             try:
                 await self.update_metagraph()
@@ -302,6 +326,15 @@ class Validator:
             self._last_weight_set_block = self.block
 
             logger.info(f"Validator ready - UID {self.uid}, {len(self.hotkeys)} miners")
+
+            # Initial model download using scheduler
+            logger.info("Downloading miner models...")
+            try:
+                # TODO Use a future eval_time to download immediately without waiting
+                eval_time = datetime.now(UTC) + timedelta(hours=1)
+                self.download_results = await self._model_scheduler.run_pre_download(eval_time)
+            except Exception as e:
+                logger.warning(f"Initial model download failed: {e}")
 
             # Initial validation data fetch
             logger.info("Performing initial validation data fetch...")
