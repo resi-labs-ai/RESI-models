@@ -1,7 +1,7 @@
 """Tests for Validator class."""
 
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
@@ -30,7 +30,6 @@ def create_mock_metagraph(hotkeys: list[str], block: int = 1000) -> Metagraph:
     """Create a mock Metagraph for testing."""
     neurons = [create_mock_neuron(uid, hotkey) for uid, hotkey in enumerate(hotkeys)]
     return Metagraph(
-        netuid=1,
         block=block,
         neurons=neurons,
         timestamp=datetime.now(),
@@ -57,8 +56,10 @@ def validator(mock_config: MagicMock) -> Validator:
     with (
         patch("real_estate.validator.check_config"),
         patch("real_estate.validator.bt.subtensor") as mock_subtensor,
+        patch("real_estate.validator.bt.wallet") as mock_wallet,
     ):
         mock_subtensor.return_value = MagicMock(chain_endpoint="mock_endpoint")
+        mock_wallet.return_value = MagicMock(hotkey=MagicMock(ss58_address="our_hotkey"))
         return Validator(mock_config)
 
 class TestOnMetagraphUpdated:
@@ -169,11 +170,15 @@ class TestSetWeights:
         validator.scores = np.array([1.0, 0.0, 3.0, 0.0], dtype=np.float32)
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
 
-        with patch.object(validator.pylon, "set_weights") as mock_set_weights:
-            await validator.set_weights()
+        # Set up mock chain client
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock()
+        validator.chain = mock_chain
 
-            # [1, 0, 3, 0] / 4 = [0.25, 0, 0.75, 0] → only non-zero in dict
-            mock_set_weights.assert_called_once_with({
-                "hotkey_0": 0.25,
-                "hotkey_2": 0.75
-            })
+        await validator.set_weights()
+
+        # [1, 0, 3, 0] / 4 = [0.25, 0, 0.75, 0] → only non-zero in dict
+        mock_chain.set_weights.assert_called_once_with({
+            "hotkey_0": 0.25,
+            "hotkey_2": 0.75
+        })

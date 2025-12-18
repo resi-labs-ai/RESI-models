@@ -13,6 +13,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from bittensor import Keypair
 from tenacity import (
+    before_sleep_log,
     retry,
     retry_if_exception_type,
     stop_after_attempt,
@@ -47,6 +48,7 @@ def _create_retry_decorator(max_retries: int, delay_seconds: int):
         wait=wait_fixed(delay_seconds),
         stop=stop_after_attempt(max_retries),
         retry=retry_if_exception_type(ScraperRequestError),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
 

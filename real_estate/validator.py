@@ -10,14 +10,24 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import bittensor as bt
 import numpy as np
 
-from real_estate.chain import PylonClient, PylonConfig
 from real_estate.chain.models import Metagraph
+
+if TYPE_CHECKING:
+    from real_estate.chain import ChainClient
 from real_estate.config import check_config, config_to_dict, get_config, setup_logging
 from real_estate.data import ScraperClient, ScraperConfig, ValidationDataset
+from real_estate.models import (
+    DownloadConfig,
+    DownloadResult,
+    SchedulerConfig,
+    create_model_scheduler,
+)
 from real_estate.utils.misc import ttl_get_block
 
 logger = logging.getLogger(__name__)
@@ -50,15 +60,15 @@ class Validator:
 
         logger.info(f"Config: {config_to_dict(config)}")
 
-        # Pylon client for chain interactions
-        self.pylon = PylonClient(
-            PylonConfig(
-                url=self.config.pylon_url,
-                token=self.config.pylon_token,
-                identity=self.config.pylon_identity,
-                netuid=self.config.netuid,
-            )
+        # Pylon client config (client created as context manager in run())
+        from real_estate.chain import PylonConfig
+
+        self._pylon_config = PylonConfig(
+            url=self.config.pylon_url,
+            token=self.config.pylon_token,
+            identity=self.config.pylon_identity,
         )
+        self.chain: ChainClient | None = None
 
         # Subtensor for block fetching (persistent websocket connection)
         self.subtensor = bt.subtensor(network=self.config.subtensor_network)
@@ -85,12 +95,16 @@ class Validator:
             self.wallet.hotkey,
         )
 
+        # Model scheduler (initialized in run() when chain is available)
+        self._model_scheduler = None
+
         # State
         self.metagraph: Metagraph | None = None
         self.validation_data: ValidationDataset | None = None
         self.scores: np.ndarray = np.array([], dtype=np.float32)
         self.hotkeys: list[str] = []
         self.uid: int | None = None
+        self.download_results: dict[str, DownloadResult] = {}  # hotkey -> result
 
         # Block tracker for weight setting
         self._last_weight_set_block: int = 0
@@ -100,6 +114,12 @@ class Validator:
         """Current block number with TTL caching (12 seconds)."""
         result: int = ttl_get_block(self)
         return result
+
+    def _ensure_chain(self) -> ChainClient:
+        """Ensure chain client is initialized."""
+        if self.chain is None:
+            raise RuntimeError("ChainClient not initialized - call run() first")
+        return self.chain
 
     async def update_metagraph(self) -> None:
         """
@@ -112,7 +132,7 @@ class Validator:
         """
         logger.debug("Fetching fresh metagraph...")
 
-        self.metagraph = await self.pylon.get_metagraph()
+        self.metagraph = await self._ensure_chain().get_metagraph()
 
         logger.info(
             f"Metagraph updated: {len(self.metagraph.neurons)} neurons "
@@ -211,7 +231,7 @@ class Validator:
         logger.info(f"Setting weights for {len(weights)} hotkeys")
 
         try:
-            await self.pylon.set_weights(weights)
+            await self._ensure_chain().set_weights(weights)
             logger.info("set_weights on chain successfully!")
             self._last_weight_set_block = self.block
         except Exception as e:
@@ -276,65 +296,94 @@ class Validator:
         """
         logger.info(f"Starting validator for subnet {self.config.netuid}")
 
-        # Initial metagraph fetch - required for startup
-        try:
-            await self.update_metagraph()
-        except Exception as e:
-            logger.error(f"Failed to fetch initial metagraph: {e}")
-            raise SystemExit(1) from e
+        from real_estate.chain import ChainClient
 
-        if not self.is_registered():
-            raise SystemExit(
-                f"Hotkey {self.hotkey} is not registered on subnet {self.config.netuid}. "
-                f"Please register with `btcli subnets register`"
+        async with ChainClient(self._pylon_config) as chain:
+            self.chain = chain
+
+            # Initialize model scheduler (requires chain client)
+            self._model_scheduler = create_model_scheduler(
+                chain_client=chain,
+                cache_dir=self.config.model_cache_path,
+                download_config=DownloadConfig(
+                    max_model_size_bytes=self.config.model_max_size_mb * 1024 * 1024,
+                ),
+                scheduler_config=SchedulerConfig(
+                    min_commitment_age_blocks=0,  # TODO For testing - accept all commitments
+                ),
+                required_license=self.config.model_required_license,
             )
 
-        self.load_state()
+            # Initial metagraph fetch - required for startup
+            try:
+                await self.update_metagraph()
+            except Exception as e:
+                logger.error(f"Failed to fetch initial metagraph: {e}")
+                raise SystemExit(1) from e
 
-        # Initialize weight tracking block
-        self._last_weight_set_block = self.block
+            if not self.is_registered():
+                raise SystemExit(
+                    f"Hotkey {self.hotkey} is not registered on subnet {self.config.netuid}. "
+                    f"Please register with `btcli subnets register`"
+                )
 
-        logger.info(f"Validator ready - UID {self.uid}, {len(self.hotkeys)} miners")
+            self.load_state()
 
-        # Initial validation data fetch
-        logger.info("Performing initial validation data fetch...")
-        try:
-            data = await self.scraper.fetch_with_retry()
-            self._on_validation_data_fetched(data)
-        except Exception as e:
-            logger.warning(f"Initial validation data fetch failed: {e}")
+            # Initialize weight tracking block
+            self._last_weight_set_block = self.block
 
-        # Start scheduled daily data fetcher (cron job)
-        scheduler = self.scraper.start_scheduled(
-            on_fetch=self._on_validation_data_fetched,
-        )
+            logger.info(f"Validator ready - UID {self.uid}, {len(self.hotkeys)} miners")
 
-        # Main loop
-        try:
-            while True:
-                # TODO: REMOVE - temporary hardcoded scores for testing
-                self.scores = np.array([0.3, 0.7], dtype=np.float32)
+            # Initial model download using scheduler
+            logger.info("Downloading miner models...")
+            try:
+                # TODO Use a future eval_time to download immediately without waiting
+                eval_time = datetime.now(UTC) + timedelta(hours=1)
+                self.download_results = await self._model_scheduler.run_pre_download(
+                    eval_time
+                )
+            except Exception as e:
+                logger.warning(f"Initial model download failed: {e}")
 
-                # Set weights if needed
-                if self.should_set_weights():
-                    try:
-                        await self.update_metagraph()
-                        if not self.is_registered():
-                            raise ValueError(
-                                f"Hotkey {self.hotkey} is not registered on subnet {self.config.netuid}."
-                                f"Please register with `btcli subnets register`"
-                            )
-                        await self.set_weights()
-                    except Exception as e:
-                        logger.warning(f"Weight setting failed: {e}")
+            # Initial validation data fetch
+            logger.info("Performing initial validation data fetch...")
+            try:
+                data = await self.scraper.fetch_with_retry()
+                self._on_validation_data_fetched(data)
+            except Exception as e:
+                logger.warning(f"Initial validation data fetch failed: {e}")
 
-                self.save_state()
-                await asyncio.sleep(5)  # TODO: change back to 60 after testing
+            # Start scheduled daily data fetcher (cron job)
+            scheduler = self.scraper.start_scheduled(
+                on_fetch=self._on_validation_data_fetched,
+            )
 
-        except KeyboardInterrupt:
-            logger.info("Validator stopped by keyboard interrupt")
-        finally:
-            scheduler.shutdown()
+            # Main loop
+            try:
+                while True:
+                    # TODO: REMOVE - temporary hardcoded scores for testing
+                    self.scores = np.array([0.3, 0.7], dtype=np.float32)
+
+                    # Set weights if needed
+                    if self.should_set_weights():
+                        try:
+                            await self.update_metagraph()
+                            if not self.is_registered():
+                                raise ValueError(
+                                    f"Hotkey {self.hotkey} is not registered on subnet {self.config.netuid}."
+                                    f"Please register with `btcli subnets register`"
+                                )
+                            await self.set_weights()
+                        except Exception as e:
+                            logger.warning(f"Weight setting failed: {e}")
+
+                    self.save_state()
+                    await asyncio.sleep(5)  # TODO: change back to 60 after testing
+
+            except KeyboardInterrupt:
+                logger.info("Validator stopped by keyboard interrupt")
+            finally:
+                scheduler.shutdown()
 
 
 async def main() -> None:
