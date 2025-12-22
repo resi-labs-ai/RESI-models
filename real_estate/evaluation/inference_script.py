@@ -46,7 +46,9 @@ def main():
         load_start = time.time()
         input_data = np.load(input_path)
         load_time = (time.time() - load_start) * 1000
-        print(f"[INFO] Input loaded: shape={input_data.shape}, dtype={input_data.dtype}")
+        print(
+            f"[INFO] Input loaded: shape={input_data.shape}, dtype={input_data.dtype}"
+        )
         print(f"[INFO] Input load time: {load_time:.2f}ms")
     except FileNotFoundError:
         print(f"[ERROR] Input file not found: {input_path}", file=sys.stderr)
@@ -90,7 +92,9 @@ def main():
         predictions = outputs[0]
         inference_time = (time.time() - inference_start) * 1000
         print(f"[INFO] Inference completed in {inference_time:.2f}ms")
-        print(f"[INFO] Predictions shape: {predictions.shape}, dtype: {predictions.dtype}")
+        print(
+            f"[INFO] Predictions shape: {predictions.shape}, dtype: {predictions.dtype}"
+        )
     except Exception as e:
         print(f"[ERROR] Inference failed: {e}", file=sys.stderr)
         print(f"[ERROR] Input tensor shape: {input_data.shape}", file=sys.stderr)
@@ -114,7 +118,9 @@ def main():
     if neg_count > 0:
         print(f"[INFO] Predictions contain {neg_count} negative values")
 
-    print(f"[INFO] Prediction stats: min={predictions_flat.min():.2f}, max={predictions_flat.max():.2f}, mean={predictions_flat.mean():.2f}")
+    print(
+        f"[INFO] Prediction stats: min={predictions_flat.min():.2f}, max={predictions_flat.max():.2f}, mean={predictions_flat.mean():.2f}"
+    )
 
     # Save output
     print(f"[INFO] Saving predictions to {output_path}...")
@@ -129,7 +135,9 @@ def main():
         sys.exit(5)
 
     total_time = (time.time() - total_start) * 1000
-    print(f"[SUCCESS] Generated {len(predictions_flat)} predictions in {total_time:.2f}ms total")
+    print(
+        f"[SUCCESS] Generated {len(predictions_flat)} predictions in {total_time:.2f}ms total"
+    )
 
 
 if __name__ == "__main__":

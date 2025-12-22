@@ -102,12 +102,16 @@ class EvaluationOrchestrator:
         results: list[EvaluationResult] = []
         model_metadata = model_metadata or {}
 
-        logger.info(f"Starting evaluation of {len(models)} models on {len(ground_truth)} samples")
+        logger.info(
+            f"Starting evaluation of {len(models)} models on {len(ground_truth)} samples"
+        )
 
         # Evaluate models with semaphore for concurrency control
         semaphore = asyncio.Semaphore(self._config.max_concurrent)
 
-        async def evaluate_with_semaphore(hotkey: str, model_path: Path) -> EvaluationResult:
+        async def evaluate_with_semaphore(
+            hotkey: str, model_path: Path
+        ) -> EvaluationResult:
             async with semaphore:
                 return await self._evaluate_single_model(
                     hotkey=hotkey,

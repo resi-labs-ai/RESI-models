@@ -68,7 +68,9 @@ def calculate_metrics(
     y_pred = np.asarray(y_pred, dtype=np.float64).flatten()
 
     if len(y_true) != len(y_pred):
-        raise MetricsError(f"Array length mismatch: y_true={len(y_true)}, y_pred={len(y_pred)}")
+        raise MetricsError(
+            f"Array length mismatch: y_true={len(y_true)}, y_pred={len(y_pred)}"
+        )
 
     if len(y_true) == 0:
         raise EmptyDatasetError("Empty input arrays")
@@ -105,7 +107,9 @@ def _calculate_mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return float(np.mean(np.abs(y_true - y_pred)))
 
 
-def _calculate_mape(y_true: np.ndarray, y_pred: np.ndarray, max_error: float | None = None) -> float:
+def _calculate_mape(
+    y_true: np.ndarray, y_pred: np.ndarray, max_error: float | None = None
+) -> float:
     """
     Calculate Mean Absolute Percentage Error.
 
@@ -214,7 +218,9 @@ def validate_predictions(
     if predictions.ndim == 2 and predictions.shape[1] == 1:
         predictions = predictions.flatten()
     elif predictions.ndim != 1:
-        raise MetricsError(f"Invalid prediction shape: {predictions.shape}. Expected 1D or (N,1).")
+        raise MetricsError(
+            f"Invalid prediction shape: {predictions.shape}. Expected 1D or (N,1)."
+        )
 
     # Check length
     if expected_length is not None and len(predictions) != expected_length:

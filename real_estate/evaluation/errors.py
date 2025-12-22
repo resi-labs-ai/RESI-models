@@ -81,7 +81,9 @@ class DockerExecutionError(DockerError):
     - Model inference fails inside container
     """
 
-    def __init__(self, message: str, exit_code: int | None = None, logs: str | None = None):
+    def __init__(
+        self, message: str, exit_code: int | None = None, logs: str | None = None
+    ):
         super().__init__(message)
         self.exit_code = exit_code
         self.logs = logs

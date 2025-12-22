@@ -116,7 +116,9 @@ class DockerRunner:
                     "docker package not installed. Install with: pip install docker"
                 ) from e
             except Exception as e:
-                raise DockerNotAvailableError(f"Cannot connect to Docker daemon: {e}") from e
+                raise DockerNotAvailableError(
+                    f"Cannot connect to Docker daemon: {e}"
+                ) from e
 
         return self._client
 
@@ -244,7 +246,14 @@ class DockerRunner:
                 )
 
             except Exception as e:
-                if isinstance(e, (DockerExecutionError, InferenceTimeoutError, InvalidPredictionError)):
+                if isinstance(
+                    e,
+                    (
+                        DockerExecutionError,
+                        InferenceTimeoutError,
+                        InvalidPredictionError,
+                    ),
+                ):
                     raise
 
                 # Check if timeout

@@ -85,7 +85,11 @@ class EvaluationResult:
     @property
     def success(self) -> bool:
         """Success if we have predictions and metrics, and no error."""
-        return self.predictions is not None and self.metrics is not None and self.error is None
+        return (
+            self.predictions is not None
+            and self.metrics is not None
+            and self.error is None
+        )
 
     @property
     def score(self) -> float:
@@ -112,7 +116,9 @@ class EvaluationResult:
         if self.success:
             result["metrics"] = self.metrics.to_dict() if self.metrics else None
             result["inference_time_ms"] = self.inference_time_ms
-            result["n_predictions"] = len(self.predictions) if self.predictions is not None else 0
+            result["n_predictions"] = (
+                len(self.predictions) if self.predictions is not None else 0
+            )
         else:
             result["error"] = self.error_message
 
