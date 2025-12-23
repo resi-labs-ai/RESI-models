@@ -16,12 +16,15 @@ from pathlib import Path
 
 # Third-party
 import bittensor as bt
+from dotenv import load_dotenv
 from huggingface_hub import hf_hub_download
+import huggingface_hub
+import onnx
 
 # Local imports
 from scripts.compute_hash import compute_hash
 
-#Constants
+# Constants
 SCAN_MAX_BLOCKS = 20
 SCAN_MAX_EXTRINSICS_PER_BLOCK = 100
 
@@ -33,7 +36,7 @@ Your HuggingFace model repository should be licensed under MIT.
 def build_commitment(model_hash: str, hf_repo_id: str, timestamp: int) -> dict:
     """
     Build RESI commitment dictionary.
-    
+
     Args:
         model_hash: 8-char SHA-1 hash
         hf_repo_id: HuggingFace repo ID (e.g., "user/repo")
@@ -63,7 +66,13 @@ def hex_encode_commitment(commitment: dict) -> str:
     commitment_hex = commitment_json_bytes.hex()
     return commitment_hex
 
-def scan_for_extrinsic_id(subtensor: bt.subtensor, signer_hotkey: str, start_block: int, max_blocks: int = SCAN_MAX_BLOCKS, max_per_block: int = SCAN_MAX_EXTRINSICS_PER_BLOCK) -> str | None:
+def scan_for_extrinsic_id(
+    subtensor: bt.subtensor,
+    signer_hotkey: str,
+    start_block: int,
+    max_blocks: int = SCAN_MAX_BLOCKS,
+    max_per_block: int = SCAN_MAX_EXTRINSICS_PER_BLOCK
+) -> str | None:
     """
     Scan blocks for a commitment extrinsic matching the signer.
     
@@ -141,6 +150,21 @@ class MinerCLI:
         self.wallet = bt.wallet(name=config.wallet_name, hotkey=config.wallet_hotkey)
         self.subtensor = bt.subtensor(network=config.subtensor_network)
 
+    def is_onnx_model(self, model_path: str) -> bool:
+        """Validate ONNX model format."""
+        if not os.path.exists(model_path):
+            bt.logging.error(f"Model file does not exist: {model_path}")
+            return False
+        try:
+            onnx.checker.check_model(model_path)
+            return True
+        except onnx.checker.ValidationError as e:
+            bt.logging.error(f"ONNX validation failed: {e}")
+            return False
+        except Exception as e:
+            bt.logging.error(f"Error checking ONNX model: {e}")
+            return False
+
     async def submit_model(self) -> int:
         """
         Submit a model commitment to the chain.
@@ -150,9 +174,17 @@ class MinerCLI:
         """
         print(LICENSE_NOTICE)
         print("📤 Submitting model to chain...")    
-        
         if not self.config.hf_repo_id:
             bt.logging.error("--hf_repo_id is required.")
+            return 2
+
+        # Validate byte lengths for chain compatibility
+        if len(self.config.hf_repo_id.encode('utf-8')) > 64:
+            bt.logging.error("hf_repo_id must be 64 bytes or less")
+            return 2
+
+        if len(self.config.hf_model_filename.encode('utf-8')) > 64:
+            bt.logging.error("hf_model_filename must be 64 bytes or less")
             return 2
         
         # Validate wallet info/ Load wallet and subtensor
@@ -160,15 +192,17 @@ class MinerCLI:
         bt.logging.info(f"Hotkey Address: {self.wallet.hotkey.ss58_address}")
         bt.logging.info(f"Network: {self.config.subtensor_network}")
         
-        
         # Check registration
-        if not self.subtensor.is_hotkey_registered(hotkey_ss58=self.wallet.hotkey.ss58_address, netuid=self.config.netuid, block=None):
+        if not self.subtensor.is_hotkey_registered(
+            hotkey_ss58=self.wallet.hotkey.ss58_address,
+            netuid=self.config.netuid,
+            block=None
+        ):
             bt.logging.error(f"Hotkey not registered on netuid {self.config.netuid}. Run `btcli subnets register` first")
             return 1
         
         bt.logging.success(f"Hotkey is registered on netuid {self.config.netuid}")
         
-    
         # Download model from HuggingFace
         try:
             bt.logging.info(f"Downloading {self.config.hf_repo_id}/{self.config.hf_model_filename}...")
@@ -177,8 +211,12 @@ class MinerCLI:
         except Exception as e:
             bt.logging.error(f"Failed to download model: {e}")
             return 1
-            
-        # 5. Compute hash
+        
+        if not self.is_onnx_model(model_path):
+            bt.logging.error("Downloaded file is not a valid ONNX model")
+            return 1
+
+        # Compute hash
         try:
             model_hash = compute_hash(Path(model_path))
             bt.logging.info(f"Model hash: {model_hash}")
@@ -186,29 +224,34 @@ class MinerCLI:
             bt.logging.error(f"Failed to compute hash: {e}")
             return 1
         
-        # 6. Build commitment
+        # Build commitment
         commitment = build_commitment(model_hash=model_hash, hf_repo_id=self.config.hf_repo_id, timestamp=int(time.time()))
         bt.logging.info(f"Commitment: {commitment}")
         
-        # 7. Hex-encode commitment
+        # Hex-encode commitment
         commitment_hex = hex_encode_commitment(commitment)
         
-        # 8. Record current block
+        # Record current block
         current_block = self.subtensor.get_current_block()
         bt.logging.info(f"Current Block: {current_block}")
 
-        # 9. Submit to chain
+        # Submit to chain
         try:
             self.subtensor.commit(self.wallet, self.config.netuid, commitment_hex)
             bt.logging.success(f"Commitment submitted to chain")
         except Exception as e:
             bt.logging.error(f"Failed to submit commitment: {e}")
             return 1
-          
-        # 10. Scan for extrinsic ID
-        extrinsic_id = scan_for_extrinsic_id(subtensor=self.subtensor, signer_hotkey=self.wallet.hotkey.ss58_address,start_block=current_block,max_blocks=self.config.extrinsic_scan_blocks)
+
+        # Scan for extrinsic ID
+        extrinsic_id = scan_for_extrinsic_id(
+            subtensor=self.subtensor,
+            signer_hotkey=self.wallet.hotkey.ss58_address,
+            start_block=current_block,
+            max_blocks=self.config.extrinsic_scan_blocks
+        )
         
-        # 11. Print extrinsic ID for user    
+        # Print extrinsic ID for user
         if extrinsic_id:
             print("✅ SUCCESS! Model committed to chain.")
             print(f"\nExtrinsic ID: {extrinsic_id}")
@@ -220,9 +263,8 @@ class MinerCLI:
                 "Commitment submitted but extrinsic ID not found. "
                 "Check a block explorer manually."
             )
-        return 0  
-          
-            
+        return 0
+
     async def evaluate_model(self) -> int:
         """
         Evaluate an ONNX model locally with dummy data.
@@ -268,10 +310,7 @@ class MinerCLI:
             print(f"ERROR: Unrecognized action: {self.config.action}")
             return 2
 
-# ============================================================================
 # MAIN & ARGUMENT PARSING
-# ============================================================================
-
 def parse_args() -> argparse.Namespace:
     """
     Parse command-line arguments.
@@ -349,11 +388,7 @@ def parse_args() -> argparse.Namespace:
     
     return parser.parse_args()
 
-
-# ============================================================================
 # SCRIPT EXECUTION
-# ============================================================================
-
 async def main() -> int:
     """CLI entry point."""
     config = parse_args()
