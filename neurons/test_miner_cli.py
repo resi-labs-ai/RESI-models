@@ -16,7 +16,6 @@ from pathlib import Path
 
 # Third-party
 import bittensor as bt
-from dotenv import load_dotenv
 from huggingface_hub import hf_hub_download
 import huggingface_hub
 import onnx
@@ -27,6 +26,10 @@ from scripts.compute_hash import compute_hash
 # Constants
 SCAN_MAX_BLOCKS = 20
 SCAN_MAX_EXTRINSICS_PER_BLOCK = 100
+MAX_MODEL_SIZE_MB = 200
+MAX_FIELD_BYTES = 64
+REQUIRED_ONNX_VERSION = "1.20.0"
+REQUIRED_ONNXRUNTIME_VERSION = "1.20.1"
 
 LICENSE_NOTICE = """
 License Notice:
@@ -141,6 +144,80 @@ def scan_for_extrinsic_id(
     bt.logging.error(f"Commitment not found in {max_blocks} blocks")
     return None
 
+def check_onnx_versions() -> bool:
+    """
+    Verify onnx and onnxruntime versions match validator requirements.
+    Returns True if versions match, False otherwise.
+    """
+    try:
+        import onnxruntime as ort
+    except ImportError:
+        bt.logging.error("onnxruntime not installed. Run: pip install onnxruntime==1.20.1")
+        return False
+    
+    onnx_version = onnx.__version__
+    ort_version = ort.__version__
+    
+    errors = []
+    
+    if onnx_version != REQUIRED_ONNX_VERSION:
+        errors.append(f"onnx=={onnx_version} (required: {REQUIRED_ONNX_VERSION})")
+    
+    if ort_version != REQUIRED_ONNXRUNTIME_VERSION:
+        errors.append(f"onnxruntime=={ort_version} (required: {REQUIRED_ONNXRUNTIME_VERSION})")
+    
+    if errors:
+        bt.logging.error(
+            f"Version mismatch - your model may fail on validator!\n"
+            f"  Installed: {', '.join(errors)}\n"
+            f"  Fix with: pip install onnx=={REQUIRED_ONNX_VERSION} onnxruntime=={REQUIRED_ONNXRUNTIME_VERSION}"
+        )
+        return False
+    
+    bt.logging.info(f"ONNX versions match validator (onnx=={onnx_version}, onnxruntime=={ort_version})")
+    return True
+
+def validate_model_file(model_path: str) -> bool:
+    """
+    Validate a local ONNX model file.
+    Checks existence, size limit, and ONNX format.
+    """
+    # Check ONNX versions match validator
+    if not check_onnx_versions():
+        return False
+    
+    if not os.path.exists(model_path):
+        bt.logging.error(f"Model file does not exist: {model_path}")
+        return False
+    
+    size_mb = os.path.getsize(model_path) / (1024 * 1024)
+    if size_mb > MAX_MODEL_SIZE_MB:
+        bt.logging.error(f"Model too large: {size_mb:.2f}MB exceeds {MAX_MODEL_SIZE_MB}MB limit")
+        return False
+    
+    bt.logging.info(f"Model size: {size_mb:.2f}MB")
+    
+    try:
+        onnx.checker.check_model(model_path)
+        return True
+    except onnx.checker.ValidationError as e:
+        bt.logging.error(f"Invalid ONNX format: {e}")
+        return False
+    except Exception as e:
+        bt.logging.error(f"Error reading ONNX model: {e}")
+        return False
+
+def check_hf_file_exists(repo_id: str, filename: str) -> bool:
+    """Check if file exists in HuggingFace repo."""
+    try:
+        if not huggingface_hub.file_exists(repo_id=repo_id, filename=filename, repo_type="model"):
+            bt.logging.error(f"File '{filename}' not found in repo '{repo_id}'")
+            return False
+        return True
+    except Exception as e:
+        bt.logging.error(f"Error checking HuggingFace repo: {e}")
+        return False
+
 class MinerCLI:
     """
     MinerCLI class for evaluating and submitting miner models.
@@ -149,21 +226,6 @@ class MinerCLI:
         self.config = config
         self.wallet = bt.wallet(name=config.wallet_name, hotkey=config.wallet_hotkey)
         self.subtensor = bt.subtensor(network=config.subtensor_network)
-
-    def is_onnx_model(self, model_path: str) -> bool:
-        """Validate ONNX model format."""
-        if not os.path.exists(model_path):
-            bt.logging.error(f"Model file does not exist: {model_path}")
-            return False
-        try:
-            onnx.checker.check_model(model_path)
-            return True
-        except onnx.checker.ValidationError as e:
-            bt.logging.error(f"ONNX validation failed: {e}")
-            return False
-        except Exception as e:
-            bt.logging.error(f"Error checking ONNX model: {e}")
-            return False
 
     async def submit_model(self) -> int:
         """
@@ -203,6 +265,10 @@ class MinerCLI:
         
         bt.logging.success(f"Hotkey is registered on netuid {self.config.netuid}")
         
+        # Check if file exists in HuggingFace before downloading
+        if not check_hf_file_exists(self.config.hf_repo_id, self.config.hf_model_filename):
+            return 1
+
         # Download model from HuggingFace
         try:
             bt.logging.info(f"Downloading {self.config.hf_repo_id}/{self.config.hf_model_filename}...")
@@ -212,8 +278,8 @@ class MinerCLI:
             bt.logging.error(f"Failed to download model: {e}")
             return 1
         
-        if not self.is_onnx_model(model_path):
-            bt.logging.error("Downloaded file is not a valid ONNX model")
+        # Validate downloaded model (exists + size + ONNX format)
+        if not validate_model_file(model_path):
             return 1
 
         # Compute hash
