@@ -10,6 +10,11 @@ from .errors import (
     ScraperError,
     ScraperRequestError,
     UnknownCategoryError,
+    ValidationAuthError,
+    ValidationError,
+    ValidationNotFoundError,
+    ValidationRateLimitError,
+    ValidationRequestError,
 )
 from .feature_encoder import FeatureEncoder
 from .feature_transforms import (
@@ -24,6 +29,12 @@ from .scraper_client import (
     ScraperClient,
     ScraperConfig,
 )
+from .validation_client import (
+    RawFileInfo,
+    ValidationSetClient,
+    ValidationSetConfig,
+    ValidationSetResponse,
+)
 
 __all__ = [
     # Errors
@@ -36,6 +47,11 @@ __all__ = [
     "ScraperError",
     "ScraperRequestError",
     "UnknownCategoryError",
+    "ValidationAuthError",
+    "ValidationError",
+    "ValidationNotFoundError",
+    "ValidationRateLimitError",
+    "ValidationRequestError",
     # Feature encoding
     "FeatureEncoder",
     "feature_transform",
@@ -50,4 +66,9 @@ __all__ = [
     # Scraper
     "ScraperClient",
     "ScraperConfig",
+    # Validation API
+    "ValidationSetClient",
+    "ValidationSetConfig",
+    "ValidationSetResponse",
+    "RawFileInfo",
 ]

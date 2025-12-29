@@ -1,0 +1,439 @@
+"""Validation set client with hotkey-signed authentication."""
+
+import json
+import logging
+import time
+from dataclasses import dataclass
+from typing import Any
+
+import httpx
+from bittensor import Keypair
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_fixed,
+)
+
+from .errors import (
+    ValidationAuthError,
+    ValidationNotFoundError,
+    ValidationRateLimitError,
+    ValidationRequestError,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ValidationSetConfig:
+    """Configuration for validation set client."""
+
+    url: str
+    endpoint: str = "/api/auth/validation-set"
+    timeout: float = 60.0
+    # URL expiration is 1 hour, no need to cache long-term
+    max_retries: int = 3
+    retry_delay_seconds: int = 300  # 5 minutes
+    # Rate limit: 10 requests per minute
+
+
+@dataclass
+class RawFileInfo:
+    """Info about a raw state data file."""
+
+    filename: str
+    presigned_url: str
+    file_size: int
+
+
+@dataclass
+class ValidationSetResponse:
+    """Response from validation set API."""
+
+    validator_uid: int
+    validation_date: str  # YYYY-MM-DD
+    expires_at: str  # ISO timestamp
+    validation_set_url: str
+    validation_set_filename: str
+    validation_set_size: int
+    raw_files: list[RawFileInfo]
+
+
+def _create_retry_decorator(max_retries: int, delay_seconds: int):
+    """Create a tenacity retry decorator with given config."""
+    return retry(
+        wait=wait_fixed(delay_seconds),
+        stop=stop_after_attempt(max_retries),
+        retry=retry_if_exception_type(
+            (ValidationRequestError, ValidationRateLimitError)
+        ),
+        reraise=True,
+    )
+
+
+class ValidationSetClient:
+    """
+    Client for fetching validation data from dashboard API.
+
+    Authentication uses hotkey signing:
+    - Signs request with hotkey private key
+    - API validates against registered validators
+    - Returns presigned S3 URLs for data access
+    """
+
+    def __init__(self, config: ValidationSetConfig, keypair: Keypair):
+        """
+        Initialize validation set client.
+
+        Args:
+            config: Validation set configuration
+            keypair: Bittensor keypair for signing requests
+        """
+        self._config = config
+        self._keypair = keypair
+        self._base_url = config.url.rstrip("/")
+
+        # Create retry decorator once at init
+        self._retry_decorator = _create_retry_decorator(
+            config.max_retries,
+            config.retry_delay_seconds,
+        )
+
+    def _sign_request(self, method: str, url: str, nonce: str) -> str:
+        """
+        Sign a request and return signature.
+
+        Message format: {METHOD}{URL}{HEADERS_JSON}
+        Headers JSON: {"Hotkey": "...", "Nonce": "..."}  (sorted keys)
+
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            url: Full request URL
+            nonce: Timestamp nonce
+
+        Returns:
+            Hex-encoded signature with 0x prefix
+        """
+        hotkey = self._keypair.ss58_address
+
+        # Build headers for signing (sorted alphabetically)
+        sign_headers = {
+            "Hotkey": hotkey,
+            "Nonce": nonce,
+        }
+
+        headers_str = json.dumps(sign_headers, sort_keys=True)
+        data_to_sign = f"{method.upper()}{url}{headers_str}"
+
+        signature = self._keypair.sign(data_to_sign.encode()).hex()
+
+        return f"0x{signature}"
+
+    async def _request(
+        self,
+        method: str,
+        endpoint: str,
+        **kwargs: Any,
+    ) -> Any:
+        """
+        Make authenticated request to validation API.
+
+        Args:
+            method: HTTP method
+            endpoint: API endpoint
+            **kwargs: Additional arguments for httpx request
+
+        Returns:
+            JSON response data
+
+        Raises:
+            ValidationAuthError: If authentication fails (401)
+            ValidationNotFoundError: If data not found (404)
+            ValidationRateLimitError: If rate limited (429)
+            ValidationRequestError: If request fails
+        """
+        # Build URL with query params if present
+        url = f"{self._base_url}{endpoint}"
+        if "params" in kwargs:
+            # Construct URL with query params for signing
+            params = kwargs["params"]
+            if params:
+                query_string = "&".join(f"{k}={v}" for k, v in params.items())
+                url = f"{url}?{query_string}"
+
+        nonce = str(time.time())
+        signature = self._sign_request(method, url, nonce)
+
+        auth_headers = {
+            "Hotkey": self._keypair.ss58_address,
+            "Nonce": nonce,
+            "Signature": signature,
+        }
+
+        async with httpx.AsyncClient(timeout=self._config.timeout) as client:
+            try:
+                response = await client.request(
+                    method,
+                    url,
+                    headers=auth_headers,
+                )
+
+                if response.status_code == 401:
+                    raise ValidationAuthError(
+                        f"Authentication failed: {response.text}"
+                    )
+
+                if response.status_code == 404:
+                    raise ValidationNotFoundError(f"Data not found: {response.text}")
+
+                if response.status_code == 429:
+                    raise ValidationRateLimitError(f"Rate limited: {response.text}")
+
+                response.raise_for_status()
+
+                try:
+                    return response.json()
+                except ValueError as e:
+                    raise ValidationRequestError(
+                        f"Invalid JSON response: {e}"
+                    ) from e
+
+            except httpx.HTTPStatusError as e:
+                raise ValidationRequestError(
+                    f"Request failed: {e.response.status_code} - {e.response.text}"
+                ) from e
+            except httpx.RequestError as e:
+                raise ValidationRequestError(f"Connection error: {e}") from e
+
+    async def get_validation_urls(
+        self, date: str | None = None
+    ) -> ValidationSetResponse:
+        """
+        Get presigned URLs for validation data.
+
+        Args:
+            date: Optional date in YYYY-MM-DD format (defaults to today)
+
+        Returns:
+            ValidationSetResponse with presigned URLs
+
+        Raises:
+            ValidationAuthError: Authentication failed (401)
+            ValidationNotFoundError: No data for date (404)
+            ValidationRateLimitError: Rate limited (429)
+            ValidationRequestError: Other errors
+        """
+        logger.info(f"Fetching validation URLs{f' for {date}' if date else ''}...")
+
+        params = {"date": date} if date else {}
+        data = await self._request("POST", self._config.endpoint, params=params)
+
+        # Validate response structure
+        if "validationSet" not in data:
+            raise ValidationRequestError("Response missing 'validationSet' key")
+
+        if "rawDataFiles" not in data:
+            raise ValidationRequestError("Response missing 'rawDataFiles' key")
+
+        # Parse response
+        validation_set = data["validationSet"]
+        raw_files = [
+            RawFileInfo(
+                filename=f["filename"],
+                presigned_url=f["presignedUrl"],
+                file_size=f["fileSize"],
+            )
+            for f in data["rawDataFiles"]
+        ]
+
+        return ValidationSetResponse(
+            validator_uid=data["validatorUid"],
+            validation_date=data["validationDate"],
+            expires_at=data["expiresAt"],
+            validation_set_url=validation_set["presignedUrl"],
+            validation_set_filename=validation_set["filename"],
+            validation_set_size=validation_set["fileSize"],
+            raw_files=raw_files,
+        )
+
+    async def download_validation_set(self, date: str | None = None) -> dict:
+        """
+        Download and parse validation set.
+
+        Args:
+            date: Optional date in YYYY-MM-DD format
+
+        Returns:
+            Parsed JSON validation data
+
+        Raises:
+            ValidationAuthError: Authentication failed
+            ValidationNotFoundError: No data for date
+            ValidationRequestError: Download failed
+        """
+        logger.info("Downloading validation set...")
+
+        response = await self.get_validation_urls(date)
+
+        async with httpx.AsyncClient(timeout=self._config.timeout) as client:
+            try:
+                download_response = await client.get(response.validation_set_url)
+                download_response.raise_for_status()
+
+                try:
+                    data = download_response.json()
+                    logger.info(
+                        f"Downloaded validation set: {len(data) if isinstance(data, list) else 'N/A'} properties"
+                    )
+                    return data
+                except ValueError as e:
+                    raise ValidationRequestError(
+                        f"Invalid JSON in validation set: {e}"
+                    ) from e
+
+            except httpx.RequestError as e:
+                raise ValidationRequestError(
+                    f"Failed to download validation set: {e}"
+                ) from e
+
+    async def download_raw_files(
+        self, date: str | None = None
+    ) -> dict[str, dict]:
+        """
+        Download all raw state files.
+
+        Args:
+            date: Optional date in YYYY-MM-DD format
+
+        Returns:
+            Dictionary keyed by state code (e.g., {"AL": {...}, "AZ": {...}})
+
+        Raises:
+            ValidationAuthError: Authentication failed
+            ValidationNotFoundError: No data for date
+            ValidationRequestError: Download failed
+        """
+        logger.info("Downloading raw state files...")
+
+        response = await self.get_validation_urls(date)
+
+        raw_data = {}
+        async with httpx.AsyncClient(timeout=self._config.timeout) as client:
+            for file_info in response.raw_files:
+                # Extract state code from filename (e.g., "AL_20251229_140027.json" -> "AL")
+                state = file_info.filename.split("_")[0]
+
+                try:
+                    download_response = await client.get(file_info.presigned_url)
+                    download_response.raise_for_status()
+
+                    try:
+                        raw_data[state] = download_response.json()
+                    except ValueError as e:
+                        logger.warning(
+                            f"Invalid JSON in raw file {file_info.filename}: {e}"
+                        )
+                        continue
+
+                except httpx.RequestError as e:
+                    logger.warning(
+                        f"Failed to download raw file {file_info.filename}: {e}"
+                    )
+                    continue
+
+        logger.info(f"Downloaded {len(raw_data)} raw state files")
+        return raw_data
+
+    async def download_raw_file(
+        self, state: str, date: str | None = None
+    ) -> dict:
+        """
+        Download a specific raw state file.
+
+        Args:
+            state: State code (e.g., "AL", "AZ")
+            date: Optional date in YYYY-MM-DD format
+
+        Returns:
+            Parsed JSON data for that state
+
+        Raises:
+            ValidationAuthError: Authentication failed
+            ValidationNotFoundError: No data for date or state
+            ValidationRequestError: Download failed
+        """
+        logger.info(f"Downloading raw file for state {state}...")
+
+        response = await self.get_validation_urls(date)
+
+        # Find the file for the requested state
+        file_info = None
+        for f in response.raw_files:
+            if f.filename.startswith(f"{state}_"):
+                file_info = f
+                break
+
+        if file_info is None:
+            raise ValidationNotFoundError(
+                f"No raw file found for state {state} on {response.validation_date}"
+            )
+
+        async with httpx.AsyncClient(timeout=self._config.timeout) as client:
+            try:
+                download_response = await client.get(file_info.presigned_url)
+                download_response.raise_for_status()
+
+                try:
+                    return download_response.json()
+                except ValueError as e:
+                    raise ValidationRequestError(
+                        f"Invalid JSON in raw file: {e}"
+                    ) from e
+
+            except httpx.RequestError as e:
+                raise ValidationRequestError(
+                    f"Failed to download raw file: {e}"
+                ) from e
+
+    async def fetch_with_retry(
+        self,
+        date: str | None = None,
+        download_validation: bool = True,
+        download_raw: bool = False,
+    ) -> tuple[dict | None, dict[str, dict] | None]:
+        """
+        Fetch validation data with retry logic.
+
+        Uses tenacity for retries with fixed delay between attempts.
+        Retries on ValidationRequestError and ValidationRateLimitError.
+        Does not retry on ValidationAuthError or ValidationNotFoundError.
+
+        Args:
+            date: Optional date in YYYY-MM-DD format
+            download_validation: Whether to download validation set
+            download_raw: Whether to download raw files
+
+        Returns:
+            Tuple of (validation_data, raw_data) - None if not downloaded
+
+        Raises:
+            ValidationAuthError: If authentication fails (no retry)
+            ValidationNotFoundError: If data not found (no retry)
+            ValidationRequestError: If all retries exhausted
+        """
+
+        async def _fetch():
+            validation_data = None
+            raw_data = None
+
+            if download_validation:
+                validation_data = await self.download_validation_set(date)
+
+            if download_raw:
+                raw_data = await self.download_raw_files(date)
+
+            return validation_data, raw_data
+
+        return await self._retry_decorator(_fetch)()
+

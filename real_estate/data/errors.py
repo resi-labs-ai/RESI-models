@@ -109,3 +109,52 @@ class ScraperRequestError(ScraperError):
     """
 
     pass
+
+
+# --- Validation API errors ---
+
+
+class ValidationError(DataError):
+    """Base exception for validation API errors."""
+
+    pass
+
+
+class ValidationAuthError(ValidationError):
+    """
+    Raised when validation API authentication fails.
+
+    HTTP 401: Invalid signature, expired nonce, unknown hotkey, etc.
+    """
+
+    pass
+
+
+class ValidationNotFoundError(ValidationError):
+    """
+    Raised when no validation set exists for requested date.
+
+    HTTP 404: No data available.
+    """
+
+    pass
+
+
+class ValidationRateLimitError(ValidationError):
+    """
+    Raised when rate limit exceeded.
+
+    HTTP 429: Too many requests (10/min limit).
+    """
+
+    pass
+
+
+class ValidationRequestError(ValidationError):
+    """
+    Raised when validation API request fails.
+
+    Connection errors, invalid responses, etc.
+    """
+
+    pass

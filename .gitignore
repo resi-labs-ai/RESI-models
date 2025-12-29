@@ -163,3 +163,6 @@ testing/
 
 # Editors
 .vscode/settings.json
+
+# Development files
+caleb-scratchpads/
