@@ -13,6 +13,7 @@ from .errors import (
     ValidationAuthError,
     ValidationError,
     ValidationNotFoundError,
+    ValidationProcessingError,
     ValidationRateLimitError,
     ValidationRequestError,
 )
@@ -50,6 +51,7 @@ __all__ = [
     "ValidationAuthError",
     "ValidationError",
     "ValidationNotFoundError",
+    "ValidationProcessingError",
     "ValidationRateLimitError",
     "ValidationRequestError",
     # Feature encoding

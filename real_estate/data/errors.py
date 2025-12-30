@@ -158,3 +158,32 @@ class ValidationRequestError(ValidationError):
     """
 
     pass
+
+
+class ValidationProcessingError(ValidationError):
+    """
+    Raised when validation set is still being processed.
+
+    HTTP 200 with status: "processing" - data not ready yet, retry later.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        validation_date: str | None = None,
+        estimated_ready_time: str | None = None,
+        retry_after: int | None = None,
+    ):
+        """
+        Initialize ValidationProcessingError.
+
+        Args:
+            message: Error message
+            validation_date: Date of validation set being processed
+            estimated_ready_time: ISO timestamp when data is estimated to be ready
+            retry_after: Seconds to wait before retrying
+        """
+        super().__init__(message)
+        self.validation_date = validation_date
+        self.estimated_ready_time = estimated_ready_time
+        self.retry_after = retry_after

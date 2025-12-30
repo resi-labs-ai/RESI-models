@@ -106,6 +106,54 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
+        "--validation_api.url",
+        dest="validation_api_url",
+        type=str,
+        help="URL of the validation API (dashboard).",
+        default=os.environ.get("VALIDATION_API_URL", "https://dashboard.resilabs.ai"),
+    )
+
+    parser.add_argument(
+        "--validation_api.schedule_hour",
+        dest="validation_api_schedule_hour",
+        type=int,
+        help="Hour (UTC) for daily validation data fetch (0-23).",
+        default=int(os.environ.get("VALIDATION_API_SCHEDULE_HOUR", "2")),
+    )
+
+    parser.add_argument(
+        "--validation_api.schedule_minute",
+        dest="validation_api_schedule_minute",
+        type=int,
+        help="Minute for daily validation data fetch (0-59).",
+        default=int(os.environ.get("VALIDATION_API_SCHEDULE_MINUTE", "0")),
+    )
+
+    parser.add_argument(
+        "--validation_api.max_retries",
+        dest="validation_api_max_retries",
+        type=int,
+        help="Max retry attempts for failed validation data fetches.",
+        default=int(os.environ.get("VALIDATION_API_MAX_RETRIES", "3")),
+    )
+
+    parser.add_argument(
+        "--validation_api.retry_delay",
+        dest="validation_api_retry_delay",
+        type=int,
+        help="Delay in seconds between validation API retry attempts.",
+        default=int(os.environ.get("VALIDATION_API_RETRY_DELAY", "300")),
+    )
+
+    parser.add_argument(
+        "--validation_api.download_raw",
+        dest="validation_api_download_raw",
+        action="store_true",
+        help="Download raw state files for verification.",
+        default=os.environ.get("VALIDATION_API_DOWNLOAD_RAW", "false").lower() == "true",
+    )
+
+    parser.add_argument(
         "--pylon.token",
         dest="pylon_token",
         type=str,
@@ -239,6 +287,12 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "scraper_schedule_minute": config.scraper_schedule_minute,
         "scraper_max_retries": config.scraper_max_retries,
         "scraper_retry_delay": config.scraper_retry_delay,
+        "validation_api_url": config.validation_api_url,
+        "validation_api_schedule_hour": config.validation_api_schedule_hour,
+        "validation_api_schedule_minute": config.validation_api_schedule_minute,
+        "validation_api_max_retries": config.validation_api_max_retries,
+        "validation_api_retry_delay": config.validation_api_retry_delay,
+        "validation_api_download_raw": config.validation_api_download_raw,
         "epoch_length": config.epoch_length,
         "disable_set_weights": config.disable_set_weights,
         "state_path": str(config.state_path),

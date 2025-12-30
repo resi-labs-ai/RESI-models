@@ -9,6 +9,7 @@ from real_estate.data import (
     RawFileInfo,
     ValidationAuthError,
     ValidationNotFoundError,
+    ValidationProcessingError,
     ValidationRateLimitError,
     ValidationRequestError,
     ValidationSetClient,
@@ -89,6 +90,30 @@ def mock_validation_data():
     ]
 
 
+@pytest.fixture
+def mock_processing_response():
+    """Mock 'processing' status API response (200 with status: processing)."""
+    return {
+        "status": "processing",
+        "validationDate": "2025-12-30",
+        "message": "Validation set for 2025-12-30 is still being processed. Data scraping started at 2:00 PM EST and typically completes around 3:00 PM EST. Please check back soon.",
+        "estimatedReadyTime": "2025-12-30T20:00:00.000Z",
+        "retryAfter": 3600,
+    }
+
+
+@pytest.fixture
+def mock_not_found_response():
+    """Mock 'not_found' status API response (404)."""
+    return {
+        "status": "not_found",
+        "validationDate": "2025-01-15",
+        "message": "No validation set exists for 2025-01-15",
+        "error": "NO_VALIDATION_SET",
+        "code": "NO_VALIDATION_SET",
+    }
+
+
 class TestGetValidationUrls:
     """Tests for get_validation_urls method."""
 
@@ -140,6 +165,59 @@ class TestGetValidationUrls:
             result = await client.get_validation_urls(date="2025-12-25")
 
         assert result.validation_date == "2025-12-29"
+
+    async def test_processing_status_raises_processing_error(
+        self, client, mock_processing_response
+    ):
+        """200 response with status: 'processing' raises ValidationProcessingError."""
+        mock_response = httpx.Response(
+            200,
+            json=mock_processing_response,
+            request=httpx.Request(
+                "POST", "https://dashboard.example.com/api/auth/validation-set"
+            ),
+        )
+
+        with patch.object(
+            httpx.AsyncClient,
+            "request",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            with pytest.raises(ValidationProcessingError) as exc_info:
+                await client.get_validation_urls()
+
+        error = exc_info.value
+        assert error.validation_date == "2025-12-30"
+        assert error.estimated_ready_time == "2025-12-30T20:00:00.000Z"
+        assert error.retry_after == 3600
+        assert "still being processed" in str(error)
+
+    async def test_processing_status_with_date_parameter(
+        self, client, mock_processing_response
+    ):
+        """Processing status with date parameter includes retry information."""
+        mock_response = httpx.Response(
+            200,
+            json=mock_processing_response,
+            request=httpx.Request(
+                "POST",
+                "https://dashboard.example.com/api/auth/validation-set?date=2025-12-30",
+            ),
+        )
+
+        with patch.object(
+            httpx.AsyncClient,
+            "request",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            with pytest.raises(ValidationProcessingError) as exc_info:
+                await client.get_validation_urls(date="2025-12-30")
+
+        error = exc_info.value
+        assert error.validation_date == "2025-12-30"
+        assert error.retry_after == 3600
 
     async def test_401_raises_auth_error(self, client):
         """401 response raises ValidationAuthError."""
@@ -627,6 +705,36 @@ class TestFetchWithRetry:
         result = await client.fetch_with_retry(download_validation=True, download_raw=False)
 
         assert call_count == 2
+        assert result[0] == [{"id": 1}]
+
+    async def test_retries_on_processing_error(self, mock_keypair):
+        """Retries on ValidationProcessingError (data still being processed)."""
+        config = ValidationSetConfig(
+            url="https://dashboard.example.com",
+            max_retries=3,
+            retry_delay_seconds=0,
+        )
+        client = ValidationSetClient(config, mock_keypair)
+
+        call_count = 0
+
+        async def processing_then_succeed(date=None):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise ValidationProcessingError(
+                    "Validation set is still being processed",
+                    validation_date="2025-12-30",
+                    estimated_ready_time="2025-12-30T20:00:00.000Z",
+                    retry_after=3600,
+                )
+            return [{"id": 1}]
+
+        client.download_validation_set = AsyncMock(side_effect=processing_then_succeed)
+
+        result = await client.fetch_with_retry(download_validation=True, download_raw=False)
+
+        assert call_count == 2  # 1 processing + 1 success
         assert result[0] == [{"id": 1}]
 
     async def test_download_validation_only(self, mock_keypair):

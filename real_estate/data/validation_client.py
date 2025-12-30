@@ -3,10 +3,12 @@
 import json
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from bittensor import Keypair
 from tenacity import (
     retry,
@@ -18,6 +20,7 @@ from tenacity import (
 from .errors import (
     ValidationAuthError,
     ValidationNotFoundError,
+    ValidationProcessingError,
     ValidationRateLimitError,
     ValidationRequestError,
 )
@@ -36,6 +39,9 @@ class ValidationSetConfig:
     max_retries: int = 3
     retry_delay_seconds: int = 300  # 5 minutes
     # Rate limit: 10 requests per minute
+    schedule_hour: int = 2  # Default 2 AM UTC
+    schedule_minute: int = 0
+    download_raw: bool = False  # Whether to download raw files by default
 
 
 @dataclass
@@ -66,7 +72,7 @@ def _create_retry_decorator(max_retries: int, delay_seconds: int):
         wait=wait_fixed(delay_seconds),
         stop=stop_after_attempt(max_retries),
         retry=retry_if_exception_type(
-            (ValidationRequestError, ValidationRateLimitError)
+            (ValidationRequestError, ValidationRateLimitError, ValidationProcessingError)
         ),
         reraise=True,
     )
@@ -150,6 +156,7 @@ class ValidationSetClient:
         Raises:
             ValidationAuthError: If authentication fails (401)
             ValidationNotFoundError: If data not found (404)
+            ValidationProcessingError: If data still being processed (200 with status: processing)
             ValidationRateLimitError: If rate limited (429)
             ValidationRequestError: If request fails
         """
@@ -193,11 +200,25 @@ class ValidationSetClient:
                 response.raise_for_status()
 
                 try:
-                    return response.json()
+                    json_data = response.json()
                 except ValueError as e:
                     raise ValidationRequestError(
                         f"Invalid JSON response: {e}"
                     ) from e
+
+                # Check for "processing" status (200 response but not ready yet)
+                if response.status_code == 200 and json_data.get("status") == "processing":
+                    raise ValidationProcessingError(
+                        json_data.get(
+                            "message",
+                            "Validation set is still being processed. Please check back later.",
+                        ),
+                        validation_date=json_data.get("validationDate"),
+                        estimated_ready_time=json_data.get("estimatedReadyTime"),
+                        retry_after=json_data.get("retryAfter"),
+                    )
+
+                return json_data
 
             except httpx.HTTPStatusError as e:
                 raise ValidationRequestError(
@@ -221,6 +242,7 @@ class ValidationSetClient:
         Raises:
             ValidationAuthError: Authentication failed (401)
             ValidationNotFoundError: No data for date (404)
+            ValidationProcessingError: Data still being processed (200 with status: processing)
             ValidationRateLimitError: Rate limited (429)
             ValidationRequestError: Other errors
         """
@@ -436,4 +458,55 @@ class ValidationSetClient:
             return validation_data, raw_data
 
         return await self._retry_decorator(_fetch)()
+
+    def start_scheduled(
+        self,
+        on_fetch: Callable[[dict | None, dict[str, dict] | None], None | Awaitable[None]],
+    ) -> AsyncIOScheduler:
+        """
+        Start scheduled validation data fetching using APScheduler.
+
+        Fetches data daily at the configured time (default 2 AM UTC).
+
+        Args:
+            on_fetch: Callback called with (validation_set, raw_data) after each successful fetch.
+                      Can be sync or async. Either or both can be None depending on config.
+
+        Returns:
+            The scheduler instance (call scheduler.shutdown() to stop)
+        """
+        scheduler = AsyncIOScheduler(timezone="UTC")
+
+        async def _scheduled_fetch():
+            logger.info("Running scheduled validation set fetch...")
+            try:
+                validation_set, raw_data = await self.fetch_with_retry(
+                    download_validation=True,
+                    download_raw=self._config.download_raw,
+                )
+
+                # Call the callback
+                result = on_fetch(validation_set, raw_data)
+                if isinstance(result, Awaitable):
+                    await result
+
+                logger.info("Scheduled validation set fetch completed successfully")
+            except Exception as e:
+                logger.error(f"Scheduled validation set fetch failed: {e}")
+
+        # Schedule daily at configured time
+        scheduler.add_job(
+            _scheduled_fetch,
+            "cron",
+            hour=self._config.schedule_hour,
+            minute=self._config.schedule_minute,
+            id="validation_set_fetch",
+        )
+
+        logger.info(
+            f"Scheduled validation set fetch: daily at {self._config.schedule_hour:02d}:{self._config.schedule_minute:02d} UTC"
+        )
+
+        scheduler.start()
+        return scheduler
 
