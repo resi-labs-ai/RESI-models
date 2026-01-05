@@ -37,9 +37,6 @@ class ModelVerifier:
     2. Pre-download: Check model size via HF API
     3. Pre-download: Verify extrinsic_record.json against chain
     4. Post-download: Verify file hash matches commitment
-
-    Note: ONNX integrity verification is NOT done here - it must be done
-    in the sandboxed Docker evaluator for security reasons.
     """
 
     def __init__(

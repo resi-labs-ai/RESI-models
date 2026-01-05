@@ -39,6 +39,7 @@ dev = [
     "pytest-cov>=4",
     "mypy>=1.8",
     "ruff>=0.3",
+    "docker>=7.0.0",
 ]
 
 [build-system]

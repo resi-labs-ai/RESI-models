@@ -48,7 +48,7 @@ jobs:
         continue-on-error: true  # Remove this once codebase has type hints
 
   test:
-    name: Test
+    name: Test (Unit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,20 +62,42 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Run tests
-        run: uv run pytest -v --tb=short
+      - name: Run unit tests
+        run: uv run pytest real_estate/tests/unit/ -v --tb=short
+
+  integration-test:
+    name: Test (Integration)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Build evaluation Docker image
+        run: docker build -t resi-onnx-runner:latest real_estate/evaluation/
+
+      - name: Run integration tests
+        run: uv run pytest real_estate/tests/integration/ -v --tb=short
 
   # Summary job that depends on all others - useful for branch protection
   ci-success:
     name: CI Success
-    needs: [lint, typecheck, test]
+    needs: [lint, typecheck, test, integration-test]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
           if [[ "${{ needs.lint.result }}" != "success" ]] || \
-             [[ "${{ needs.test.result }}" != "success" ]]; then
+             [[ "${{ needs.test.result }}" != "success" ]] || \
+             [[ "${{ needs.integration-test.result }}" != "success" ]]; then
             echo "One or more jobs failed"
             exit 1
           fi
