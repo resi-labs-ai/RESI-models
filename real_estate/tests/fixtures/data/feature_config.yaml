@@ -9,14 +9,8 @@ numeric_fields:
 feature_transforms:
   - days_since_last_sale
 
-categorical_fields:
-  city: cities.json
-  property_type: property_types.json
-
 feature_order:
   - price
   - beds
   - sqft
   - days_since_last_sale
-  - city
-  - property_type

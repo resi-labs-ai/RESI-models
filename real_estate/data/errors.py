@@ -30,19 +30,7 @@ class MissingFieldError(DataError):
 
     This can happen when:
     - Property dict doesn't have a required numeric field
-    - Property dict doesn't have a required categorical field
-    """
-
-    pass
-
-
-class UnknownCategoryError(DataError):
-    """
-    Raised when a categorical value is not in the mapping.
-
-    This can happen when:
-    - Property has a category value not defined in the mapping JSON
-    - New category appears in data that wasn't in training set
+    - Property dict doesn't have a required field for a transform
     """
 
     pass

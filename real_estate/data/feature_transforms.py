@@ -78,17 +78,26 @@ def reset_clock() -> None:
 # --- Helper functions ---
 
 
-def _bool_to_float(value: Any) -> float:
+def _bool_to_float(value: Any, field_name: str) -> float:
     """
     Convert boolean-like value to float.
 
+    Args:
+        value: The value to convert
+        field_name: Field name for error messages
+
     Returns:
-        -1.0 for None/missing
         0.0 for False
         1.0 for True
+
+    Raises:
+        MissingTransformFieldError: If value is None
+        InvalidTransformValueError: If value cannot be converted to boolean
     """
     if value is None:
-        return -1.0
+        raise MissingTransformFieldError(
+            f"Field '{field_name}' is None, boolean value required"
+        )
     if isinstance(value, bool):
         return 1.0 if value else 0.0
     # Handle string representations
@@ -98,11 +107,15 @@ def _bool_to_float(value: Any) -> float:
             return 1.0
         if lower in ("false", "no", "0"):
             return 0.0
-        return -1.0
+        raise InvalidTransformValueError(
+            f"Cannot convert '{value}' to boolean for field '{field_name}'"
+        )
     # Handle numeric (0 = False, non-zero = True)
     if isinstance(value, (int, float)):
         return 1.0 if value else 0.0
-    return -1.0
+    raise InvalidTransformValueError(
+        f"Cannot convert value of type {type(value).__name__} to boolean for field '{field_name}'"
+    )
 
 
 def _make_bool_transform(field_name: str) -> Callable[[dict[str, Any]], float]:
@@ -113,12 +126,20 @@ def _make_bool_transform(field_name: str) -> Callable[[dict[str, Any]], float]:
         field_name: The field to read from prop_dict
 
     Returns:
-        Transform function that returns -1.0 (null), 0.0 (false), or 1.0 (true)
+        Transform function that returns 0.0 (false) or 1.0 (true)
+
+    Raises:
+        MissingTransformFieldError: If field is missing or None
+        InvalidTransformValueError: If value cannot be converted to boolean
     """
 
     def transform(prop_dict: dict[str, Any]) -> float:
-        value = prop_dict.get(field_name)
-        return _bool_to_float(value)
+        if field_name not in prop_dict:
+            raise MissingTransformFieldError(
+                f"Missing required field '{field_name}' for boolean transform"
+            )
+        value = prop_dict[field_name]
+        return _bool_to_float(value, field_name)
 
     return transform
 

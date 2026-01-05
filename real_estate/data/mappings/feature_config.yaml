@@ -87,13 +87,8 @@ feature_transforms:
   - home_type_commercial
   - home_type_other
 
-# Categorical fields - mapped to integers via JSON files
-categorical_fields:
-  city: cities.json
-  state: states.json
-
 # Output feature order (must match what miners expect)
-# Total: 41 numeric + 1 date + 3 computed + 20 boolean + 8 home_type + 2 categorical = 75 features
+# Total: 41 numeric + 1 date + 3 computed + 20 boolean + 8 home_type = 73 features
 feature_order:
   # Numeric features
   - living_area_sqft
@@ -177,7 +172,3 @@ feature_order:
   - home_type_farm_ranch
   - home_type_commercial
   - home_type_other
-
-  # Categorical fields
-  - city
-  - state

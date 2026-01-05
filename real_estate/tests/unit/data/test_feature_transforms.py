@@ -262,22 +262,22 @@ class TestBooleanTransforms:
         assert result == 0.0
 
     @pytest.mark.parametrize("field", BOOL_FIELDS)
-    def test_none_value(self, field):
-        """None returns -1.0 (null sentinel)."""
+    def test_none_value_raises_error(self, field):
+        """None raises MissingTransformFieldError."""
         transform = _FEATURE_TRANSFORM_REGISTRY[field]
         prop = {field: None}
-        result = transform(prop)
 
-        assert result == -1.0
+        with pytest.raises(MissingTransformFieldError, match="is None"):
+            transform(prop)
 
     @pytest.mark.parametrize("field", BOOL_FIELDS)
-    def test_missing_field(self, field):
-        """Missing field returns -1.0 (null sentinel)."""
+    def test_missing_field_raises_error(self, field):
+        """Missing field raises MissingTransformFieldError."""
         transform = _FEATURE_TRANSFORM_REGISTRY[field]
         prop = {}
-        result = transform(prop)
 
-        assert result == -1.0
+        with pytest.raises(MissingTransformFieldError, match="Missing required field"):
+            transform(prop)
 
     @pytest.mark.parametrize("field", BOOL_FIELDS)
     def test_string_true(self, field):
