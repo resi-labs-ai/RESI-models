@@ -25,8 +25,8 @@ from real_estate.data import (
     ScraperClient,
     ScraperConfig,
     ValidationDataset,
-    ValidationSetClient,
-    ValidationSetConfig,
+    ValidationDatasetClient,
+    ValidationDatasetClientConfig,
 )
 from real_estate.models import (
     DownloadConfig,
@@ -102,9 +102,10 @@ class Validator:
         )
 
         # Validation API client for fetching validation sets from dashboard
-        self.validation_api = ValidationSetClient(
-            ValidationSetConfig(
+        self.validation_api = ValidationDatasetClient(
+            ValidationDatasetClientConfig(
                 url=self.config.validation_api_url,
+                realm=self.config.realm,
                 timeout=60.0,
                 max_retries=self.config.validation_api_max_retries,
                 retry_delay_seconds=self.config.validation_api_retry_delay,
@@ -121,7 +122,7 @@ class Validator:
         # State
         self.metagraph: Metagraph | None = None
         self.validation_data: ValidationDataset | None = None  # From scraper
-        self.validation_set: dict | None = None  # Pre-processed data from validation API
+        self.validation_set: ValidationDataset | None = None  # From validation API
         self.raw_data: dict[str, dict] | None = None  # Raw state files from validation API
         self.scores: np.ndarray = np.array([], dtype=np.float32)
         self.hotkeys: list[str] = []
@@ -311,15 +312,14 @@ class Validator:
         logger.info(f"Validation data updated (scraper): {len(data)} properties")
 
     def _on_validation_set_fetched(
-        self, validation_set: dict | None, raw_data: dict[str, dict] | None
+        self, validation_set: ValidationDataset | None, raw_data: dict[str, dict] | None
     ) -> None:
         """Callback when new validation set is fetched from dashboard API."""
         self.validation_set = validation_set
         self.raw_data = raw_data
 
         if validation_set:
-            count = len(validation_set) if isinstance(validation_set, list) else "N/A"
-            logger.info(f"Validation set updated: {count} properties")
+            logger.info(f"Validation set updated: {len(validation_set)} properties")
 
         if raw_data:
             logger.info(f"Raw data updated: {len(raw_data)} states")

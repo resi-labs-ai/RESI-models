@@ -24,15 +24,17 @@ from .errors import (
     ValidationDataRateLimitError,
     ValidationDataRequestError,
 )
+from .models import ValidationDataset
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class ValidationSetConfig:
-    """Configuration for validation set client."""
+class ValidationDatasetClientConfig:
+    """Configuration for validation dataset client."""
 
     url: str
+    realm: str = "devnet"  # devnet, testnet, mainnet
     endpoint: str = "/api/auth/validation-set"
     timeout: float = 60.0
     # URL expiration is 1 hour, no need to cache long-term
@@ -54,8 +56,8 @@ class RawFileInfo:
 
 
 @dataclass
-class ValidationSetResponse:
-    """Response from validation set API."""
+class ValidationDatasetResponse:
+    """Response from validation dataset API."""
 
     validator_uid: int
     validation_date: str  # YYYY-MM-DD
@@ -78,7 +80,7 @@ def _create_retry_decorator(max_retries: int, delay_seconds: int):
     )
 
 
-class ValidationSetClient:
+class ValidationDatasetClient:
     """
     Client for fetching validation data from dashboard API.
 
@@ -88,12 +90,12 @@ class ValidationSetClient:
     - Returns presigned S3 URLs for data access
     """
 
-    def __init__(self, config: ValidationSetConfig, keypair: Keypair):
+    def __init__(self, config: ValidationDatasetClientConfig, keypair: Keypair):
         """
-        Initialize validation set client.
+        Initialize validation dataset client.
 
         Args:
-            config: Validation set configuration
+            config: Validation dataset client configuration
             keypair: Bittensor keypair for signing requests
         """
         self._config = config
@@ -106,12 +108,12 @@ class ValidationSetClient:
             config.retry_delay_seconds,
         )
 
-    def _sign_request(self, method: str, url: str, nonce: str) -> str:
+    def _sign_request(self, method: str, url: str, nonce: str) -> dict[str, str]:
         """
-        Sign a request and return signature.
+        Sign a request and return headers with authentication.
 
         Message format: {METHOD}{URL}{HEADERS_JSON}
-        Headers JSON: {"Hotkey": "...", "Nonce": "..."}  (sorted keys)
+        Headers JSON: {"Hotkey": "...", "Nonce": "...", "Realm": "..."}  (sorted keys)
 
         Args:
             method: HTTP method (GET, POST, etc.)
@@ -119,7 +121,7 @@ class ValidationSetClient:
             nonce: Timestamp nonce
 
         Returns:
-            Hex-encoded signature with 0x prefix
+            Headers dict with Hotkey, Nonce, Realm, and Signature
         """
         hotkey = self._keypair.ss58_address
 
@@ -127,6 +129,7 @@ class ValidationSetClient:
         sign_headers = {
             "Hotkey": hotkey,
             "Nonce": nonce,
+            "Realm": self._config.realm,
         }
 
         headers_str = json.dumps(sign_headers, sort_keys=True)
@@ -134,7 +137,10 @@ class ValidationSetClient:
 
         signature = self._keypair.sign(data_to_sign.encode()).hex()
 
-        return f"0x{signature}"
+        return {
+            **sign_headers,
+            "Signature": signature,
+        }
 
     async def _request(
         self,
@@ -170,13 +176,7 @@ class ValidationSetClient:
                 url = f"{url}?{query_string}"
 
         nonce = str(time.time())
-        signature = self._sign_request(method, url, nonce)
-
-        auth_headers = {
-            "Hotkey": self._keypair.ss58_address,
-            "Nonce": nonce,
-            "Signature": signature,
-        }
+        auth_headers = self._sign_request(method, url, nonce)
 
         async with httpx.AsyncClient(timeout=self._config.timeout) as client:
             try:
@@ -229,7 +229,7 @@ class ValidationSetClient:
 
     async def get_validation_urls(
         self, date: str | None = None
-    ) -> ValidationSetResponse:
+    ) -> ValidationDatasetResponse:
         """
         Get presigned URLs for validation data.
 
@@ -237,7 +237,7 @@ class ValidationSetClient:
             date: Optional date in YYYY-MM-DD format (defaults to today)
 
         Returns:
-            ValidationSetResponse with presigned URLs
+            ValidationDatasetResponse with presigned URLs
 
         Raises:
             ValidationDataAuthError: Authentication failed (401)
@@ -269,7 +269,7 @@ class ValidationSetClient:
             for f in data["rawDataFiles"]
         ]
 
-        return ValidationSetResponse(
+        return ValidationDatasetResponse(
             validator_uid=data["validatorUid"],
             validation_date=data["validationDate"],
             expires_at=data["expiresAt"],
@@ -279,7 +279,7 @@ class ValidationSetClient:
             raw_files=raw_files,
         )
 
-    async def download_validation_set(self, date: str | None = None) -> dict:
+    async def download_validation_set(self, date: str | None = None) -> ValidationDataset:
         """
         Download and parse validation set.
 
@@ -287,7 +287,7 @@ class ValidationSetClient:
             date: Optional date in YYYY-MM-DD format
 
         Returns:
-            Parsed JSON validation data
+            ValidationDataset with properties
 
         Raises:
             ValidationDataAuthError: Authentication failed
@@ -305,10 +305,20 @@ class ValidationSetClient:
 
                 try:
                     data = download_response.json()
-                    logger.info(
-                        f"Downloaded validation set: {len(data) if isinstance(data, list) else 'N/A'} properties"
-                    )
-                    return data
+
+                    # Handle both list format and dict with 'properties' key
+                    if isinstance(data, list):
+                        properties = data
+                    elif isinstance(data, dict) and "properties" in data:
+                        properties = data["properties"]
+                    else:
+                        raise ValidationDataRequestError(
+                            "Invalid validation set format: expected list or dict with 'properties' key"
+                        )
+
+                    logger.info(f"Downloaded validation set: {len(properties)} properties")
+                    return ValidationDataset(properties=properties)
+
                 except ValueError as e:
                     raise ValidationDataRequestError(
                         f"Invalid JSON in validation set: {e}"
@@ -423,7 +433,7 @@ class ValidationSetClient:
         date: str | None = None,
         download_validation: bool = True,
         download_raw: bool = False,
-    ) -> tuple[dict | None, dict[str, dict] | None]:
+    ) -> tuple[ValidationDataset | None, dict[str, dict] | None]:
         """
         Fetch validation data with retry logic.
 
@@ -437,7 +447,7 @@ class ValidationSetClient:
             download_raw: Whether to download raw files
 
         Returns:
-            Tuple of (validation_data, raw_data) - None if not downloaded
+            Tuple of (ValidationDataset, raw_data) - None if not downloaded
 
         Raises:
             ValidationDataAuthError: If authentication fails (no retry)
@@ -461,7 +471,7 @@ class ValidationSetClient:
 
     def start_scheduled(
         self,
-        on_fetch: Callable[[dict | None, dict[str, dict] | None], None | Awaitable[None]],
+        on_fetch: Callable[[ValidationDataset | None, dict[str, dict] | None], None | Awaitable[None]],
     ) -> AsyncIOScheduler:
         """
         Start scheduled validation data fetching using APScheduler.
@@ -469,7 +479,7 @@ class ValidationSetClient:
         Fetches data daily at the configured time (default 2 AM UTC).
 
         Args:
-            on_fetch: Callback called with (validation_set, raw_data) after each successful fetch.
+            on_fetch: Callback called with (ValidationDataset, raw_data) after each successful fetch.
                       Can be sync or async. Either or both can be None depending on config.
 
         Returns:

@@ -30,11 +30,11 @@ from .scraper_client import (
     ScraperClient,
     ScraperConfig,
 )
-from .validation_client import (
+from .validation_dataset_client import (
     RawFileInfo,
-    ValidationSetClient,
-    ValidationSetConfig,
-    ValidationSetResponse,
+    ValidationDatasetClient,
+    ValidationDatasetClientConfig,
+    ValidationDatasetResponse,
 )
 
 __all__ = [
@@ -68,9 +68,9 @@ __all__ = [
     # Scraper
     "ScraperClient",
     "ScraperConfig",
-    # Validation API
-    "ValidationSetClient",
-    "ValidationSetConfig",
-    "ValidationSetResponse",
+    # Validation Dataset API
+    "ValidationDatasetClient",
+    "ValidationDatasetClientConfig",
+    "ValidationDatasetResponse",
     "RawFileInfo",
 ]

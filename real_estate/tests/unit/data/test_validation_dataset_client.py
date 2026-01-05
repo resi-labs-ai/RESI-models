@@ -1,4 +1,4 @@
-"""Tests for ValidationSetClient."""
+"""Tests for ValidationDatasetClient."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,16 +12,16 @@ from real_estate.data import (
     ValidationDataProcessingError,
     ValidationDataRateLimitError,
     ValidationDataRequestError,
-    ValidationSetClient,
-    ValidationSetConfig,
-    ValidationSetResponse,
+    ValidationDatasetClient,
+    ValidationDatasetClientConfig,
+    ValidationDatasetResponse,
 )
 
 
 @pytest.fixture
 def config():
     """Create test validation set config."""
-    return ValidationSetConfig(
+    return ValidationDatasetClientConfig(
         url="https://dashboard.example.com",
         timeout=30.0,
         max_retries=2,
@@ -41,7 +41,7 @@ def mock_keypair():
 @pytest.fixture
 def client(config, mock_keypair):
     """Create validation client with mocked keypair."""
-    return ValidationSetClient(config, mock_keypair)
+    return ValidationDatasetClient(config, mock_keypair)
 
 
 @pytest.fixture
@@ -120,7 +120,7 @@ class TestGetValidationUrls:
     async def test_successful_fetch_returns_urls(
         self, client, mock_validation_response
     ):
-        """Returns ValidationSetResponse on successful response."""
+        """Returns ValidationDatasetResponse on successful response."""
         mock_response = httpx.Response(
             200,
             json=mock_validation_response,
@@ -137,7 +137,7 @@ class TestGetValidationUrls:
         ):
             result = await client.get_validation_urls()
 
-        assert isinstance(result, ValidationSetResponse)
+        assert isinstance(result, ValidationDatasetResponse)
         assert result.validator_uid == 42
         assert result.validation_date == "2025-12-29"
         assert result.validation_set_url == "https://s3.example.com/validation_set.json"
@@ -377,8 +377,8 @@ class TestDownloadValidationSet:
         ):
             result = await client.download_validation_set()
 
-        assert result == mock_validation_data
         assert len(result) == 2
+        assert result.properties == mock_validation_data
 
     async def test_connection_error_downloading_data(
         self, client, mock_validation_response
@@ -622,12 +622,12 @@ class TestFetchWithRetry:
 
     async def test_retries_on_request_error(self, mock_keypair):
         """Retries on ValidationDataRequestError until success."""
-        config = ValidationSetConfig(
+        config = ValidationDatasetClientConfig(
             url="https://dashboard.example.com",
             max_retries=3,
             retry_delay_seconds=0,
         )
-        client = ValidationSetClient(config, mock_keypair)
+        client = ValidationDatasetClient(config, mock_keypair)
 
         call_count = 0
 
@@ -648,12 +648,12 @@ class TestFetchWithRetry:
 
     async def test_does_not_retry_on_auth_error(self, mock_keypair):
         """Does not retry on ValidationDataAuthError."""
-        config = ValidationSetConfig(
+        config = ValidationDatasetClientConfig(
             url="https://dashboard.example.com",
             max_retries=3,
             retry_delay_seconds=0,
         )
-        client = ValidationSetClient(config, mock_keypair)
+        client = ValidationDatasetClient(config, mock_keypair)
 
         client.download_validation_set = AsyncMock(
             side_effect=ValidationDataAuthError("bad key")
@@ -666,12 +666,12 @@ class TestFetchWithRetry:
 
     async def test_does_not_retry_on_not_found_error(self, mock_keypair):
         """Does not retry on ValidationDataNotFoundError."""
-        config = ValidationSetConfig(
+        config = ValidationDatasetClientConfig(
             url="https://dashboard.example.com",
             max_retries=3,
             retry_delay_seconds=0,
         )
-        client = ValidationSetClient(config, mock_keypair)
+        client = ValidationDatasetClient(config, mock_keypair)
 
         client.download_validation_set = AsyncMock(
             side_effect=ValidationDataNotFoundError("no data")
@@ -684,12 +684,12 @@ class TestFetchWithRetry:
 
     async def test_retries_on_rate_limit_error(self, mock_keypair):
         """Retries on ValidationDataRateLimitError."""
-        config = ValidationSetConfig(
+        config = ValidationDatasetClientConfig(
             url="https://dashboard.example.com",
             max_retries=3,
             retry_delay_seconds=0,
         )
-        client = ValidationSetClient(config, mock_keypair)
+        client = ValidationDatasetClient(config, mock_keypair)
 
         call_count = 0
 
@@ -709,12 +709,12 @@ class TestFetchWithRetry:
 
     async def test_retries_on_processing_error(self, mock_keypair):
         """Retries on ValidationDataProcessingError (data still being processed)."""
-        config = ValidationSetConfig(
+        config = ValidationDatasetClientConfig(
             url="https://dashboard.example.com",
             max_retries=3,
             retry_delay_seconds=0,
         )
-        client = ValidationSetClient(config, mock_keypair)
+        client = ValidationDatasetClient(config, mock_keypair)
 
         call_count = 0
 
@@ -739,12 +739,12 @@ class TestFetchWithRetry:
 
     async def test_download_validation_only(self, mock_keypair):
         """Downloads only validation set when download_raw=False."""
-        config = ValidationSetConfig(
+        config = ValidationDatasetClientConfig(
             url="https://dashboard.example.com",
             max_retries=1,
             retry_delay_seconds=0,
         )
-        client = ValidationSetClient(config, mock_keypair)
+        client = ValidationDatasetClient(config, mock_keypair)
 
         validation_data = [{"id": 1}]
         client.download_validation_set = AsyncMock(return_value=validation_data)
@@ -759,12 +759,12 @@ class TestFetchWithRetry:
 
     async def test_download_raw_only(self, mock_keypair):
         """Downloads only raw files when download_validation=False."""
-        config = ValidationSetConfig(
+        config = ValidationDatasetClientConfig(
             url="https://dashboard.example.com",
             max_retries=1,
             retry_delay_seconds=0,
         )
-        client = ValidationSetClient(config, mock_keypair)
+        client = ValidationDatasetClient(config, mock_keypair)
 
         raw_data = {"AL": {}}
         client.download_validation_set = AsyncMock(return_value=[{"id": 1}])
@@ -779,12 +779,12 @@ class TestFetchWithRetry:
 
     async def test_download_both(self, mock_keypair):
         """Downloads both validation set and raw files."""
-        config = ValidationSetConfig(
+        config = ValidationDatasetClientConfig(
             url="https://dashboard.example.com",
             max_retries=1,
             retry_delay_seconds=0,
         )
-        client = ValidationSetClient(config, mock_keypair)
+        client = ValidationDatasetClient(config, mock_keypair)
 
         validation_data = [{"id": 1}]
         raw_data = {"AL": {}}
@@ -800,12 +800,12 @@ class TestFetchWithRetry:
 
     async def test_download_neither_returns_none(self, mock_keypair):
         """Returns (None, None) when both flags are False."""
-        config = ValidationSetConfig(
+        config = ValidationDatasetClientConfig(
             url="https://dashboard.example.com",
             max_retries=1,
             retry_delay_seconds=0,
         )
-        client = ValidationSetClient(config, mock_keypair)
+        client = ValidationDatasetClient(config, mock_keypair)
 
         client.download_validation_set = AsyncMock(return_value=[{"id": 1}])
         client.download_raw_files = AsyncMock(return_value={"AL": {}})
@@ -826,14 +826,17 @@ class TestSignRequest:
         nonce = "1703923200.123"
         url = "https://dashboard.example.com/api/auth/validation-set"
 
-        signature = client._sign_request("POST", url, nonce)
+        headers = client._sign_request("POST", url, nonce)
 
-        # Verify signature format
-        assert signature.startswith("0x")
-        assert len(signature) > 2
+        # Verify returns dict with headers
+        assert isinstance(headers, dict)
+        assert "Hotkey" in headers
+        assert "Nonce" in headers
+        assert "Realm" in headers
+        assert "Signature" in headers
 
         # Verify keypair.sign was called with correct message
-        expected_message = f'POST{url}{{"Hotkey": "5MockValidatorHotkey", "Nonce": "{nonce}"}}'
+        expected_message = f'POST{url}{{"Hotkey": "5MockValidatorHotkey", "Nonce": "{nonce}", "Realm": "devnet"}}'
         client._keypair.sign.assert_called_once()
         call_args = client._keypair.sign.call_args[0][0]
         assert call_args.decode() == expected_message
@@ -856,40 +859,45 @@ class TestSignRequest:
 
         client._sign_request("POST", url, nonce)
 
-        # Verify headers are sorted (Hotkey before Nonce)
+        # Verify headers are sorted (Hotkey before Nonce before Realm)
         call_args = client._keypair.sign.call_args[0][0].decode()
         assert '{"Hotkey":' in call_args
         assert call_args.index("Hotkey") < call_args.index("Nonce")
+        assert call_args.index("Nonce") < call_args.index("Realm")
 
-    def test_sign_request_no_realm_header(self, client):
-        """Signature does not include Realm header (unlike ScraperClient)."""
+    def test_sign_request_includes_realm_header(self, client):
+        """Signature includes Realm header (like ScraperClient)."""
         nonce = "1703923200.123"
         url = "https://dashboard.example.com/api/auth/validation-set"
 
-        client._sign_request("POST", url, nonce)
+        headers = client._sign_request("POST", url, nonce)
 
+        assert headers["Realm"] == "devnet"
         call_args = client._keypair.sign.call_args[0][0].decode()
-        assert "Realm" not in call_args
+        assert "Realm" in call_args
 
-    def test_sign_request_returns_hex_signature(self, client):
-        """Returns hex-encoded signature with 0x prefix."""
+    def test_sign_request_returns_headers_dict(self, client):
+        """Returns dict with all auth headers."""
         nonce = "1703923200.123"
         url = "https://dashboard.example.com/api/auth/validation-set"
 
-        signature = client._sign_request("POST", url, nonce)
+        headers = client._sign_request("POST", url, nonce)
 
-        assert isinstance(signature, str)
-        assert signature.startswith("0x")
-        # Verify it's valid hex
-        int(signature, 16)
+        assert isinstance(headers, dict)
+        assert headers["Hotkey"] == "5MockValidatorHotkey"
+        assert headers["Nonce"] == nonce
+        assert headers["Realm"] == "devnet"
+        # Signature is hex-encoded
+        assert isinstance(headers["Signature"], str)
 
     def test_sign_request_uses_keypair_address(self, client, mock_keypair):
         """Signed request uses keypair's ss58_address."""
         nonce = "1703923200.123"
         url = "https://dashboard.example.com/api/auth/validation-set"
 
-        client._sign_request("POST", url, nonce)
+        headers = client._sign_request("POST", url, nonce)
 
+        assert headers["Hotkey"] == mock_keypair.ss58_address
         call_args = client._keypair.sign.call_args[0][0].decode()
         assert mock_keypair.ss58_address in call_args
 
@@ -927,7 +935,7 @@ class TestIntegration:
             # Download validation set
             data = await client.download_validation_set()
             assert len(data) == 2
-            assert data[0]["property_id"] == "prop_001"
+            assert data.properties[0]["property_id"] == "prop_001"
 
     async def test_complete_raw_files_workflow(
         self, client, mock_validation_response
