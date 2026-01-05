@@ -59,6 +59,7 @@ class FeatureEncoder:
 
         required_keys = {
             "numeric_fields",
+            "boolean_fields",
             "feature_order",
             "feature_transforms",
         }
@@ -111,6 +112,7 @@ class FeatureEncoder:
         """Encode a single property according to feature_order."""
         features = []
         numeric_fields = self._config["numeric_fields"]
+        boolean_fields = self._config["boolean_fields"]
         feature_transforms = self._config["feature_transforms"]
 
         for field in self._config["feature_order"]:
@@ -120,6 +122,18 @@ class FeatureEncoder:
                         f"Missing required numeric field: '{field}'"
                     )
                 features.append(float(prop[field]))
+
+            elif field in boolean_fields:
+                if field not in prop:
+                    raise MissingFieldError(
+                        f"Missing required boolean field: '{field}'"
+                    )
+                value = prop[field]
+                if value is None:
+                    raise MissingFieldError(
+                        f"Boolean field '{field}' is None"
+                    )
+                features.append(1.0 if value else 0.0)
 
             elif field in feature_transforms:
                 value = _FEATURE_TRANSFORM_REGISTRY[field](prop)

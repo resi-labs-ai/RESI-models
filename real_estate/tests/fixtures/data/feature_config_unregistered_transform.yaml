@@ -4,6 +4,8 @@ version: "1.0.0"
 numeric_fields:
   - price
 
+boolean_fields: []
+
 feature_transforms:
   - nonexistent_transform
 

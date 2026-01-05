@@ -44,18 +44,16 @@ numeric_fields:
   - max_school_rating
   - school_count
 
-# Feature transforms - derived features computed from raw data
+# Feature transforms - computed features with custom logic
 # Each field name must have a matching @feature_transform decorator
 feature_transforms:
-  # Date-based transforms
   - days_since_last_sale
-
-  # Computed transforms
   - property_age
   - beds_per_bath
   - lot_to_living_ratio
 
-  # Boolean transforms (returns -1 null, 0 false, 1 true)
+# Boolean fields - passed through as 0.0 (false) or 1.0 (true)
+boolean_fields:
   - has_pool
   - has_any_pool_or_spa
   - has_garage
@@ -76,8 +74,7 @@ feature_transforms:
   - is_senior_community
   - has_waterfront_view
   - has_basement
-
-  # Property type one-hot encoding (8 categories)
+  # Property type one-hot encoding
   - home_type_single_family
   - home_type_condo_townhouse
   - home_type_multi_family
@@ -141,7 +138,7 @@ feature_order:
   - beds_per_bath
   - lot_to_living_ratio
 
-  # Boolean transforms
+  # Boolean fields
   - has_pool
   - has_any_pool_or_spa
   - has_garage

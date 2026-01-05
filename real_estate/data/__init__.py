@@ -15,7 +15,6 @@ from .errors import (
 )
 from .feature_encoder import FeatureEncoder
 from .feature_transforms import (
-    PROPERTY_TYPE_CATEGORY_ORDER,
     feature_transform,
     get_registered_feature_transforms,
     reset_clock,
@@ -46,7 +45,6 @@ __all__ = [
     "FeatureEncoder",
     "feature_transform",
     "get_registered_feature_transforms",
-    "PROPERTY_TYPE_CATEGORY_ORDER",
     # Clock utilities (for testing)
     "set_clock",
     "reset_clock",

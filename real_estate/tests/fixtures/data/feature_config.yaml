@@ -6,6 +6,9 @@ numeric_fields:
   - beds
   - sqft
 
+boolean_fields:
+  - has_pool
+
 feature_transforms:
   - days_since_last_sale
 
@@ -14,3 +17,4 @@ feature_order:
   - beds
   - sqft
   - days_since_last_sale
+  - has_pool

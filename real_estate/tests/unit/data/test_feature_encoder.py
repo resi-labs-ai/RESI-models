@@ -28,12 +28,13 @@ class TestInit:
 
     def test_loads_config(self, encoder):
         """Encoder loads config successfully."""
-        assert encoder.get_feature_count() == 4
+        assert encoder.get_feature_count() == 5
         assert encoder.get_feature_names() == [
             "price",
             "beds",
             "sqft",
             "days_since_last_sale",
+            "has_pool",
         ]
 
     def test_unregistered_transform_raises_error(self):
@@ -53,31 +54,56 @@ class TestEncode:
 
     def test_encode_numeric_fields(self, encoder):
         """Numeric fields are encoded correctly."""
-        props = [{"price": 500000, "beds": 3, "sqft": 2000, "last_sale_date": "2024-01-01T00:00:00+00:00"}]
+        props = [{"price": 500000, "beds": 3, "sqft": 2000, "last_sale_date": "2024-01-01T00:00:00+00:00", "has_pool": True}]
         result = encoder.encode(props)
 
-        assert result.shape == (1, 4)
+        assert result.shape == (1, 5)
         assert result[0, 0] == 500000.0  # price
         assert result[0, 1] == 3.0  # beds
         assert result[0, 2] == 2000.0  # sqft
 
+    def test_encode_boolean_fields(self, encoder):
+        """Boolean fields are encoded correctly."""
+        props_true = [{"price": 100, "beds": 1, "sqft": 500, "last_sale_date": "2024-01-01T00:00:00+00:00", "has_pool": True}]
+        props_false = [{"price": 100, "beds": 1, "sqft": 500, "last_sale_date": "2024-01-01T00:00:00+00:00", "has_pool": False}]
+
+        result_true = encoder.encode(props_true)
+        result_false = encoder.encode(props_false)
+
+        assert result_true[0, 4] == 1.0  # has_pool True
+        assert result_false[0, 4] == 0.0  # has_pool False
+
     def test_encode_batch(self, encoder):
         """Batch encoding returns correct shape."""
         props = [
-            {"price": 100, "beds": 1, "sqft": 500, "last_sale_date": "2024-01-01T00:00:00+00:00"},
-            {"price": 200, "beds": 2, "sqft": 1000, "last_sale_date": "2024-01-01T00:00:00+00:00"},
-            {"price": 300, "beds": 3, "sqft": 1500, "last_sale_date": "2024-01-01T00:00:00+00:00"},
+            {"price": 100, "beds": 1, "sqft": 500, "last_sale_date": "2024-01-01T00:00:00+00:00", "has_pool": True},
+            {"price": 200, "beds": 2, "sqft": 1000, "last_sale_date": "2024-01-01T00:00:00+00:00", "has_pool": False},
+            {"price": 300, "beds": 3, "sqft": 1500, "last_sale_date": "2024-01-01T00:00:00+00:00", "has_pool": True},
         ]
         result = encoder.encode(props)
 
-        assert result.shape == (3, 4)
+        assert result.shape == (3, 5)
         assert result.dtype == np.float32
 
     def test_encode_missing_numeric_field_raises_error(self, encoder):
         """Missing numeric field raises MissingFieldError."""
-        props = [{"price": 100, "sqft": 500}]  # missing beds
+        props = [{"price": 100, "sqft": 500, "has_pool": True}]  # missing beds
 
         with pytest.raises(MissingFieldError, match="beds"):
+            encoder.encode(props)
+
+    def test_encode_missing_boolean_field_raises_error(self, encoder):
+        """Missing boolean field raises MissingFieldError."""
+        props = [{"price": 100, "beds": 1, "sqft": 500, "last_sale_date": "2024-01-01T00:00:00+00:00"}]  # missing has_pool
+
+        with pytest.raises(MissingFieldError, match="has_pool"):
+            encoder.encode(props)
+
+    def test_encode_none_boolean_field_raises_error(self, encoder):
+        """None boolean field raises MissingFieldError."""
+        props = [{"price": 100, "beds": 1, "sqft": 500, "last_sale_date": "2024-01-01T00:00:00+00:00", "has_pool": None}]
+
+        with pytest.raises(MissingFieldError, match="has_pool"):
             encoder.encode(props)
 
     def test_encode_extra_fields_ignored(self, encoder):
@@ -87,12 +113,13 @@ class TestEncode:
             "beds": 1,
             "sqft": 500,
             "last_sale_date": "2024-01-01T00:00:00+00:00",
+            "has_pool": False,
             "extra_field": "ignored",
             "another_extra": 999,
         }]
         result = encoder.encode(props)
 
-        assert result.shape == (1, 4)
+        assert result.shape == (1, 5)
 
     def test_encode_preserves_feature_order(self, encoder):
         """Features are encoded in the order specified in config."""
@@ -103,14 +130,16 @@ class TestEncode:
             "beds": 2,
             "price": 300000,
             "last_sale_date": "2024-01-01T00:00:00+00:00",
+            "has_pool": True,
         }]
         result = encoder.encode(props)
 
-        # Order from config: price, beds, sqft, days_since_last_sale
+        # Order from config: price, beds, sqft, days_since_last_sale, has_pool
         assert result[0, 0] == 300000.0  # price
         assert result[0, 1] == 2.0  # beds
         assert result[0, 2] == 1500.0  # sqft
         assert result[0, 3] == 166.0  # days_since_last_sale (Jan 1 to Jun 15)
+        assert result[0, 4] == 1.0  # has_pool
 
 
 class TestHelpers:
@@ -119,8 +148,8 @@ class TestHelpers:
     def test_get_feature_names(self, encoder):
         """get_feature_names returns ordered list."""
         names = encoder.get_feature_names()
-        assert names == ["price", "beds", "sqft", "days_since_last_sale"]
+        assert names == ["price", "beds", "sqft", "days_since_last_sale", "has_pool"]
 
     def test_get_feature_count(self, encoder):
         """get_feature_count returns correct count."""
-        assert encoder.get_feature_count() == 4
+        assert encoder.get_feature_count() == 5
