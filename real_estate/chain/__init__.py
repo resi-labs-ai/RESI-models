@@ -1,6 +1,5 @@
 """Chain interaction layer via Pylon."""
 
-from .client import PylonClient, PylonConfig
 from .errors import (
     AuthenticationError,
     ChainConnectionError,
@@ -9,11 +8,28 @@ from .errors import (
     MetagraphError,
     WeightSettingError,
 )
-from .models import ChainModelMetadata, Commitment, Metagraph, Neuron
+from .models import (
+    ChainModelMetadata,
+    Commitment,
+    ExtrinsicCall,
+    ExtrinsicData,
+    Metagraph,
+    Neuron,
+)
+
+
+def __getattr__(name: str):
+    """Lazy import ChainClient and PylonConfig to avoid pylon dependency at import time."""
+    if name in ("ChainClient", "PylonConfig"):
+        from .client import ChainClient, PylonConfig
+
+        return ChainClient if name == "ChainClient" else PylonConfig
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
-    # Client
-    "PylonClient",
+    # Client (lazy loaded)
+    "ChainClient",
     "PylonConfig",
     # Errors
     "AuthenticationError",
@@ -25,6 +41,8 @@ __all__ = [
     # Models
     "ChainModelMetadata",
     "Commitment",
+    "ExtrinsicCall",
+    "ExtrinsicData",
     "Metagraph",
     "Neuron",
 ]

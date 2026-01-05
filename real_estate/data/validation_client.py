@@ -18,11 +18,11 @@ from tenacity import (
 )
 
 from .errors import (
-    ValidationAuthError,
-    ValidationNotFoundError,
-    ValidationProcessingError,
-    ValidationRateLimitError,
-    ValidationRequestError,
+    ValidationDataAuthError,
+    ValidationDataNotFoundError,
+    ValidationDataProcessingError,
+    ValidationDataRateLimitError,
+    ValidationDataRequestError,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ def _create_retry_decorator(max_retries: int, delay_seconds: int):
         wait=wait_fixed(delay_seconds),
         stop=stop_after_attempt(max_retries),
         retry=retry_if_exception_type(
-            (ValidationRequestError, ValidationRateLimitError, ValidationProcessingError)
+            (ValidationDataRequestError, ValidationDataRateLimitError, ValidationDataProcessingError)
         ),
         reraise=True,
     )
@@ -154,11 +154,11 @@ class ValidationSetClient:
             JSON response data
 
         Raises:
-            ValidationAuthError: If authentication fails (401)
-            ValidationNotFoundError: If data not found (404)
-            ValidationProcessingError: If data still being processed (200 with status: processing)
-            ValidationRateLimitError: If rate limited (429)
-            ValidationRequestError: If request fails
+            ValidationDataAuthError: If authentication fails (401)
+            ValidationDataNotFoundError: If data not found (404)
+            ValidationDataProcessingError: If data still being processed (200 with status: processing)
+            ValidationDataRateLimitError: If rate limited (429)
+            ValidationDataRequestError: If request fails
         """
         # Build URL with query params if present
         url = f"{self._base_url}{endpoint}"
@@ -187,28 +187,28 @@ class ValidationSetClient:
                 )
 
                 if response.status_code == 401:
-                    raise ValidationAuthError(
+                    raise ValidationDataAuthError(
                         f"Authentication failed: {response.text}"
                     )
 
                 if response.status_code == 404:
-                    raise ValidationNotFoundError(f"Data not found: {response.text}")
+                    raise ValidationDataNotFoundError(f"Data not found: {response.text}")
 
                 if response.status_code == 429:
-                    raise ValidationRateLimitError(f"Rate limited: {response.text}")
+                    raise ValidationDataRateLimitError(f"Rate limited: {response.text}")
 
                 response.raise_for_status()
 
                 try:
                     json_data = response.json()
                 except ValueError as e:
-                    raise ValidationRequestError(
+                    raise ValidationDataRequestError(
                         f"Invalid JSON response: {e}"
                     ) from e
 
                 # Check for "processing" status (200 response but not ready yet)
                 if response.status_code == 200 and json_data.get("status") == "processing":
-                    raise ValidationProcessingError(
+                    raise ValidationDataProcessingError(
                         json_data.get(
                             "message",
                             "Validation set is still being processed. Please check back later.",
@@ -221,11 +221,11 @@ class ValidationSetClient:
                 return json_data
 
             except httpx.HTTPStatusError as e:
-                raise ValidationRequestError(
+                raise ValidationDataRequestError(
                     f"Request failed: {e.response.status_code} - {e.response.text}"
                 ) from e
             except httpx.RequestError as e:
-                raise ValidationRequestError(f"Connection error: {e}") from e
+                raise ValidationDataRequestError(f"Connection error: {e}") from e
 
     async def get_validation_urls(
         self, date: str | None = None
@@ -240,11 +240,11 @@ class ValidationSetClient:
             ValidationSetResponse with presigned URLs
 
         Raises:
-            ValidationAuthError: Authentication failed (401)
-            ValidationNotFoundError: No data for date (404)
-            ValidationProcessingError: Data still being processed (200 with status: processing)
-            ValidationRateLimitError: Rate limited (429)
-            ValidationRequestError: Other errors
+            ValidationDataAuthError: Authentication failed (401)
+            ValidationDataNotFoundError: No data for date (404)
+            ValidationDataProcessingError: Data still being processed (200 with status: processing)
+            ValidationDataRateLimitError: Rate limited (429)
+            ValidationDataRequestError: Other errors
         """
         logger.info(f"Fetching validation URLs{f' for {date}' if date else ''}...")
 
@@ -253,10 +253,10 @@ class ValidationSetClient:
 
         # Validate response structure
         if "validationSet" not in data:
-            raise ValidationRequestError("Response missing 'validationSet' key")
+            raise ValidationDataRequestError("Response missing 'validationSet' key")
 
         if "rawDataFiles" not in data:
-            raise ValidationRequestError("Response missing 'rawDataFiles' key")
+            raise ValidationDataRequestError("Response missing 'rawDataFiles' key")
 
         # Parse response
         validation_set = data["validationSet"]
@@ -290,9 +290,9 @@ class ValidationSetClient:
             Parsed JSON validation data
 
         Raises:
-            ValidationAuthError: Authentication failed
-            ValidationNotFoundError: No data for date
-            ValidationRequestError: Download failed
+            ValidationDataAuthError: Authentication failed
+            ValidationDataNotFoundError: No data for date
+            ValidationDataRequestError: Download failed
         """
         logger.info("Downloading validation set...")
 
@@ -310,12 +310,12 @@ class ValidationSetClient:
                     )
                     return data
                 except ValueError as e:
-                    raise ValidationRequestError(
+                    raise ValidationDataRequestError(
                         f"Invalid JSON in validation set: {e}"
                     ) from e
 
             except httpx.RequestError as e:
-                raise ValidationRequestError(
+                raise ValidationDataRequestError(
                     f"Failed to download validation set: {e}"
                 ) from e
 
@@ -332,9 +332,9 @@ class ValidationSetClient:
             Dictionary keyed by state code (e.g., {"AL": {...}, "AZ": {...}})
 
         Raises:
-            ValidationAuthError: Authentication failed
-            ValidationNotFoundError: No data for date
-            ValidationRequestError: Download failed
+            ValidationDataAuthError: Authentication failed
+            ValidationDataNotFoundError: No data for date
+            ValidationDataRequestError: Download failed
         """
         logger.info("Downloading raw state files...")
 
@@ -381,9 +381,9 @@ class ValidationSetClient:
             Parsed JSON data for that state
 
         Raises:
-            ValidationAuthError: Authentication failed
-            ValidationNotFoundError: No data for date or state
-            ValidationRequestError: Download failed
+            ValidationDataAuthError: Authentication failed
+            ValidationDataNotFoundError: No data for date or state
+            ValidationDataRequestError: Download failed
         """
         logger.info(f"Downloading raw file for state {state}...")
 
@@ -397,7 +397,7 @@ class ValidationSetClient:
                 break
 
         if file_info is None:
-            raise ValidationNotFoundError(
+            raise ValidationDataNotFoundError(
                 f"No raw file found for state {state} on {response.validation_date}"
             )
 
@@ -409,12 +409,12 @@ class ValidationSetClient:
                 try:
                     return download_response.json()
                 except ValueError as e:
-                    raise ValidationRequestError(
+                    raise ValidationDataRequestError(
                         f"Invalid JSON in raw file: {e}"
                     ) from e
 
             except httpx.RequestError as e:
-                raise ValidationRequestError(
+                raise ValidationDataRequestError(
                     f"Failed to download raw file: {e}"
                 ) from e
 
@@ -428,8 +428,8 @@ class ValidationSetClient:
         Fetch validation data with retry logic.
 
         Uses tenacity for retries with fixed delay between attempts.
-        Retries on ValidationRequestError and ValidationRateLimitError.
-        Does not retry on ValidationAuthError or ValidationNotFoundError.
+        Retries on ValidationDataRequestError and ValidationDataRateLimitError.
+        Does not retry on ValidationDataAuthError or ValidationDataNotFoundError.
 
         Args:
             date: Optional date in YYYY-MM-DD format
@@ -440,9 +440,9 @@ class ValidationSetClient:
             Tuple of (validation_data, raw_data) - None if not downloaded
 
         Raises:
-            ValidationAuthError: If authentication fails (no retry)
-            ValidationNotFoundError: If data not found (no retry)
-            ValidationRequestError: If all retries exhausted
+            ValidationDataAuthError: If authentication fails (no retry)
+            ValidationDataNotFoundError: If data not found (no retry)
+            ValidationDataRequestError: If all retries exhausted
         """
 
         async def _fetch():

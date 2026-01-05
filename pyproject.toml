@@ -27,6 +27,9 @@ dependencies = [
     "httpx>=0.26.0",
     "tenacity>=9.1.2",
     "apscheduler>=3.11.1",
+    "huggingface-hub>=0.20.0",
+    "onnxruntime>=1.16.0",
+    "onnx>=1.20.0",
 ]
 
 [dependency-groups]
@@ -36,6 +39,7 @@ dev = [
     "pytest-cov>=4",
     "mypy>=1.8",
     "ruff>=0.3",
+    "docker>=7.0.0",
 ]
 
 [build-system]

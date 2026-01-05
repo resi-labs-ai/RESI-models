@@ -111,18 +111,18 @@ class ScraperRequestError(ScraperError):
     pass
 
 
-# --- Validation API errors ---
+# --- Validation Data API errors ---
 
 
-class ValidationError(DataError):
-    """Base exception for validation API errors."""
+class ValidationDataError(DataError):
+    """Base exception for validation data API errors."""
 
     pass
 
 
-class ValidationAuthError(ValidationError):
+class ValidationDataAuthError(ValidationDataError):
     """
-    Raised when validation API authentication fails.
+    Raised when validation data API authentication fails.
 
     HTTP 401: Invalid signature, expired nonce, unknown hotkey, etc.
     """
@@ -130,7 +130,7 @@ class ValidationAuthError(ValidationError):
     pass
 
 
-class ValidationNotFoundError(ValidationError):
+class ValidationDataNotFoundError(ValidationDataError):
     """
     Raised when no validation set exists for requested date.
 
@@ -140,7 +140,7 @@ class ValidationNotFoundError(ValidationError):
     pass
 
 
-class ValidationRateLimitError(ValidationError):
+class ValidationDataRateLimitError(ValidationDataError):
     """
     Raised when rate limit exceeded.
 
@@ -150,9 +150,9 @@ class ValidationRateLimitError(ValidationError):
     pass
 
 
-class ValidationRequestError(ValidationError):
+class ValidationDataRequestError(ValidationDataError):
     """
-    Raised when validation API request fails.
+    Raised when validation data API request fails.
 
     Connection errors, invalid responses, etc.
     """
@@ -160,7 +160,7 @@ class ValidationRequestError(ValidationError):
     pass
 
 
-class ValidationProcessingError(ValidationError):
+class ValidationDataProcessingError(ValidationDataError):
     """
     Raised when validation set is still being processed.
 
@@ -175,7 +175,7 @@ class ValidationProcessingError(ValidationError):
         retry_after: int | None = None,
     ):
         """
-        Initialize ValidationProcessingError.
+        Initialize ValidationDataProcessingError.
 
         Args:
             message: Error message

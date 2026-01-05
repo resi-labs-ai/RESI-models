@@ -18,7 +18,7 @@ class ChainModelMetadata:
 
     hotkey: str
     hf_repo_id: str
-    model_hash: str  # SHA-256 prefix (8 chars)
+    model_hash: str  # SHA-1 prefix (8 chars)
     block_number: int
     timestamp: int  # Unix timestamp
 
@@ -130,6 +130,38 @@ class Neuron:
             dividends=float(data.get("dividends", 0)),
             emission=float(data.get("emission", 0)),
             is_active=data.get("active", False),
+        )
+
+
+@dataclass(frozen=True)
+class ExtrinsicCall:
+    """Call data within an extrinsic."""
+
+    call_module: str
+    call_function: str
+    call_args: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class ExtrinsicData:
+    """
+    Decoded extrinsic data from chain.
+
+    Contains address and call details from a specific block extrinsic.
+    """
+
+    block_number: int
+    extrinsic_index: int
+    extrinsic_hash: str
+    extrinsic_length: int
+    address: str | None  # Signer address (None for unsigned extrinsics)
+    call: ExtrinsicCall
+
+    def is_commitment_extrinsic(self) -> bool:
+        """Check if this extrinsic is a commitment call."""
+        return (
+            self.call.call_module.lower() == "commitments"
+            and self.call.call_function.lower() == "set_commitment"
         )
 
 

@@ -7,11 +7,11 @@ import pytest
 
 from real_estate.data import (
     RawFileInfo,
-    ValidationAuthError,
-    ValidationNotFoundError,
-    ValidationProcessingError,
-    ValidationRateLimitError,
-    ValidationRequestError,
+    ValidationDataAuthError,
+    ValidationDataNotFoundError,
+    ValidationDataProcessingError,
+    ValidationDataRateLimitError,
+    ValidationDataRequestError,
     ValidationSetClient,
     ValidationSetConfig,
     ValidationSetResponse,
@@ -169,7 +169,7 @@ class TestGetValidationUrls:
     async def test_processing_status_raises_processing_error(
         self, client, mock_processing_response
     ):
-        """200 response with status: 'processing' raises ValidationProcessingError."""
+        """200 response with status: 'processing' raises ValidationDataProcessingError."""
         mock_response = httpx.Response(
             200,
             json=mock_processing_response,
@@ -184,7 +184,7 @@ class TestGetValidationUrls:
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
-            with pytest.raises(ValidationProcessingError) as exc_info:
+            with pytest.raises(ValidationDataProcessingError) as exc_info:
                 await client.get_validation_urls()
 
         error = exc_info.value
@@ -212,7 +212,7 @@ class TestGetValidationUrls:
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
-            with pytest.raises(ValidationProcessingError) as exc_info:
+            with pytest.raises(ValidationDataProcessingError) as exc_info:
                 await client.get_validation_urls(date="2025-12-30")
 
         error = exc_info.value
@@ -220,7 +220,7 @@ class TestGetValidationUrls:
         assert error.retry_after == 3600
 
     async def test_401_raises_auth_error(self, client):
-        """401 response raises ValidationAuthError."""
+        """401 response raises ValidationDataAuthError."""
         mock_response = httpx.Response(401, text="Invalid signature")
 
         with patch.object(
@@ -229,11 +229,11 @@ class TestGetValidationUrls:
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
-            with pytest.raises(ValidationAuthError, match="Authentication failed"):
+            with pytest.raises(ValidationDataAuthError, match="Authentication failed"):
                 await client.get_validation_urls()
 
     async def test_404_raises_not_found_error(self, client):
-        """404 response raises ValidationNotFoundError."""
+        """404 response raises ValidationDataNotFoundError."""
         mock_response = httpx.Response(404, text="No data for date")
 
         with patch.object(
@@ -242,11 +242,11 @@ class TestGetValidationUrls:
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
-            with pytest.raises(ValidationNotFoundError, match="Data not found"):
+            with pytest.raises(ValidationDataNotFoundError, match="Data not found"):
                 await client.get_validation_urls()
 
     async def test_429_raises_rate_limit_error(self, client):
-        """429 response raises ValidationRateLimitError."""
+        """429 response raises ValidationDataRateLimitError."""
         mock_response = httpx.Response(429, text="Rate limit exceeded")
 
         with patch.object(
@@ -255,11 +255,11 @@ class TestGetValidationUrls:
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
-            with pytest.raises(ValidationRateLimitError, match="Rate limited"):
+            with pytest.raises(ValidationDataRateLimitError, match="Rate limited"):
                 await client.get_validation_urls()
 
     async def test_500_raises_request_error(self, client):
-        """500 response raises ValidationRequestError."""
+        """500 response raises ValidationDataRequestError."""
         mock_response = httpx.Response(500, text="Internal server error")
         mock_response.request = httpx.Request(
             "POST", "https://dashboard.example.com/api/auth/validation-set"
@@ -271,22 +271,22 @@ class TestGetValidationUrls:
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
-            with pytest.raises(ValidationRequestError, match="Request failed"):
+            with pytest.raises(ValidationDataRequestError, match="Request failed"):
                 await client.get_validation_urls()
 
     async def test_connection_error_raises_request_error(self, client):
-        """Connection error raises ValidationRequestError."""
+        """Connection error raises ValidationDataRequestError."""
         with patch.object(
             httpx.AsyncClient,
             "request",
             new_callable=AsyncMock,
             side_effect=httpx.ConnectError("Connection refused"),
         ):
-            with pytest.raises(ValidationRequestError, match="Connection error"):
+            with pytest.raises(ValidationDataRequestError, match="Connection error"):
                 await client.get_validation_urls()
 
     async def test_invalid_json_raises_request_error(self, client):
-        """Invalid JSON response raises ValidationRequestError."""
+        """Invalid JSON response raises ValidationDataRequestError."""
         mock_response = httpx.Response(
             200,
             content=b"not json",
@@ -301,11 +301,11 @@ class TestGetValidationUrls:
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
-            with pytest.raises(ValidationRequestError, match="Invalid JSON"):
+            with pytest.raises(ValidationDataRequestError, match="Invalid JSON"):
                 await client.get_validation_urls()
 
     async def test_missing_validation_set_key_raises_error(self, client):
-        """Missing 'validationSet' key raises ValidationRequestError."""
+        """Missing 'validationSet' key raises ValidationDataRequestError."""
         mock_response = httpx.Response(
             200,
             json={"rawDataFiles": []},
@@ -321,12 +321,12 @@ class TestGetValidationUrls:
             return_value=mock_response,
         ):
             with pytest.raises(
-                ValidationRequestError, match="missing 'validationSet'"
+                ValidationDataRequestError, match="missing 'validationSet'"
             ):
                 await client.get_validation_urls()
 
     async def test_missing_raw_data_files_key_raises_error(self, client):
-        """Missing 'rawDataFiles' key raises ValidationRequestError."""
+        """Missing 'rawDataFiles' key raises ValidationDataRequestError."""
         mock_response = httpx.Response(
             200,
             json={"validationSet": {}},
@@ -342,7 +342,7 @@ class TestGetValidationUrls:
             return_value=mock_response,
         ):
             with pytest.raises(
-                ValidationRequestError, match="missing 'rawDataFiles'"
+                ValidationDataRequestError, match="missing 'rawDataFiles'"
             ):
                 await client.get_validation_urls()
 
@@ -383,7 +383,7 @@ class TestDownloadValidationSet:
     async def test_connection_error_downloading_data(
         self, client, mock_validation_response
     ):
-        """Connection error during S3 download raises ValidationRequestError."""
+        """Connection error during S3 download raises ValidationDataRequestError."""
         api_response = httpx.Response(
             200,
             json=mock_validation_response,
@@ -401,14 +401,14 @@ class TestDownloadValidationSet:
             side_effect=httpx.ConnectError("Connection failed"),
         ):
             with pytest.raises(
-                ValidationRequestError, match="Failed to download validation set"
+                ValidationDataRequestError, match="Failed to download validation set"
             ):
                 await client.download_validation_set()
 
     async def test_invalid_json_in_downloaded_data(
         self, client, mock_validation_response
     ):
-        """Invalid JSON in downloaded data raises ValidationRequestError."""
+        """Invalid JSON in downloaded data raises ValidationDataRequestError."""
         api_response = httpx.Response(
             200,
             json=mock_validation_response,
@@ -429,7 +429,7 @@ class TestDownloadValidationSet:
             httpx.AsyncClient, "get", new_callable=AsyncMock, return_value=s3_response
         ):
             with pytest.raises(
-                ValidationRequestError, match="Invalid JSON in validation set"
+                ValidationDataRequestError, match="Invalid JSON in validation set"
             ):
                 await client.download_validation_set()
 
@@ -574,7 +574,7 @@ class TestDownloadRawFile:
     async def test_state_not_in_response_raises_error(
         self, client, mock_validation_response
     ):
-        """Raises ValidationNotFoundError if state not in response."""
+        """Raises ValidationDataNotFoundError if state not in response."""
         api_response = httpx.Response(
             200,
             json=mock_validation_response,
@@ -587,14 +587,14 @@ class TestDownloadRawFile:
             httpx.AsyncClient, "request", new_callable=AsyncMock, return_value=api_response
         ):
             with pytest.raises(
-                ValidationNotFoundError, match="No raw file found for state TX"
+                ValidationDataNotFoundError, match="No raw file found for state TX"
             ):
                 await client.download_raw_file("TX")
 
     async def test_connection_error_downloading(
         self, client, mock_validation_response
     ):
-        """Connection error raises ValidationRequestError."""
+        """Connection error raises ValidationDataRequestError."""
         api_response = httpx.Response(
             200,
             json=mock_validation_response,
@@ -612,7 +612,7 @@ class TestDownloadRawFile:
             side_effect=httpx.ConnectError("Connection failed"),
         ):
             with pytest.raises(
-                ValidationRequestError, match="Failed to download raw file"
+                ValidationDataRequestError, match="Failed to download raw file"
             ):
                 await client.download_raw_file("AL")
 
@@ -621,7 +621,7 @@ class TestFetchWithRetry:
     """Tests for fetch_with_retry method."""
 
     async def test_retries_on_request_error(self, mock_keypair):
-        """Retries on ValidationRequestError until success."""
+        """Retries on ValidationDataRequestError until success."""
         config = ValidationSetConfig(
             url="https://dashboard.example.com",
             max_retries=3,
@@ -635,7 +635,7 @@ class TestFetchWithRetry:
             nonlocal call_count
             call_count += 1
             if call_count < 2:
-                raise ValidationRequestError("temporary issue")
+                raise ValidationDataRequestError("temporary issue")
             return [{"id": 1}]
 
         client.download_validation_set = AsyncMock(side_effect=fail_then_succeed)
@@ -647,7 +647,7 @@ class TestFetchWithRetry:
         assert result[1] is None
 
     async def test_does_not_retry_on_auth_error(self, mock_keypair):
-        """Does not retry on ValidationAuthError."""
+        """Does not retry on ValidationDataAuthError."""
         config = ValidationSetConfig(
             url="https://dashboard.example.com",
             max_retries=3,
@@ -656,16 +656,16 @@ class TestFetchWithRetry:
         client = ValidationSetClient(config, mock_keypair)
 
         client.download_validation_set = AsyncMock(
-            side_effect=ValidationAuthError("bad key")
+            side_effect=ValidationDataAuthError("bad key")
         )
 
-        with pytest.raises(ValidationAuthError):
+        with pytest.raises(ValidationDataAuthError):
             await client.fetch_with_retry(download_validation=True, download_raw=False)
 
         assert client.download_validation_set.call_count == 1
 
     async def test_does_not_retry_on_not_found_error(self, mock_keypair):
-        """Does not retry on ValidationNotFoundError."""
+        """Does not retry on ValidationDataNotFoundError."""
         config = ValidationSetConfig(
             url="https://dashboard.example.com",
             max_retries=3,
@@ -674,16 +674,16 @@ class TestFetchWithRetry:
         client = ValidationSetClient(config, mock_keypair)
 
         client.download_validation_set = AsyncMock(
-            side_effect=ValidationNotFoundError("no data")
+            side_effect=ValidationDataNotFoundError("no data")
         )
 
-        with pytest.raises(ValidationNotFoundError):
+        with pytest.raises(ValidationDataNotFoundError):
             await client.fetch_with_retry(download_validation=True, download_raw=False)
 
         assert client.download_validation_set.call_count == 1
 
     async def test_retries_on_rate_limit_error(self, mock_keypair):
-        """Retries on ValidationRateLimitError."""
+        """Retries on ValidationDataRateLimitError."""
         config = ValidationSetConfig(
             url="https://dashboard.example.com",
             max_retries=3,
@@ -697,7 +697,7 @@ class TestFetchWithRetry:
             nonlocal call_count
             call_count += 1
             if call_count < 2:
-                raise ValidationRateLimitError("rate limited")
+                raise ValidationDataRateLimitError("rate limited")
             return [{"id": 1}]
 
         client.download_validation_set = AsyncMock(side_effect=rate_limit_then_succeed)
@@ -708,7 +708,7 @@ class TestFetchWithRetry:
         assert result[0] == [{"id": 1}]
 
     async def test_retries_on_processing_error(self, mock_keypair):
-        """Retries on ValidationProcessingError (data still being processed)."""
+        """Retries on ValidationDataProcessingError (data still being processed)."""
         config = ValidationSetConfig(
             url="https://dashboard.example.com",
             max_retries=3,
@@ -722,7 +722,7 @@ class TestFetchWithRetry:
             nonlocal call_count
             call_count += 1
             if call_count < 2:
-                raise ValidationProcessingError(
+                raise ValidationDataProcessingError(
                     "Validation set is still being processed",
                     validation_date="2025-12-30",
                     estimated_ready_time="2025-12-30T20:00:00.000Z",

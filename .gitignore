@@ -164,5 +164,6 @@ testing/
 # Editors
 .vscode/settings.json
 
-# Development files
-caleb-scratchpads/
+# Test artifacts
+test_model_cache/
+*.onnx

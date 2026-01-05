@@ -1,10 +1,10 @@
 """
-Test PylonClient commitment read/write functionality.
+Test ChainClient commitment read/write functionality.
 
 Usage:
     uv run python scripts/test_pylon_client.py
     uv run python scripts/test_pylon_client.py --pylon-url http://localhost:8000
-    uv run python scripts/test_pylon_client.py --token my_token --identity validator --netuid 1
+    uv run python scripts/test_pylon_client.py --token my_token --identity validator
     uv run python scripts/test_pylon_client.py --hotkey <SS58-address>
     uv run python scripts/test_pylon_client.py --commitment '{"h":"sha256:abc","r":"user/repo","v":"1.0"}'
 
@@ -12,7 +12,6 @@ Environment variables (alternative to CLI args):
     PYLON_URL       - Pylon server URL
     PYLON_TOKEN     - Authentication token
     PYLON_IDENTITY  - Identity name configured in Pylon
-    NETUID          - Subnet netuid
     TEST_HOTKEY     - Hotkey to test commitment read
 
 Requirements:
@@ -25,7 +24,7 @@ import json
 import os
 import sys
 
-from real_estate.chain import PylonClient, PylonConfig
+from real_estate.chain import ChainClient, ExtrinsicData, PylonConfig
 from real_estate.chain.errors import (
     AuthenticationError,
     ChainConnectionError,
@@ -36,12 +35,11 @@ from real_estate.chain.errors import (
 DEFAULT_PYLON_URL = "http://localhost:8000"
 DEFAULT_TOKEN = "test_token_123"
 DEFAULT_IDENTITY = "validator"
-DEFAULT_NETUID = 1
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Test PylonClient commitment read/write functionality"
+        description="Test ChainClient commitment read/write functionality"
     )
     parser.add_argument(
         "--pylon-url",
@@ -57,12 +55,6 @@ def parse_args() -> argparse.Namespace:
         "--identity",
         default=os.environ.get("PYLON_IDENTITY", DEFAULT_IDENTITY),
         help=f"Pylon identity name (default: {DEFAULT_IDENTITY})",
-    )
-    parser.add_argument(
-        "--netuid",
-        type=int,
-        default=int(os.environ.get("NETUID", str(DEFAULT_NETUID))),
-        help=f"Subnet netuid (default: {DEFAULT_NETUID})",
     )
     parser.add_argument(
         "--hotkey",
@@ -89,140 +81,226 @@ def step(num: int, desc: str) -> None:
     print(f"{num}. {desc}")
 
 
-async def test_commitments(pylon_url: str, token: str, identity: str, netuid: int, hotkey: str, commitment_json: str) -> bool:
-    """Test PylonClient commitment read/write functionality."""
+async def test_commitments(pylon_url: str, token: str, identity: str, hotkey: str, commitment_json: str) -> bool:
+    """Test ChainClient commitment read/write functionality."""
 
-    header("PylonClient Commitment Tests")
+    header("ChainClient Commitment Tests")
     print(f"Pylon: {pylon_url}")
-    print(f"Identity: {identity}, Netuid: {netuid}")
+    print(f"Identity: {identity}")
 
-    config = PylonConfig(url=pylon_url, token=token, identity=identity, netuid=netuid)
-    client = PylonClient(config)
+    config = PylonConfig(url=pylon_url, token=token, identity=identity)
     all_passed = True
 
-    # 1. Health check
-    step(1, "Health check...")
-    try:
-        healthy = await client.health_check()
-        if healthy:
-            print("   PASS: Pylon is running")
-        else:
-            print("   FAIL: Pylon not responding")
+    async with ChainClient(config) as client:
+        # 1. Health check
+        step(1, "Health check...")
+        try:
+            healthy = await client.health_check()
+            if healthy:
+                print("   PASS: Pylon is running")
+            else:
+                print("   FAIL: Pylon not responding")
+                return False
+        except Exception as e:
+            print(f"   FAIL: {e}")
             return False
-    except Exception as e:
-        print(f"   FAIL: {e}")
-        return False
 
-    # 2. Get all commitments
-    step(2, "Fetching all commitments...")
-    try:
-        commitments = await client.get_all_commitments()
-        print(f"   PASS: Found {len(commitments)} commitments")
-        for hotkey, commitment in list(commitments.items())[:3]:
-            print(f"   - {hotkey[:24]}...: {commitment.data[:40]}...")
-    except AuthenticationError as e:
-        print(f"   FAIL: Auth error: {e}")
-        all_passed = False
-    except Exception as e:
-        print(f"   FAIL: {e}")
-        all_passed = False
-
-    # 3. Get commitment for specific hotkey
-    step(3, "Fetching commitment for specific hotkey...")
-    if hotkey:
-        test_hotkey = hotkey
-        print(f"   Using provided hotkey: {test_hotkey[:24]}...")
-    else:
+        # 2. Get all commitments
+        step(2, "Fetching all commitments...")
         try:
-            metagraph = await client.get_metagraph()
-            if metagraph.hotkeys:
-                test_hotkey = metagraph.hotkeys[0]
-                print(f"   Using first hotkey from metagraph: {test_hotkey[:24]}...")
-            else:
-                print("   WARN: No hotkeys in metagraph")
-                test_hotkey = None
-        except Exception as e:
-            print(f"   WARN: Could not get metagraph: {e}")
-            test_hotkey = None
-
-    if test_hotkey:
-        try:
-            commitment = await client.get_commitment(test_hotkey)
-            if commitment:
-                print("   PASS: Found commitment")
-                print(f"   Data: {commitment.data[:50]}...")
-            else:
-                print("   PASS: No commitment (not set yet)")
+            commitments = await client.get_all_commitments()
+            print(f"   PASS: Found {len(commitments)} commitments")
+            for c in commitments[:3]:
+                print(f"   - {c.hotkey[:24]}...: repo={c.hf_repo_id}")
+        except AuthenticationError as e:
+            print(f"   FAIL: Auth error: {e}")
+            all_passed = False
         except Exception as e:
             print(f"   FAIL: {e}")
             all_passed = False
 
-    # 4. Get model metadata
-    step(4, "Fetching model metadata...")
-    if test_hotkey:
+        # 3. Get commitment for specific hotkey
+        step(3, "Fetching commitment for specific hotkey...")
+        test_hotkey: str | None = None
+        if hotkey:
+            test_hotkey = hotkey
+            print(f"   Using provided hotkey: {test_hotkey[:24]}...")
+        else:
+            try:
+                metagraph = await client.get_metagraph()
+                if metagraph.hotkeys:
+                    test_hotkey = metagraph.hotkeys[0]
+                    print(f"   Using first hotkey from metagraph: {test_hotkey[:24]}...")
+                else:
+                    print("   WARN: No hotkeys in metagraph")
+            except Exception as e:
+                print(f"   WARN: Could not get metagraph: {e}")
+
+        if test_hotkey:
+            try:
+                commitment = await client.get_commitment(test_hotkey)
+                if commitment:
+                    print("   PASS: Found commitment")
+                    print(f"   Data: {commitment.data[:50]}...")
+                else:
+                    print("   PASS: No commitment (not set yet)")
+            except Exception as e:
+                print(f"   FAIL: {e}")
+                all_passed = False
+
+        # 4. Get model metadata
+        step(4, "Fetching model metadata...")
+        if test_hotkey:
+            try:
+                metadata = await client.get_model_metadata(test_hotkey)
+                if metadata:
+                    print("   PASS: Got metadata")
+                    print(f"   Repo: {metadata.hf_repo_id}")
+                    print(f"   Hash: {metadata.model_hash}")
+                else:
+                    print("   PASS: No metadata (not set yet)")
+            except CommitmentError as e:
+                print(f"   WARN: Failed to parse: {e}")
+            except Exception as e:
+                print(f"   FAIL: {e}")
+                all_passed = False
+
+        # 5. Record block before setting commitment
+        step(5, "Recording current block before commitment...")
+        block_before_commitment = 0
         try:
-            metadata = await client.get_model_metadata(test_hotkey)
-            if metadata:
-                print("   PASS: Got metadata")
-                print(f"   Repo: {metadata.hf_repo_id}")
-                print(f"   Hash: {metadata.model_hash}")
+            commitments_before = await client.get_all_commitments()
+            if commitments_before:
+                block_before_commitment = commitments_before[0].block_number
             else:
-                print("   PASS: No metadata (not set yet)")
+                metagraph = await client.get_metagraph()
+                block_before_commitment = metagraph.block
+            print(f"   Current block: {block_before_commitment}")
+        except Exception as e:
+            print(f"   WARN: Could not get current block: {e}")
+
+        # 6. Set commitment
+        step(6, "Setting a test commitment...")
+        commitment_hex = ""
+        try:
+            if commitment_json:
+                model_metadata = json.loads(commitment_json)
+            else:
+                model_metadata = {
+                    "h": "sha256:abc123def456",
+                    "r": "testuser/resi-model",
+                    "v": "1.0.0",
+                }
+            commitment_bytes = json.dumps(model_metadata, separators=(",", ":")).encode("utf-8")
+            commitment_hex = commitment_bytes.hex()
+
+            print(f"   Metadata: {model_metadata}")
+            print(f"   Size: {len(commitment_bytes)} bytes")
+
+            success = await client.set_commitment(commitment_hex)
+            if success:
+                print("   PASS: Commitment set")
+            else:
+                print("   FAIL: set_commitment returned False")
+                all_passed = False
+        except AuthenticationError as e:
+            print(f"   FAIL: Auth error: {e}")
+            all_passed = False
         except CommitmentError as e:
-            print(f"   WARN: Failed to parse: {e}")
+            print(f"   FAIL: {e}")
+            all_passed = False
+        except ChainConnectionError as e:
+            print(f"   FAIL: Connection error: {e}")
+            all_passed = False
+
+        # 7. Verify commitment was set
+        step(7, "Verifying commitment (waiting 30s for chain)...")
+        block_after_commitment = 0
+        try:
+            print("   Waiting 30s for block finalization...")
+            await asyncio.sleep(30)
+            commitments = await client.get_all_commitments()
+            print(f"   Commitments after set: {len(commitments)}")
+            if commitments:
+                block_after_commitment = commitments[0].block_number
+                print(f"   Current block after wait: {block_after_commitment}")
+            found = any(commitment_hex in c.model_hash for c in commitments)
+            if found:
+                print("   PASS: Commitment verified on chain")
+            else:
+                print("   WARN: Commitment not found (may need more time)")
         except Exception as e:
             print(f"   FAIL: {e}")
             all_passed = False
 
-    # 5. Set commitment
-    step(5, "Setting a test commitment...")
-    commitment_hex = ""
-    try:
-        if commitment_json:
-            model_metadata = json.loads(commitment_json)
-        else:
-            model_metadata = {
-                "h": "sha256:abc123def456",
-                "r": "testuser/resi-model",
-                "v": "1.0.0",
-            }
-        commitment_bytes = json.dumps(model_metadata, separators=(",", ":")).encode("utf-8")
-        commitment_hex = commitment_bytes.hex()
+        # 8. Test get_extrinsic - search for commitment extrinsic
+        step(8, "Testing get_extrinsic - searching for commitment extrinsic...")
+        if block_before_commitment > 0 and block_after_commitment > 0:
+            try:
+                found_extrinsic: ExtrinsicData | None = None
+                blocks_to_search = range(
+                    block_before_commitment,
+                    block_after_commitment + 1
+                )
+                print(f"   Searching blocks {block_before_commitment} to {block_after_commitment}...")
 
-        print(f"   Metadata: {model_metadata}")
-        print(f"   Size: {len(commitment_bytes)} bytes")
+                for block_num in blocks_to_search:
+                    # Search extrinsic indices 0-15 in each block
+                    for ext_idx in range(16):
+                        try:
+                            extrinsic = await client.get_extrinsic(block_num, ext_idx)
+                            if extrinsic is None:
+                                break  # No more extrinsics in this block
 
-        success = await client.set_commitment(commitment_hex)
-        if success:
-            print("   PASS: Commitment set")
-        else:
-            print("   FAIL: set_commitment returned False")
-            all_passed = False
-    except AuthenticationError as e:
-        print(f"   FAIL: Auth error: {e}")
-        all_passed = False
-    except CommitmentError as e:
-        print(f"   FAIL: {e}")
-        all_passed = False
-    except ChainConnectionError as e:
-        print(f"   FAIL: Connection error: {e}")
-        all_passed = False
+                            # Check if this is a commitment extrinsic
+                            if extrinsic.is_commitment_extrinsic():
+                                print(f"   Found commitment extrinsic at block {block_num}, index {ext_idx}")
+                                print(f"   Block number: {extrinsic.block_number}")
+                                print(f"   Extrinsic index: {extrinsic.extrinsic_index}")
+                                print(f"   Extrinsic hash: {extrinsic.extrinsic_hash}")
+                                print(f"   Extrinsic length: {extrinsic.extrinsic_length}")
+                                print(f"   Address: {extrinsic.address}")
+                                print(f"   Call module: {extrinsic.call.call_module}")
+                                print(f"   Call function: {extrinsic.call.call_function}")
+                                print(f"   Call args: {extrinsic.call.call_args}")
+                                found_extrinsic = extrinsic
+                                # Don't break - show all commitment extrinsics
 
-    # 6. Verify commitment was set
-    step(6, "Verifying commitment (waiting 30s for chain)...")
-    try:
-        print("   Waiting 30s for block finalization...")
-        await asyncio.sleep(30)
-        commitments = await client.get_all_commitments()
-        print(f"   Commitments after set: {len(commitments)}")
-        found = any(commitment_hex in c.data for c in commitments.values())
-        if found:
-            print("   PASS: Commitment verified on chain")
+                        except ChainConnectionError:
+                            break  # No more extrinsics
+                        except Exception as e:
+                            print(f"   Error fetching extrinsic {block_num}:{ext_idx}: {e}")
+                            break
+
+                if found_extrinsic:
+                    print("   PASS: get_extrinsic works - found commitment extrinsic")
+                else:
+                    print("   WARN: No commitment extrinsic found in searched blocks")
+                    # Try a specific known extrinsic to verify API works
+                    print("   Testing get_extrinsic with block 0, index 0...")
+                    try:
+                        test_ext = await client.get_extrinsic(block_after_commitment, 0)
+                        if test_ext:
+                            print("   PASS: get_extrinsic API works")
+                            print(f"   Block number: {test_ext.block_number}")
+                            print(f"   Extrinsic index: {test_ext.extrinsic_index}")
+                            print(f"   Extrinsic hash: {test_ext.extrinsic_hash}")
+                            print(f"   Extrinsic length: {test_ext.extrinsic_length}")
+                            print(f"   Address: {test_ext.address}")
+                            print(f"   Call module: {test_ext.call.call_module}")
+                            print(f"   Call function: {test_ext.call.call_function}")
+                            print(f"   Call args: {test_ext.call.call_args}")
+                        else:
+                            print("   WARN: get_extrinsic returned None")
+                    except Exception as e:
+                        print(f"   FAIL: get_extrinsic failed: {e}")
+                        all_passed = False
+
+            except Exception as e:
+                print(f"   FAIL: {e}")
+                all_passed = False
         else:
-            print("   WARN: Commitment not found (may need more time)")
-    except Exception as e:
-        print(f"   FAIL: {e}")
-        all_passed = False
+            print("   SKIP: Could not determine block range to search")
 
     # Summary
     header("Summary")
@@ -236,7 +314,7 @@ async def test_commitments(pylon_url: str, token: str, identity: str, netuid: in
 
 def main() -> None:
     args = parse_args()
-    success = asyncio.run(test_commitments(args.pylon_url, args.token, args.identity, args.netuid, args.hotkey, args.commitment))
+    success = asyncio.run(test_commitments(args.pylon_url, args.token, args.identity, args.hotkey, args.commitment))
     sys.exit(0 if success else 1)
 
 
