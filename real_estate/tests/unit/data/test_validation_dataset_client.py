@@ -996,3 +996,76 @@ class TestIntegration:
             call_args = mock_request.call_args
             assert "?date=2025-12-20" in call_args[0][1]  # URL argument
 
+
+class TestStartScheduled:
+    """Tests for start_scheduled method."""
+
+    def test_creates_scheduler_and_adds_job(self, client):
+        """Creates scheduler with correct job configuration."""
+        with patch(
+            "real_estate.data.validation_dataset_client.AsyncIOScheduler"
+        ) as mock_scheduler_cls:
+            scheduler = mock_scheduler_cls.return_value
+            on_fetch = MagicMock()
+
+            result = client.start_scheduled(on_fetch)
+
+            mock_scheduler_cls.assert_called_once_with(timezone="UTC")
+            scheduler.add_job.assert_called_once()
+            scheduler.start.assert_called_once()
+            assert result == scheduler
+
+            _, kwargs = scheduler.add_job.call_args
+            assert kwargs["id"] == "validation_set_fetch"
+
+    async def test_scheduled_job_calls_on_fetch(self, client, mock_validation_data):
+        """Scheduled job calls on_fetch callback with data."""
+        from real_estate.data import ValidationDataset
+
+        with patch(
+            "real_estate.data.validation_dataset_client.AsyncIOScheduler"
+        ) as mock_scheduler_cls:
+            on_fetch = MagicMock()
+            client.start_scheduled(on_fetch)
+
+            # Get the scheduled function
+            job_args, _ = mock_scheduler_cls.return_value.add_job.call_args
+            scheduled_func = job_args[0]
+
+            # Mock fetch_with_retry and run the scheduled function
+            mock_dataset = ValidationDataset(properties=mock_validation_data)
+            with patch.object(
+                client,
+                "fetch_with_retry",
+                new_callable=AsyncMock,
+                return_value=(mock_dataset, None),
+            ):
+                await scheduled_func()
+
+            on_fetch.assert_called_once_with(mock_dataset, None)
+
+    async def test_scheduled_job_handles_errors(self, client):
+        """Scheduled job catches and logs errors without crashing."""
+        with patch(
+            "real_estate.data.validation_dataset_client.AsyncIOScheduler"
+        ) as mock_scheduler_cls:
+            on_fetch = MagicMock()
+            client.start_scheduled(on_fetch)
+
+            # Get the scheduled function
+            job_args, _ = mock_scheduler_cls.return_value.add_job.call_args
+            scheduled_func = job_args[0]
+
+            # Mock fetch_with_retry to raise an exception
+            with patch.object(
+                client,
+                "fetch_with_retry",
+                new_callable=AsyncMock,
+                side_effect=Exception("Network error"),
+            ):
+                # Should not raise, just log the error
+                await scheduled_func()
+
+            # on_fetch should not have been called
+            on_fetch.assert_not_called()
+

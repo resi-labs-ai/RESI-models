@@ -22,8 +22,6 @@ if TYPE_CHECKING:
     from real_estate.chain import ChainClient
 from real_estate.config import check_config, config_to_dict, get_config, setup_logging
 from real_estate.data import (
-    ScraperClient,
-    ScraperConfig,
     ValidationDataset,
     ValidationDatasetClient,
     ValidationDatasetClientConfig,
@@ -88,30 +86,17 @@ class Validator:
         self.hotkey: str = self.wallet.hotkey.ss58_address
         logger.info(f"Loaded wallet: {self.wallet.name}/{self.wallet.hotkey_str}")
 
-        # Scraper client for fetching validation data (legacy scraper service)
-        self.scraper = ScraperClient(
-            ScraperConfig(
-                url=self.config.scraper_url,
-                realm=self.config.realm,
-                schedule_hour=self.config.scraper_schedule_hour,
-                schedule_minute=self.config.scraper_schedule_minute,
-                max_retries=self.config.scraper_max_retries,
-                retry_delay_seconds=self.config.scraper_retry_delay,
-            ),
-            self.wallet.hotkey,
-        )
-
-        # Validation API client for fetching validation sets from dashboard
-        self.validation_api = ValidationDatasetClient(
+        # Validation data client for fetching validation data from dashboard API
+        self.validation_client = ValidationDatasetClient(
             ValidationDatasetClientConfig(
-                url=self.config.validation_api_url,
+                url=self.config.validation_data_url,
                 realm=self.config.realm,
                 timeout=60.0,
-                max_retries=self.config.validation_api_max_retries,
-                retry_delay_seconds=self.config.validation_api_retry_delay,
-                schedule_hour=self.config.validation_api_schedule_hour,
-                schedule_minute=self.config.validation_api_schedule_minute,
-                download_raw=self.config.validation_api_download_raw,
+                max_retries=self.config.validation_data_max_retries,
+                retry_delay_seconds=self.config.validation_data_retry_delay,
+                schedule_hour=self.config.validation_data_schedule_hour,
+                schedule_minute=self.config.validation_data_schedule_minute,
+                download_raw=self.config.validation_data_download_raw,
             ),
             self.wallet.hotkey,
         )
@@ -121,9 +106,8 @@ class Validator:
 
         # State
         self.metagraph: Metagraph | None = None
-        self.validation_data: ValidationDataset | None = None  # From scraper
-        self.validation_set: ValidationDataset | None = None  # From validation API
-        self.raw_data: dict[str, dict] | None = None  # Raw state files from validation API
+        self.validation_data: ValidationDataset | None = None
+        self.raw_data: dict[str, dict] | None = None  # Raw state files
         self.scores: np.ndarray = np.array([], dtype=np.float32)
         self.hotkeys: list[str] = []
         self.uid: int | None = None
@@ -306,20 +290,15 @@ class Validator:
         epoch_length: int = self.config.epoch_length
         return elapsed > epoch_length
 
-    def _on_validation_data_fetched(self, data: ValidationDataset) -> None:
-        """Callback when new validation data is fetched from scraper."""
-        self.validation_data = data
-        logger.info(f"Validation data updated (scraper): {len(data)} properties")
-
-    def _on_validation_set_fetched(
-        self, validation_set: ValidationDataset | None, raw_data: dict[str, dict] | None
+    def _on_validation_data_fetched(
+        self, validation_data: ValidationDataset | None, raw_data: dict[str, dict] | None
     ) -> None:
-        """Callback when new validation set is fetched from dashboard API."""
-        self.validation_set = validation_set
+        """Callback when new validation data is fetched."""
+        self.validation_data = validation_data
         self.raw_data = raw_data
 
-        if validation_set:
-            logger.info(f"Validation set updated: {len(validation_set)} properties")
+        if validation_data:
+            logger.info(f"Validation data updated: {len(validation_data)} properties")
 
         if raw_data:
             logger.info(f"Raw data updated: {len(raw_data)} states")
@@ -381,33 +360,21 @@ class Validator:
             except Exception as e:
                 logger.warning(f"Initial model download failed: {e}")
 
-            # Initial validation data fetch (scraper)
-            logger.info("Performing initial validation data fetch (scraper)...")
+            # Initial validation data fetch
+            logger.info("Performing initial validation data fetch...")
             try:
-                data = await self.scraper.fetch_with_retry()
-                self._on_validation_data_fetched(data)
+                validation_data, raw_data = await self.validation_client.fetch_with_retry(
+                    download_validation=True,
+                    download_raw=self.config.validation_data_download_raw,
+                )
+                self._on_validation_data_fetched(validation_data, raw_data)
             except Exception as e:
                 logger.warning(f"Initial validation data fetch failed: {e}")
 
-        # Initial validation set fetch (dashboard API)
-        logger.info("Performing initial validation set fetch (dashboard API)...")
-        try:
-            validation_set, raw_data = await self.validation_api.fetch_with_retry(
-                download_validation=True,
-                download_raw=self.config.validation_api_download_raw,
+            # Start scheduled daily data fetcher (cron job)
+            validation_scheduler = self.validation_client.start_scheduled(
+                on_fetch=self._on_validation_data_fetched,
             )
-            self._on_validation_set_fetched(validation_set, raw_data)
-        except Exception as e:
-            logger.warning(f"Initial validation set fetch failed: {e}")
-
-        # Start scheduled daily data fetchers (cron jobs)
-        scraper_scheduler = self.scraper.start_scheduled(
-            on_fetch=self._on_validation_data_fetched,
-        )
-
-        validation_api_scheduler = self.validation_api.start_scheduled(
-            on_fetch=self._on_validation_set_fetched,
-        )
 
             # Main loop
             try:
@@ -431,11 +398,10 @@ class Validator:
                     self.save_state()
                     await asyncio.sleep(5)  # TODO: change back to 60 after testing
 
-        except KeyboardInterrupt:
-            logger.info("Validator stopped by keyboard interrupt")
-        finally:
-            scraper_scheduler.shutdown()
-            validation_api_scheduler.shutdown()
+            except KeyboardInterrupt:
+                logger.info("Validator stopped by keyboard interrupt")
+            finally:
+                validation_scheduler.shutdown()
 
 
 async def main() -> None:

@@ -6,9 +6,6 @@ from .errors import (
     InvalidTransformValueError,
     MissingFieldError,
     MissingTransformFieldError,
-    ScraperAuthError,
-    ScraperError,
-    ScraperRequestError,
     UnknownCategoryError,
     ValidationDataAuthError,
     ValidationDataError,
@@ -26,10 +23,6 @@ from .feature_transforms import (
     set_clock,
 )
 from .models import PropertyData, ValidationDataset
-from .scraper_client import (
-    ScraperClient,
-    ScraperConfig,
-)
 from .validation_dataset_client import (
     RawFileInfo,
     ValidationDatasetClient,
@@ -44,9 +37,6 @@ __all__ = [
     "InvalidTransformValueError",
     "MissingFieldError",
     "MissingTransformFieldError",
-    "ScraperAuthError",
-    "ScraperError",
-    "ScraperRequestError",
     "UnknownCategoryError",
     "ValidationDataAuthError",
     "ValidationDataError",
@@ -65,10 +55,7 @@ __all__ = [
     # Models
     "PropertyData",
     "ValidationDataset",
-    # Scraper
-    "ScraperClient",
-    "ScraperConfig",
-    # Validation Dataset API
+    # Validation Dataset Client
     "ValidationDatasetClient",
     "ValidationDatasetClientConfig",
     "ValidationDatasetResponse",

@@ -75,42 +75,6 @@ class InvalidTransformValueError(DataError):
     pass
 
 
-# --- Scraper client errors ---
-
-
-class ScraperError(DataError):
-    """Base exception for scraper-related errors."""
-
-    pass
-
-
-class ScraperAuthError(ScraperError):
-    """
-    Raised when scraper authentication fails.
-
-    This can happen when:
-    - Invalid hotkey signature (401)
-    - Hotkey not in whitelist (403)
-    - Nonce validation failed
-    """
-
-    pass
-
-
-class ScraperRequestError(ScraperError):
-    """
-    Raised when scraper request fails.
-
-    This can happen when:
-    - Connection error
-    - HTTP error status
-    - Invalid JSON response
-    - Missing 'properties' key in response
-    """
-
-    pass
-
-
 # --- Validation Data API errors ---
 
 
