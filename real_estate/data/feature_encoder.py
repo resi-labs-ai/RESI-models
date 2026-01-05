@@ -130,9 +130,7 @@ class FeatureEncoder:
                     )
                 value = prop[field]
                 if value is None:
-                    raise MissingFieldError(
-                        f"Boolean field '{field}' is None"
-                    )
+                    raise MissingFieldError(f"Boolean field '{field}' is None")
                 features.append(1.0 if value else 0.0)
 
             elif field in feature_transforms:
@@ -148,4 +146,3 @@ class FeatureEncoder:
     def get_feature_count(self) -> int:
         """Return total number of features in encoded output."""
         return len(self._config["feature_order"])
-

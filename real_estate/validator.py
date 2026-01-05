@@ -90,7 +90,6 @@ class Validator:
         self.validation_client = ValidationDatasetClient(
             ValidationDatasetClientConfig(
                 url=self.config.validation_data_url,
-                realm=self.config.realm,
                 timeout=60.0,
                 max_retries=self.config.validation_data_max_retries,
                 retry_delay_seconds=self.config.validation_data_retry_delay,
@@ -291,7 +290,9 @@ class Validator:
         return elapsed > epoch_length
 
     def _on_validation_data_fetched(
-        self, validation_data: ValidationDataset | None, raw_data: dict[str, dict] | None
+        self,
+        validation_data: ValidationDataset | None,
+        raw_data: dict[str, dict] | None,
     ) -> None:
         """Callback when new validation data is fetched."""
         self.validation_data = validation_data
@@ -363,7 +364,10 @@ class Validator:
             # Initial validation data fetch
             logger.info("Performing initial validation data fetch...")
             try:
-                validation_data, raw_data = await self.validation_client.fetch_with_retry(
+                (
+                    validation_data,
+                    raw_data,
+                ) = await self.validation_client.fetch_with_retry(
                     download_validation=True,
                     download_raw=self.config.validation_data_download_raw,
                 )

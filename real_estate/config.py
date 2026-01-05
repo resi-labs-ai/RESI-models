@@ -19,14 +19,6 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     """
 
     parser.add_argument(
-        "--realm",
-        type=str,
-        choices=["devnet", "testnet", "mainnet"],
-        help="Bittensor network realm.",
-        default=os.environ.get("REALM", "devnet"),
-    )
-
-    parser.add_argument(
         "--netuid",
         type=int,
         help="Subnet netuid to validate on.",
@@ -110,7 +102,8 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="validation_data_download_raw",
         action="store_true",
         help="Download raw state files for verification.",
-        default=os.environ.get("VALIDATION_DATA_DOWNLOAD_RAW", "false").lower() == "true",
+        default=os.environ.get("VALIDATION_DATA_DOWNLOAD_RAW", "false").lower()
+        == "true",
     )
 
     parser.add_argument(
@@ -260,7 +253,6 @@ def check_config(config: argparse.Namespace) -> None:
 def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
     """Convert config to dictionary for logging."""
     return {
-        "realm": config.realm,
         "netuid": config.netuid,
         "wallet_name": config.wallet_name,
         "wallet_hotkey": config.wallet_hotkey,

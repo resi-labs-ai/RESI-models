@@ -11,7 +11,7 @@ import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from bittensor import Keypair
 from tenacity import (
-    retry,
+    AsyncRetrying,
     retry_if_exception_type,
     stop_after_attempt,
     wait_fixed,
@@ -34,7 +34,6 @@ class ValidationDatasetClientConfig:
     """Configuration for validation dataset client."""
 
     url: str
-    realm: str = "devnet"  # devnet, testnet, mainnet
     endpoint: str = "/api/auth/validation-set"
     timeout: float = 60.0
     # URL expiration is 1 hour, no need to cache long-term
@@ -68,18 +67,6 @@ class ValidationDatasetResponse:
     raw_files: list[RawFileInfo]
 
 
-def _create_retry_decorator(max_retries: int, delay_seconds: int):
-    """Create a tenacity retry decorator with given config."""
-    return retry(
-        wait=wait_fixed(delay_seconds),
-        stop=stop_after_attempt(max_retries),
-        retry=retry_if_exception_type(
-            (ValidationDataRequestError, ValidationDataRateLimitError, ValidationDataProcessingError)
-        ),
-        reraise=True,
-    )
-
-
 class ValidationDatasetClient:
     """
     Client for fetching validation data from dashboard API.
@@ -102,18 +89,12 @@ class ValidationDatasetClient:
         self._keypair = keypair
         self._base_url = config.url.rstrip("/")
 
-        # Create retry decorator once at init
-        self._retry_decorator = _create_retry_decorator(
-            config.max_retries,
-            config.retry_delay_seconds,
-        )
-
     def _sign_request(self, method: str, url: str, nonce: str) -> dict[str, str]:
         """
         Sign a request and return headers with authentication.
 
         Message format: {METHOD}{URL}{HEADERS_JSON}
-        Headers JSON: {"Hotkey": "...", "Nonce": "...", "Realm": "..."}  (sorted keys)
+        Headers JSON: {"Hotkey": "...", "Nonce": "..."}  (sorted keys)
 
         Args:
             method: HTTP method (GET, POST, etc.)
@@ -121,7 +102,7 @@ class ValidationDatasetClient:
             nonce: Timestamp nonce
 
         Returns:
-            Headers dict with Hotkey, Nonce, Realm, and Signature
+            Headers dict with Hotkey, Nonce, and Signature
         """
         hotkey = self._keypair.ss58_address
 
@@ -129,7 +110,6 @@ class ValidationDatasetClient:
         sign_headers = {
             "Hotkey": hotkey,
             "Nonce": nonce,
-            "Realm": self._config.realm,
         }
 
         headers_str = json.dumps(sign_headers, sort_keys=True)
@@ -192,7 +172,9 @@ class ValidationDatasetClient:
                     )
 
                 if response.status_code == 404:
-                    raise ValidationDataNotFoundError(f"Data not found: {response.text}")
+                    raise ValidationDataNotFoundError(
+                        f"Data not found: {response.text}"
+                    )
 
                 if response.status_code == 429:
                     raise ValidationDataRateLimitError(f"Rate limited: {response.text}")
@@ -207,7 +189,10 @@ class ValidationDatasetClient:
                     ) from e
 
                 # Check for "processing" status (200 response but not ready yet)
-                if response.status_code == 200 and json_data.get("status") == "processing":
+                if (
+                    response.status_code == 200
+                    and json_data.get("status") == "processing"
+                ):
                     raise ValidationDataProcessingError(
                         json_data.get(
                             "message",
@@ -279,7 +264,9 @@ class ValidationDatasetClient:
             raw_files=raw_files,
         )
 
-    async def download_validation_set(self, date: str | None = None) -> ValidationDataset:
+    async def download_validation_set(
+        self, date: str | None = None
+    ) -> ValidationDataset:
         """
         Download and parse validation set.
 
@@ -316,7 +303,9 @@ class ValidationDatasetClient:
                             "Invalid validation set format: expected list or dict with 'properties' key"
                         )
 
-                    logger.info(f"Downloaded validation set: {len(properties)} properties")
+                    logger.info(
+                        f"Downloaded validation set: {len(properties)} properties"
+                    )
                     return ValidationDataset(properties=properties)
 
                 except ValueError as e:
@@ -329,9 +318,7 @@ class ValidationDatasetClient:
                     f"Failed to download validation set: {e}"
                 ) from e
 
-    async def download_raw_files(
-        self, date: str | None = None
-    ) -> dict[str, dict]:
+    async def download_raw_files(self, date: str | None = None) -> dict[str, dict]:
         """
         Download all raw state files.
 
@@ -377,11 +364,12 @@ class ValidationDatasetClient:
         logger.info(f"Downloaded {len(raw_data)} raw state files")
         return raw_data
 
-    async def download_raw_file(
-        self, state: str, date: str | None = None
-    ) -> dict:
+    async def download_raw_file(self, state: str, date: str | None = None) -> dict:
         """
         Download a specific raw state file.
+
+        Primarily for testing and debugging. Production code uses
+        download_raw_files() to fetch all states via fetch_with_retry().
 
         Args:
             state: State code (e.g., "AL", "AZ")
@@ -454,24 +442,38 @@ class ValidationDatasetClient:
             ValidationDataNotFoundError: If data not found (no retry)
             ValidationDataRequestError: If all retries exhausted
         """
+        async for attempt in AsyncRetrying(
+            wait=wait_fixed(self._config.retry_delay_seconds),
+            stop=stop_after_attempt(self._config.max_retries),
+            retry=retry_if_exception_type(
+                (
+                    ValidationDataRequestError,
+                    ValidationDataRateLimitError,
+                    ValidationDataProcessingError,
+                )
+            ),
+            reraise=True,
+        ):
+            with attempt:
+                validation_data = None
+                raw_data = None
 
-        async def _fetch():
-            validation_data = None
-            raw_data = None
+                if download_validation:
+                    validation_data = await self.download_validation_set(date)
 
-            if download_validation:
-                validation_data = await self.download_validation_set(date)
+                if download_raw:
+                    raw_data = await self.download_raw_files(date)
 
-            if download_raw:
-                raw_data = await self.download_raw_files(date)
+                return validation_data, raw_data
 
-            return validation_data, raw_data
-
-        return await self._retry_decorator(_fetch)()
+        # This should never be reached due to reraise=True
+        return None, None
 
     def start_scheduled(
         self,
-        on_fetch: Callable[[ValidationDataset | None, dict[str, dict] | None], None | Awaitable[None]],
+        on_fetch: Callable[
+            [ValidationDataset | None, dict[str, dict] | None], None | Awaitable[None]
+        ],
     ) -> AsyncIOScheduler:
         """
         Start scheduled validation data fetching using APScheduler.
@@ -519,4 +521,3 @@ class ValidationDatasetClient:
 
         scheduler.start()
         return scheduler
-

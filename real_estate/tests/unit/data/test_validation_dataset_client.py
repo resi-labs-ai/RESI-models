@@ -832,11 +832,10 @@ class TestSignRequest:
         assert isinstance(headers, dict)
         assert "Hotkey" in headers
         assert "Nonce" in headers
-        assert "Realm" in headers
         assert "Signature" in headers
 
         # Verify keypair.sign was called with correct message
-        expected_message = f'POST{url}{{"Hotkey": "5MockValidatorHotkey", "Nonce": "{nonce}", "Realm": "devnet"}}'
+        expected_message = f'POST{url}{{"Hotkey": "5MockValidatorHotkey", "Nonce": "{nonce}"}}'
         client._keypair.sign.assert_called_once()
         call_args = client._keypair.sign.call_args[0][0]
         assert call_args.decode() == expected_message
@@ -859,22 +858,10 @@ class TestSignRequest:
 
         client._sign_request("POST", url, nonce)
 
-        # Verify headers are sorted (Hotkey before Nonce before Realm)
+        # Verify headers are sorted (Hotkey before Nonce)
         call_args = client._keypair.sign.call_args[0][0].decode()
         assert '{"Hotkey":' in call_args
         assert call_args.index("Hotkey") < call_args.index("Nonce")
-        assert call_args.index("Nonce") < call_args.index("Realm")
-
-    def test_sign_request_includes_realm_header(self, client):
-        """Signature includes Realm header (like ScraperClient)."""
-        nonce = "1703923200.123"
-        url = "https://dashboard.example.com/api/auth/validation-set"
-
-        headers = client._sign_request("POST", url, nonce)
-
-        assert headers["Realm"] == "devnet"
-        call_args = client._keypair.sign.call_args[0][0].decode()
-        assert "Realm" in call_args
 
     def test_sign_request_returns_headers_dict(self, client):
         """Returns dict with all auth headers."""
@@ -886,7 +873,6 @@ class TestSignRequest:
         assert isinstance(headers, dict)
         assert headers["Hotkey"] == "5MockValidatorHotkey"
         assert headers["Nonce"] == nonce
-        assert headers["Realm"] == "devnet"
         # Signature is hex-encoded
         assert isinstance(headers["Signature"], str)
 
