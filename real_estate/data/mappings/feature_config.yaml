@@ -2,42 +2,170 @@ version: "1.0.0"
 
 # Numeric fields - passed through as-is to the model
 numeric_fields:
-  - price
-  - beds
-  - baths
-  - sqft
-  - lot_size
-  - year_built
-  - days_on_market
-  - latitude
+  - living_area_sqft
+  - lot_size_sqft
+  - garage_capacity
+  - total_parking
+  - min_school_distance
   - longitude
-  - hoa_dues
+  - latitude
+  - days_on_zillow
+  - covered_parking_capacity
+  - bathrooms
+  - appliances_count
+  - bedrooms
+  - total_amenity_count
+  - parking_features_count
+  - total_bathrooms
+  - pool_features_count
+  - sewer_count
+  - community_features_count
+  - interior_features_count
+  - stories
+  - laundry_features_count
+  - avg_school_rating
+  - lot_features_count
+  - open_parking_capacity
+  - bathrooms_half
+  - construction_materials_count
+  - middle_rating
+  - exterior_features_count
+  - flooring_count
+  - cooling_count
+  - water_source_count
+  - heating_count
+  - bathrooms_full
+  - view_features_count
+  - electric_count
+  - bathrooms_three_quarter
+  - elementary_rating
+  - high_rating
+  - fireplaces_count
+  - max_school_rating
+  - school_count
 
-# Feature transforms - derived features computed from raw data
+# Feature transforms - computed features with custom logic
 # Each field name must have a matching @feature_transform decorator
 feature_transforms:
   - days_since_last_sale
+  - property_age
+  - beds_per_bath
+  - lot_to_living_ratio
 
-# Categorical fields - mapped to integers via JSON files
-categorical_fields:
-  city: cities.json
-  state: states.json
-  property_type: property_types.json
+# Boolean fields - passed through as 0.0 (false) or 1.0 (true)
+boolean_fields:
+  - has_pool
+  - has_any_pool_or_spa
+  - has_garage
+  - is_new_construction
+  - has_spa
+  - has_central_air
+  - has_open_parking
+  - has_natural_gas
+  - has_fireplace
+  - has_forced_air_heating
+  - has_tile_floors
+  - has_attached_garage
+  - has_home_warranty
+  - has_heating
+  - has_view
+  - has_cooling
+  - has_hardwood_floors
+  - is_senior_community
+  - has_waterfront_view
+  - has_basement
+  # Property type one-hot encoding
+  - home_type_single_family
+  - home_type_condo_townhouse
+  - home_type_multi_family
+  - home_type_manufactured
+  - home_type_land
+  - home_type_farm_ranch
+  - home_type_commercial
+  - home_type_other
 
 # Output feature order (must match what miners expect)
-# Total: 10 numeric + 1 computed + 3 categorical = 14 features
+# Total: 41 numeric + 1 date + 3 computed + 20 boolean + 8 home_type = 73 features
 feature_order:
-  - price
-  - beds
-  - baths
-  - sqft
-  - lot_size
-  - year_built
-  - days_on_market
-  - latitude
+  # Numeric features
+  - living_area_sqft
+  - lot_size_sqft
+  - garage_capacity
+  - total_parking
+  - min_school_distance
   - longitude
-  - hoa_dues
+  - latitude
+  - days_on_zillow
+  - covered_parking_capacity
+  - bathrooms
+  - appliances_count
+  - bedrooms
+  - total_amenity_count
+  - parking_features_count
+  - total_bathrooms
+  - pool_features_count
+  - sewer_count
+  - community_features_count
+  - interior_features_count
+  - stories
+  - laundry_features_count
+  - avg_school_rating
+  - lot_features_count
+  - open_parking_capacity
+  - bathrooms_half
+  - construction_materials_count
+  - middle_rating
+  - exterior_features_count
+  - flooring_count
+  - cooling_count
+  - water_source_count
+  - heating_count
+  - bathrooms_full
+  - view_features_count
+  - electric_count
+  - bathrooms_three_quarter
+  - elementary_rating
+  - high_rating
+  - fireplaces_count
+  - max_school_rating
+  - school_count
+
+  # Date-based transforms
   - days_since_last_sale
-  - city
-  - state
-  - property_type
+
+  # Computed transforms
+  - property_age
+  - beds_per_bath
+  - lot_to_living_ratio
+
+  # Boolean fields
+  - has_pool
+  - has_any_pool_or_spa
+  - has_garage
+  - is_new_construction
+  - has_spa
+  - has_central_air
+  - has_open_parking
+  - has_natural_gas
+  - has_fireplace
+  - has_forced_air_heating
+  - has_tile_floors
+  - has_attached_garage
+  - has_home_warranty
+  - has_heating
+  - has_view
+  - has_cooling
+  - has_hardwood_floors
+  - is_senior_community
+  - has_waterfront_view
+  - has_basement
+
+  # Property type one-hot encoding
+  - home_type_single_family
+  - home_type_condo_townhouse
+  - home_type_multi_family
+  - home_type_manufactured
+  - home_type_land
+  - home_type_farm_ranch
+  - home_type_commercial
+  - home_type_other

@@ -4,12 +4,10 @@ version: "1.0.0"
 numeric_fields:
   - price
 
-feature_transforms:
-  nonexistent_transform:
-    source: some_field
-    default: 0
+boolean_fields: []
 
-categorical_fields: {}
+feature_transforms:
+  - nonexistent_transform
 
 feature_order:
   - price

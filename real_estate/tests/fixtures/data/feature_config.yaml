@@ -6,17 +6,15 @@ numeric_fields:
   - beds
   - sqft
 
+boolean_fields:
+  - has_pool
+
 feature_transforms:
   - days_since_last_sale
-
-categorical_fields:
-  city: cities.json
-  property_type: property_types.json
 
 feature_order:
   - price
   - beds
   - sqft
   - days_since_last_sale
-  - city
-  - property_type
+  - has_pool

@@ -6,10 +6,12 @@ from .errors import (
     InvalidTransformValueError,
     MissingFieldError,
     MissingTransformFieldError,
-    ScraperAuthError,
-    ScraperError,
-    ScraperRequestError,
-    UnknownCategoryError,
+    ValidationDataAuthError,
+    ValidationDataError,
+    ValidationDataNotFoundError,
+    ValidationDataProcessingError,
+    ValidationDataRateLimitError,
+    ValidationDataRequestError,
 )
 from .feature_encoder import FeatureEncoder
 from .feature_transforms import (
@@ -19,9 +21,11 @@ from .feature_transforms import (
     set_clock,
 )
 from .models import PropertyData, ValidationDataset
-from .scraper_client import (
-    ScraperClient,
-    ScraperConfig,
+from .validation_dataset_client import (
+    RawFileInfo,
+    ValidationDatasetClient,
+    ValidationDatasetClientConfig,
+    ValidationDatasetResponse,
 )
 
 __all__ = [
@@ -31,10 +35,12 @@ __all__ = [
     "InvalidTransformValueError",
     "MissingFieldError",
     "MissingTransformFieldError",
-    "ScraperAuthError",
-    "ScraperError",
-    "ScraperRequestError",
-    "UnknownCategoryError",
+    "ValidationDataAuthError",
+    "ValidationDataError",
+    "ValidationDataNotFoundError",
+    "ValidationDataProcessingError",
+    "ValidationDataRateLimitError",
+    "ValidationDataRequestError",
     # Feature encoding
     "FeatureEncoder",
     "feature_transform",
@@ -45,7 +51,9 @@ __all__ = [
     # Models
     "PropertyData",
     "ValidationDataset",
-    # Scraper
-    "ScraperClient",
-    "ScraperConfig",
+    # Validation Dataset Client
+    "ValidationDatasetClient",
+    "ValidationDatasetClientConfig",
+    "ValidationDatasetResponse",
+    "RawFileInfo",
 ]
