@@ -70,6 +70,7 @@ class DuplicateDetector:
             skipped_hotkeys=tuple(pioneer_result.skipped_hotkeys),
         )
 
+
 def create_duplicate_detector(
     similarity_threshold: float = 1e-6,
 ) -> DuplicateDetector:
