@@ -7,10 +7,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from pylon._internal.common.types import CommitmentDataHex
-from pylon.v1 import (
+from pylon_client.v1 import (
     AsyncConfig,
     AsyncPylonClient,
+    CommitmentDataHex,
     Hotkey,
     PylonForbidden,
     PylonRequestException,
@@ -36,7 +36,7 @@ from .models import (
 )
 
 if TYPE_CHECKING:
-    from pylon.v1 import Neuron as PylonNeuron
+    from pylon_client.v1 import Neuron as PylonNeuron
 
 logger = logging.getLogger(__name__)
 
