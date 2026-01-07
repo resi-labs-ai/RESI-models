@@ -1,4 +1,4 @@
-"""Compute 8-char SHA-1 hash for a model file."""
+"""Compute full SHA-256 hash for a model file."""
 
 import hashlib
 import sys
@@ -6,11 +6,16 @@ from pathlib import Path
 
 
 def compute_hash(file_path: Path) -> str:
-    sha1 = hashlib.sha1()
+    """Compute full SHA-256 hash of a file.
+    
+    Returns:
+        64-character hex string
+    """
+    sha256 = hashlib.sha256()
     with open(file_path, "rb") as f:
         while chunk := f.read(8192):
-            sha1.update(chunk)
-    return sha1.hexdigest()[:8]
+            sha256.update(chunk)
+    return sha256.hexdigest()
 
 
 if __name__ == "__main__":

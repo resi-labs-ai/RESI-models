@@ -27,7 +27,9 @@ from scripts.compute_hash import compute_hash
 SCAN_MAX_BLOCKS = 20
 SCAN_MAX_EXTRINSICS_PER_BLOCK = 100
 MAX_MODEL_SIZE_MB = 200
-MAX_FIELD_BYTES = 64
+MAX_COMMITMENT_BYTES = 128  # Chain metadata limit
+HASH_LENGTH = 64  #SHA-256 hash
+MAX_REPO_BYTES = 64
 REQUIRED_ONNX_VERSION = "1.20.0"
 REQUIRED_ONNXRUNTIME_VERSION = "1.20.1"
 
@@ -41,7 +43,7 @@ def build_commitment(model_hash: str, hf_repo_id: str, timestamp: int) -> dict:
     Build RESI commitment dictionary.
 
     Args:
-        model_hash: 8-char SHA-1 hash
+        model_hash: 64-char SHA-256 hash
         hf_repo_id: HuggingFace repo ID (e.g., "user/repo")
         timestamp: Unix timestamp
         
@@ -207,13 +209,24 @@ def validate_model_file(model_path: str) -> bool:
         bt.logging.error(f"Error reading ONNX model: {e}")
         return False
 
-def check_hf_file_exists(repo_id: str, filename: str) -> bool:
+def check_hf_file_exists(repo_id: str, filename: str, token: str | None = None) -> bool:
     """Check if file exists in HuggingFace repo."""
     try:
-        if not huggingface_hub.file_exists(repo_id=repo_id, filename=filename, repo_type="model"):
+        if not huggingface_hub.file_exists(
+            repo_id=repo_id, 
+            filename=filename, 
+            repo_type="model",
+            token=token
+        ):
             bt.logging.error(f"File '{filename}' not found in repo '{repo_id}'")
             return False
         return True
+    except huggingface_hub.utils.RepositoryNotFoundError:
+        bt.logging.error(
+            f"Repository '{repo_id}' not found or private.\n"
+            f"  If private, provide --hf_token or set HF_TOKEN env var."
+        )
+        return False
     except Exception as e:
         bt.logging.error(f"Error checking HuggingFace repo: {e}")
         return False
@@ -240,13 +253,13 @@ class MinerCLI:
             bt.logging.error("--hf_repo_id is required.")
             return 2
 
-        # Validate byte lengths for chain compatibility
-        if len(self.config.hf_repo_id.encode('utf-8')) > 64:
-            bt.logging.error("hf_repo_id must be 64 bytes or less")
-            return 2
-
-        if len(self.config.hf_model_filename.encode('utf-8')) > 64:
-            bt.logging.error("hf_model_filename must be 64 bytes or less")
+        # Validate repo_id fits in chain metadata space
+        repo_bytes = len(self.config.hf_repo_id.encode('utf-8'))
+        if repo_bytes > MAX_REPO_BYTES:
+            bt.logging.error(
+                f"hf_repo_id too long: {repo_bytes} bytes exceeds {MAX_REPO_BYTES} byte limit\n"
+                f"  Chain allows 128 bytes total; {HASH_LENGTH} bytes used by hash."
+            )
             return 2
         
         # Validate wallet info/ Load wallet and subtensor
@@ -266,7 +279,7 @@ class MinerCLI:
         bt.logging.success(f"Hotkey is registered on netuid {self.config.netuid}")
         
         # Check if file exists in HuggingFace before downloading
-        if not check_hf_file_exists(self.config.hf_repo_id, self.config.hf_model_filename):
+        if not check_hf_file_exists(self.config.hf_repo_id, self.config.hf_model_filename, self.config.hf_token):
             return 1
 
         # Download model from HuggingFace
