@@ -2,7 +2,7 @@
 
 import pytest
 
-from real_estate.duplicate_detection import DuplicateDetectionResult, DuplicateGroup
+from real_estate.duplicate_detector import DuplicateDetectionResult, DuplicateGroup
 
 
 class TestDuplicateGroup:

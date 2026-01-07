@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from real_estate.duplicate_detection import GrouperConfig, PredictionGrouper
+from real_estate.duplicate_detector import GrouperConfig, PredictionGrouper
 
 
 def _create_mock_result(

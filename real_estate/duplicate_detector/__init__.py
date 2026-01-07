@@ -7,7 +7,7 @@ This module provides:
 - Result aggregation for scoring adjustments
 
 Usage:
-    from real_estate.duplicate_detection import (
+    from real_estate.duplicate_detector import (
         create_duplicate_detector,
         DuplicateDetectionResult,
     )

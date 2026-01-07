@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-from real_estate.duplicate_detection import (
+from real_estate.duplicate_detector import (
     DuplicateDetectionResult,
     DuplicateDetector,
     create_duplicate_detector,

@@ -76,7 +76,7 @@ def create_duplicate_detector(
     """
     Create a duplicate detector with custom configuration.
 
-    This is the main entry point for the duplicate_detection module.
+    This is the main entry point for the duplicate_detector module.
 
     Args:
         similarity_threshold: Precision threshold for prediction comparison.

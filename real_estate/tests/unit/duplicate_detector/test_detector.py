@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from real_estate.duplicate_detection import (
+from real_estate.duplicate_detector import (
     DuplicateGroup,
     PioneerDetectionResult,
     PioneerDetector,
