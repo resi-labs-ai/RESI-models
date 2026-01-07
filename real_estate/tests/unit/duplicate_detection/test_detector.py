@@ -39,9 +39,9 @@ class TestPioneerDetectorDetectPioneers:
         result = detector.detect_pioneers(groups, metadata)
 
         assert isinstance(result, PioneerDetectionResult)
-        assert result.pioneers["A"] is False
-        assert result.pioneers["B"] is True  # Pioneer
-        assert result.pioneers["C"] is False
+        assert "B" in result.pioneer_hotkeys
+        assert "A" in result.copier_hotkeys
+        assert "C" in result.copier_hotkeys
         assert result.skipped_hotkeys == []
 
     def test_single_group_one_pioneer(self, detector: PioneerDetector) -> None:
@@ -54,8 +54,7 @@ class TestPioneerDetectorDetectPioneers:
 
         result = detector.detect_pioneers(groups, metadata)
 
-        pioneer_count = sum(1 for is_pioneer in result.pioneers.values() if is_pioneer)
-        assert pioneer_count == 1
+        assert len(result.pioneer_hotkeys) == 1
 
     def test_multiple_groups_multiple_pioneers(self, detector: PioneerDetector) -> None:
         """Multiple groups have multiple pioneers (one each)."""
@@ -72,30 +71,14 @@ class TestPioneerDetectorDetectPioneers:
 
         result = detector.detect_pioneers(groups, metadata)
 
-        assert result.pioneers["A"] is True
-        assert result.pioneers["B"] is False
-        assert result.pioneers["C"] is False
-        assert result.pioneers["D"] is True
-
-    def test_tie_breaking_alphabetical(self, detector: PioneerDetector) -> None:
-        """Tie on block_number uses alphabetical hotkey order."""
-        groups = [DuplicateGroup(hotkeys=("C", "A", "B"))]
-        metadata = {
-            "A": _create_mock_metadata("A", 500),  # Same block, alphabetically first
-            "B": _create_mock_metadata("B", 500),  # Same block
-            "C": _create_mock_metadata("C", 500),  # Same block
-        }
-
-        result = detector.detect_pioneers(groups, metadata)
-
-        assert result.pioneers["A"] is True  # Alphabetically first
-        assert result.pioneers["B"] is False
-        assert result.pioneers["C"] is False
+        assert result.pioneer_hotkeys == frozenset({"A", "D"})
+        assert result.copier_hotkeys == frozenset({"B", "C"})
 
     def test_empty_groups_returns_empty_result(self, detector: PioneerDetector) -> None:
-        """Empty groups list returns empty pioneers dict."""
+        """Empty groups list returns empty sets."""
         result = detector.detect_pioneers([], {})
-        assert result.pioneers == {}
+        assert result.pioneer_hotkeys == frozenset()
+        assert result.copier_hotkeys == frozenset()
         assert result.skipped_hotkeys == []
 
     def test_all_hotkeys_in_result(self, detector: PioneerDetector) -> None:
@@ -114,7 +97,8 @@ class TestPioneerDetectorDetectPioneers:
 
         result = detector.detect_pioneers(groups, metadata)
 
-        assert set(result.pioneers.keys()) == {"A", "B", "C", "D", "E"}
+        all_hotkeys = result.pioneer_hotkeys | result.copier_hotkeys
+        assert all_hotkeys == {"A", "B", "C", "D", "E"}
 
 
 class TestPioneerDetectorMissingMetadata:
@@ -137,9 +121,10 @@ class TestPioneerDetectorMissingMetadata:
         result = detector.detect_pioneers(groups, metadata)
 
         # A and B are processed, C is skipped
-        assert result.pioneers["A"] is True  # Pioneer (lower block)
-        assert result.pioneers["B"] is False
-        assert "C" not in result.pioneers
+        assert "A" in result.pioneer_hotkeys  # Pioneer (lower block)
+        assert "B" in result.copier_hotkeys
+        assert "C" not in result.pioneer_hotkeys
+        assert "C" not in result.copier_hotkeys
         assert result.skipped_hotkeys == ["C"]
 
     def test_skipped_hotkeys_are_sorted(self, detector: PioneerDetector) -> None:
@@ -153,7 +138,8 @@ class TestPioneerDetectorMissingMetadata:
         result = detector.detect_pioneers(groups, metadata)
 
         # Group skipped (only 1 hotkey with metadata)
-        assert result.pioneers == {}
+        assert result.pioneer_hotkeys == frozenset()
+        assert result.copier_hotkeys == frozenset()
         assert result.skipped_hotkeys == ["B", "C", "D"]
 
     def test_group_with_one_remaining_hotkey_skipped(
@@ -169,7 +155,8 @@ class TestPioneerDetectorMissingMetadata:
         result = detector.detect_pioneers(groups, metadata)
 
         # No pioneers because group was skipped
-        assert result.pioneers == {}
+        assert result.pioneer_hotkeys == frozenset()
+        assert result.copier_hotkeys == frozenset()
         assert result.skipped_hotkeys == ["B"]
 
     def test_partial_metadata_processes_available(
@@ -190,10 +177,11 @@ class TestPioneerDetectorMissingMetadata:
         result = detector.detect_pioneers(groups, metadata)
 
         # Group 1 processed (both have metadata)
-        assert result.pioneers["A"] is True
-        assert result.pioneers["B"] is False
+        assert "A" in result.pioneer_hotkeys
+        assert "B" in result.copier_hotkeys
         # Group 2 skipped (only C has metadata, <2 remaining)
-        assert "C" not in result.pioneers
+        assert "C" not in result.pioneer_hotkeys
+        assert "C" not in result.copier_hotkeys
         assert set(result.skipped_hotkeys) == {"D", "E"}
 
     def test_empty_metadata_with_groups_skips_all(
@@ -205,5 +193,6 @@ class TestPioneerDetectorMissingMetadata:
 
         result = detector.detect_pioneers(groups, metadata)
 
-        assert result.pioneers == {}
+        assert result.pioneer_hotkeys == frozenset()
+        assert result.copier_hotkeys == frozenset()
         assert result.skipped_hotkeys == ["A", "B"]

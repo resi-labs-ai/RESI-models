@@ -18,8 +18,11 @@ logger = logging.getLogger(__name__)
 class PioneerDetectionResult:
     """Result of pioneer detection with tracking of skipped hotkeys."""
 
-    pioneers: dict[str, bool]
-    """Mapping of hotkey -> is_pioneer for hotkeys WITH metadata."""
+    pioneer_hotkeys: frozenset[str]
+    """Hotkeys that were first to submit within their duplicate group."""
+
+    copier_hotkeys: frozenset[str]
+    """Hotkeys that copied another model (submitted after pioneer)."""
 
     skipped_hotkeys: list[str]
     """Hotkeys that were skipped due to missing chain metadata."""
@@ -38,7 +41,8 @@ class PioneerDetector:
     Usage:
         detector = PioneerDetector()
         result = detector.detect_pioneers(groups, metadata)
-        # result.pioneers = {hotkey: is_pioneer} for hotkeys with metadata
+        # result.pioneer_hotkeys = frozenset of first submitters
+        # result.copier_hotkeys = frozenset of copiers (to be zero-scored)
         # result.skipped_hotkeys = hotkeys without metadata
     """
 
@@ -48,7 +52,7 @@ class PioneerDetector:
         metadata: dict[str, ChainModelMetadata],
     ) -> PioneerDetectionResult:
         """
-        Identify pioneers in each duplicate group.
+        Identify pioneers and copiers in each duplicate group.
 
         Hotkeys without metadata are skipped and logged, not failed.
         Groups that end up with < 2 hotkeys after filtering are skipped.
@@ -60,7 +64,8 @@ class PioneerDetector:
 
         Returns:
             PioneerDetectionResult with:
-            - pioneers: {hotkey: is_pioneer} for hotkeys WITH metadata
+            - pioneer_hotkeys: hotkeys that submitted first
+            - copier_hotkeys: hotkeys that copied (submitted after pioneer)
             - skipped_hotkeys: hotkeys without metadata
 
         Example:
@@ -71,18 +76,20 @@ class PioneerDetector:
                 # C is missing - will be skipped
             }
             result = detector.detect_pioneers(groups, metadata)
-            # result.pioneers = {"A": False, "B": True}
+            # result.pioneer_hotkeys = frozenset({"B"})
+            # result.copier_hotkeys = frozenset({"A"})
             # result.skipped_hotkeys = ["C"]
         """
         # Find hotkeys without metadata
-        skipped_hotkeys = self._find_missing_metadata(groups, metadata)
+        skipped_hotkeys = self._find_hotkeys_with_missing_metadata(groups, metadata)
         if skipped_hotkeys:
             logger.warning(
                 f"Skipping {len(skipped_hotkeys)} hotkeys without chain metadata: "
                 f"{', '.join(skipped_hotkeys[:5])}{'...' if len(skipped_hotkeys) > 5 else ''}"
             )
 
-        pioneers: dict[str, bool] = {}
+        pioneers: set[str] = set()
+        copiers: set[str] = set()
 
         for group in groups:
             # Filter to hotkeys with metadata
@@ -97,16 +104,19 @@ class PioneerDetector:
                 hotkeys_with_metadata, metadata
             )
 
-            # Mark all hotkeys with metadata in group
+            # Categorize hotkeys
+            pioneers.add(pioneer_hotkey)
             for hotkey in hotkeys_with_metadata:
-                pioneers[hotkey] = hotkey == pioneer_hotkey
+                if hotkey != pioneer_hotkey:
+                    copiers.add(hotkey)
 
         return PioneerDetectionResult(
-            pioneers=pioneers,
+            pioneer_hotkeys=frozenset(pioneers),
+            copier_hotkeys=frozenset(copiers),
             skipped_hotkeys=skipped_hotkeys,
         )
 
-    def _find_missing_metadata(
+    def _find_hotkeys_with_missing_metadata(
         self,
         groups: list[DuplicateGroup],
         metadata: dict[str, ChainModelMetadata],
@@ -125,8 +135,5 @@ class PioneerDetector:
         Find the pioneer (earliest committer) in a group.
 
         Returns hotkey with lowest block_number.
-        In case of tie, returns alphabetically first hotkey for determinism.
         """
-        # Sort by (block_number, hotkey) for deterministic tie-breaking
-        sorted_members = sorted(hotkeys, key=lambda hk: (metadata[hk].block_number, hk))
-        return sorted_members[0]
+        return min(hotkeys, key=lambda hk: metadata[hk].block_number)

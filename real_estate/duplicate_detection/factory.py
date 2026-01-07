@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from .detector import PioneerDetector
 from .grouper import GrouperConfig, PredictionGrouper
-from .models import DuplicateDetectionResult, DuplicateGroup
+from .models import DuplicateDetectionResult
 
 if TYPE_CHECKING:
     from ..chain.models import ChainModelMetadata
@@ -59,33 +59,16 @@ class DuplicateDetector:
         groups = self._grouper.group_predictions(results)
 
         if not groups:
-            return DuplicateDetectionResult(groups=(), pioneers={})
+            return DuplicateDetectionResult(copier_hotkeys=frozenset())
 
         pioneer_result = self._pioneer_detector.detect_pioneers(groups, metadata)
 
         return DuplicateDetectionResult(
+            copier_hotkeys=pioneer_result.copier_hotkeys,
+            pioneer_hotkeys=pioneer_result.pioneer_hotkeys,
             groups=tuple(groups),
-            pioneers=pioneer_result.pioneers,
             skipped_hotkeys=tuple(pioneer_result.skipped_hotkeys),
         )
-
-    def group_only(
-        self,
-        results: list[EvaluationResult],
-    ) -> list[DuplicateGroup]:
-        """
-        Group predictions without pioneer detection.
-
-        Useful when chain metadata is not available.
-
-        Args:
-            results: Evaluation results to analyze
-
-        Returns:
-            List of duplicate groups
-        """
-        return self._grouper.group_predictions(results)
-
 
 def create_duplicate_detector(
     similarity_threshold: float = 1e-6,

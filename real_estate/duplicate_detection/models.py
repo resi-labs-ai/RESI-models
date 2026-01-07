@@ -43,35 +43,39 @@ class DuplicateDetectionResult:
     """
     Complete result of duplicate detection analysis.
 
-    Contains duplicate groups and pioneer information.
+    Main output for incentivization: copier_hotkeys (models to zero-score).
+    Additional data (groups, pioneers) preserved for logging/analysis.
     """
 
-    groups: tuple[DuplicateGroup, ...]
-    pioneers: dict[str, bool]  # {hotkey: is_pioneer}
-    skipped_hotkeys: tuple[str, ...] = ()  # Hotkeys skipped due to missing metadata
+    copier_hotkeys: frozenset[str]
+    """Hotkeys that copied another model - should receive 0 score."""
+
+    pioneer_hotkeys: frozenset[str] = frozenset()
+    """Hotkeys that were first to submit (within duplicate groups)."""
+
+    groups: tuple[DuplicateGroup, ...] = ()
+    """Duplicate groups for logging/analysis."""
+
+    skipped_hotkeys: tuple[str, ...] = ()
+    """Hotkeys skipped due to missing chain metadata."""
 
     @property
     def total_duplicates(self) -> int:
         """Total number of models involved in duplication."""
         return sum(g.size for g in self.groups)
 
-    @property
-    def pioneer_hotkeys(self) -> list[str]:
-        """List of hotkeys that are pioneers."""
-        return [hk for hk, is_pioneer in self.pioneers.items() if is_pioneer]
-
-    @property
-    def copier_hotkeys(self) -> list[str]:
-        """List of hotkeys that are copiers (not pioneers)."""
-        return [hk for hk, is_pioneer in self.pioneers.items() if not is_pioneer]
+    def is_copier(self, hotkey: str) -> bool:
+        """Check if a hotkey is a copier (for incentivization filtering)."""
+        return hotkey in self.copier_hotkeys
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
+            "copier_hotkeys": sorted(self.copier_hotkeys),
+            "pioneer_hotkeys": sorted(self.pioneer_hotkeys),
             "groups": [g.to_dict() for g in self.groups],
-            "pioneers": self.pioneers,
             "skipped_hotkeys": list(self.skipped_hotkeys),
             "total_duplicates": self.total_duplicates,
-            "pioneer_count": len(self.pioneer_hotkeys),
             "copier_count": len(self.copier_hotkeys),
+            "pioneer_count": len(self.pioneer_hotkeys),
         }

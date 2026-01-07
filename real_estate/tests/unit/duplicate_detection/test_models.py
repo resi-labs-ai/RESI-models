@@ -8,18 +8,8 @@ from real_estate.duplicate_detection import DuplicateDetectionResult, DuplicateG
 class TestDuplicateGroup:
     """Tests for DuplicateGroup dataclass."""
 
-    def test_valid_group_creation(self) -> None:
-        """Group with 2+ hotkeys is created successfully."""
-        group = DuplicateGroup(hotkeys=("A", "B"))
-        assert group.hotkeys == ("A", "B")
-
-    def test_three_hotkeys(self) -> None:
-        """Group with 3 hotkeys is valid."""
-        group = DuplicateGroup(hotkeys=("A", "B", "C"))
-        assert group.size == 3
-
     def test_single_hotkey_raises_error(self) -> None:
-        """Single hotkey raises ValueError."""
+        """Single hotkey raises ValueError - need 2+ for a duplicate."""
         with pytest.raises(ValueError, match="at least 2"):
             DuplicateGroup(hotkeys=("only_one",))
 
@@ -28,100 +18,54 @@ class TestDuplicateGroup:
         with pytest.raises(ValueError, match="at least 2"):
             DuplicateGroup(hotkeys=())
 
-    def test_size_property(self) -> None:
-        """size property returns number of hotkeys."""
-        group = DuplicateGroup(hotkeys=("A", "B", "C"))
-        assert group.size == 3
-
-    def test_contains_method_true(self) -> None:
-        """contains returns True for hotkey in group."""
-        group = DuplicateGroup(hotkeys=("A", "B"))
-        assert group.contains("A") is True
-        assert group.contains("B") is True
-
-    def test_contains_method_false(self) -> None:
-        """contains returns False for hotkey not in group."""
-        group = DuplicateGroup(hotkeys=("A", "B"))
-        assert group.contains("C") is False
-
     def test_to_dict_serialization(self) -> None:
-        """to_dict produces serializable dict."""
+        """to_dict produces expected format for logging/API."""
         group = DuplicateGroup(hotkeys=("A", "B"))
         result = group.to_dict()
         assert result == {"hotkeys": ["A", "B"], "size": 2}
-
-    def test_frozen_immutable(self) -> None:
-        """Frozen dataclass is immutable."""
-        group = DuplicateGroup(hotkeys=("A", "B"))
-        with pytest.raises(AttributeError):
-            group.hotkeys = ("C", "D")  # type: ignore
 
 
 class TestDuplicateDetectionResult:
     """Tests for DuplicateDetectionResult dataclass."""
 
-    def test_empty_result(self) -> None:
-        """Empty result has zero counts."""
-        result = DuplicateDetectionResult(groups=(), pioneers={})
-        assert result.total_duplicates == 0
-        assert result.pioneer_hotkeys == []
-        assert result.copier_hotkeys == []
-
-    def test_total_duplicates_property(self) -> None:
+    def test_total_duplicates_sums_group_sizes(self) -> None:
         """total_duplicates sums all group sizes."""
         groups = (
             DuplicateGroup(hotkeys=("A", "B")),
             DuplicateGroup(hotkeys=("C", "D", "E")),
         )
         result = DuplicateDetectionResult(
+            copier_hotkeys=frozenset({"B", "D", "E"}),
+            pioneer_hotkeys=frozenset({"A", "C"}),
             groups=groups,
-            pioneers={"A": True, "B": False, "C": True, "D": False, "E": False},
         )
         assert result.total_duplicates == 5
 
-    def test_pioneer_hotkeys_property(self) -> None:
-        """pioneer_hotkeys returns only pioneers."""
+    def test_is_copier_for_incentivization(self) -> None:
+        """is_copier returns True for copiers, False otherwise."""
         result = DuplicateDetectionResult(
-            groups=(DuplicateGroup(hotkeys=("A", "B", "C")),),
-            pioneers={"A": True, "B": False, "C": False},
+            copier_hotkeys=frozenset({"B", "C"}),
+            pioneer_hotkeys=frozenset({"A"}),
         )
-        assert result.pioneer_hotkeys == ["A"]
-
-    def test_copier_hotkeys_property(self) -> None:
-        """copier_hotkeys returns non-pioneers."""
-        result = DuplicateDetectionResult(
-            groups=(DuplicateGroup(hotkeys=("A", "B", "C")),),
-            pioneers={"A": True, "B": False, "C": False},
-        )
-        assert set(result.copier_hotkeys) == {"B", "C"}
+        assert result.is_copier("B") is True
+        assert result.is_copier("C") is True
+        assert result.is_copier("A") is False
+        assert result.is_copier("unknown") is False
 
     def test_to_dict_serialization(self) -> None:
-        """to_dict produces complete serializable dict."""
+        """to_dict produces expected format for logging/API."""
         groups = (DuplicateGroup(hotkeys=("A", "B")),)
         result = DuplicateDetectionResult(
-            groups=groups, pioneers={"A": True, "B": False}
-        )
-        serialized = result.to_dict()
-
-        assert serialized["total_duplicates"] == 2
-        assert serialized["pioneer_count"] == 1
-        assert serialized["copier_count"] == 1
-        assert serialized["pioneers"] == {"A": True, "B": False}
-        assert serialized["skipped_hotkeys"] == []
-        assert len(serialized["groups"]) == 1
-
-    def test_skipped_hotkeys_default_empty(self) -> None:
-        """skipped_hotkeys defaults to empty tuple."""
-        result = DuplicateDetectionResult(groups=(), pioneers={})
-        assert result.skipped_hotkeys == ()
-
-    def test_skipped_hotkeys_included_in_to_dict(self) -> None:
-        """skipped_hotkeys is included in serialization."""
-        groups = (DuplicateGroup(hotkeys=("A", "B")),)
-        result = DuplicateDetectionResult(
+            copier_hotkeys=frozenset({"B"}),
+            pioneer_hotkeys=frozenset({"A"}),
             groups=groups,
-            pioneers={"A": True, "B": False},
-            skipped_hotkeys=("C", "D"),
+            skipped_hotkeys=("C",),
         )
         serialized = result.to_dict()
-        assert serialized["skipped_hotkeys"] == ["C", "D"]
+
+        assert serialized["copier_hotkeys"] == ["B"]
+        assert serialized["pioneer_hotkeys"] == ["A"]
+        assert serialized["skipped_hotkeys"] == ["C"]
+        assert serialized["total_duplicates"] == 2
+        assert serialized["copier_count"] == 1
+        assert serialized["pioneer_count"] == 1

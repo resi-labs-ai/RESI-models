@@ -15,13 +15,12 @@ Usage:
     detector = create_duplicate_detector()
     result = detector.detect(evaluation_results, chain_metadata)
 
-    # Pioneers get full score, copiers get penalized
-    for hotkey in result.copier_hotkeys:
-        print(f"{hotkey} is a copier")
+    # Check if a model should be penalized
+    if result.is_copier(hotkey):
+        score = 0
 """
 
 from .detector import PioneerDetectionResult, PioneerDetector
-from .errors import DuplicateDetectionError, PioneerDetectionError
 from .factory import DuplicateDetector, create_duplicate_detector
 from .grouper import GrouperConfig, PredictionGrouper
 from .models import DuplicateDetectionResult, DuplicateGroup
@@ -29,9 +28,6 @@ from .models import DuplicateDetectionResult, DuplicateGroup
 __all__ = [
     # Factory (main entry point)
     "create_duplicate_detector",
-    # Errors
-    "DuplicateDetectionError",
-    "PioneerDetectionError",
     # Models
     "DuplicateGroup",
     "DuplicateDetectionResult",

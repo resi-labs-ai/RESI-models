@@ -43,13 +43,17 @@ class TestCreateDuplicateDetector:
     def test_default_threshold(self) -> None:
         """Default threshold is 1e-6."""
         detector = create_duplicate_detector()
-        # Verify by testing behavior - exact match should work
+        # Verify by testing behavior - exact match should detect duplicates
         results = [
             _create_mock_result("A", np.array([100.0, 200.0])),
             _create_mock_result("B", np.array([100.0, 200.0])),
         ]
-        groups = detector.group_only(results)
-        assert len(groups) == 1
+        metadata = {
+            "A": _create_mock_metadata("A", 100),
+            "B": _create_mock_metadata("B", 200),
+        }
+        result = detector.detect(results, metadata)
+        assert len(result.groups) == 1
 
     def test_custom_threshold(self) -> None:
         """Custom threshold is applied."""
@@ -60,8 +64,12 @@ class TestCreateDuplicateDetector:
             _create_mock_result("A", np.array([100.0, 200.0])),
             _create_mock_result("B", np.array([100.05, 200.05])),  # Within 0.1
         ]
-        groups = detector.group_only(results)
-        assert len(groups) == 1
+        metadata = {
+            "A": _create_mock_metadata("A", 100),
+            "B": _create_mock_metadata("B", 200),
+        }
+        result = detector.detect(results, metadata)
+        assert len(result.groups) == 1
 
 
 class TestDuplicateDetectorDetect:
@@ -87,8 +95,8 @@ class TestDuplicateDetectorDetect:
         assert isinstance(result, DuplicateDetectionResult)
         assert len(result.groups) == 1
         assert set(result.groups[0].hotkeys) == {"A", "B"}
-        assert result.pioneers["A"] is False
-        assert result.pioneers["B"] is True  # Pioneer (earlier block)
+        assert "A" in result.copier_hotkeys
+        assert "B" in result.pioneer_hotkeys  # Pioneer (earlier block)
 
     def test_no_duplicates_returns_empty_result(self) -> None:
         """No duplicates returns empty result."""
@@ -104,7 +112,8 @@ class TestDuplicateDetectorDetect:
         result = detector.detect(results, metadata)
 
         assert result.groups == ()
-        assert result.pioneers == {}
+        assert result.copier_hotkeys == frozenset()
+        assert result.pioneer_hotkeys == frozenset()
         assert result.total_duplicates == 0
 
     def test_missing_metadata_results_in_skipped_hotkeys(self) -> None:
@@ -124,9 +133,10 @@ class TestDuplicateDetectorDetect:
 
         result = detector.detect(results, metadata)
 
-        assert result.pioneers["A"] is True
-        assert result.pioneers["B"] is False
-        assert "C" not in result.pioneers
+        assert "A" in result.pioneer_hotkeys
+        assert "B" in result.copier_hotkeys
+        assert "C" not in result.pioneer_hotkeys
+        assert "C" not in result.copier_hotkeys
         assert result.skipped_hotkeys == ("C",)
 
     def test_multiple_duplicate_groups(self) -> None:
@@ -154,37 +164,3 @@ class TestDuplicateDetectorDetect:
         assert len(result.copier_hotkeys) == 2
 
 
-class TestDuplicateDetectorGroupOnly:
-    """Tests for DuplicateDetector.group_only method."""
-
-    def test_groups_without_metadata(self) -> None:
-        """group_only works without chain metadata."""
-        detector = create_duplicate_detector()
-
-        results = [
-            _create_mock_result("A", np.array([100.0, 200.0])),
-            _create_mock_result("B", np.array([100.0, 200.0])),
-        ]
-
-        # No metadata needed
-        groups = detector.group_only(results)
-
-        assert len(groups) == 1
-        assert set(groups[0].hotkeys) == {"A", "B"}
-
-    def test_empty_results(self) -> None:
-        """Empty results returns empty list."""
-        detector = create_duplicate_detector()
-        groups = detector.group_only([])
-        assert groups == []
-
-    def test_no_duplicates(self) -> None:
-        """No duplicates returns empty list."""
-        detector = create_duplicate_detector()
-
-        results = [
-            _create_mock_result("A", np.array([100.0])),
-            _create_mock_result("B", np.array([200.0])),
-        ]
-        groups = detector.group_only(results)
-        assert groups == []
