@@ -244,19 +244,21 @@ async def evaluate_model(config: argparse.Namespace) -> int:
     """
     print("🔍 Evaluating model locally...")
 
-    # Check if model path is provided
-    if not config.model_path:
-        bt.logging.error("--model_path is required for evaluate action")
+    # Support both positional and flag
+    model_path = config.model_path or config.model_path_flag
+
+    if not model_path:
+        bt.logging.error(
+            "Model path required. Usage: evaluate <model.onnx> or evaluate --model.path <model.onnx>"
+        )
         return 2
 
     # Validate model file
-    if not validate_model_file(config.model_path):
+    if not validate_model_file(model_path):
         return 1
 
     try:
-        session = ort.InferenceSession(
-            config.model_path, providers=["CPUExecutionProvider"]
-        )
+        session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
 
         # Get model info
         input_info = session.get_inputs()[0]
@@ -427,13 +429,20 @@ def parse_args() -> argparse.Namespace:
         "evaluate", help="Evaluate an ONNX model locally with dummy data"
     )
     eval_parser.add_argument(
+        "model_path",  # positional (no dashes)
+        nargs="?",  # optional positional
+        default=None,
+        metavar="MODEL_PATH",
+        help="Path to ONNX model",
+    )
+    eval_parser.add_argument(
         "--model_path",
         "--model-path",
         "--model.path",
         "-m",
-        dest="model_path",
-        required=True,
-        help="Local path to ONNX model",
+        dest="model_path_flag",  # different dest!
+        default=None,  # not required
+        help="Path to ONNX model (alternative to positional)",
     )
 
     # SUBMIT
