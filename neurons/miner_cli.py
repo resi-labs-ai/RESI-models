@@ -3,7 +3,7 @@
 RESI Miner CLI - Evaluate and submit ONNX models to the RESI subnet.
 
 Usage:
-    python neurons/miner_cli.py evaluate --model_path ./model.onnx
+    python neurons/miner_cli.py evaluate ./model.onnx
     python neurons/miner_cli.py submit --hf_repo_id user/repo --wallet_name miner --wallet_hotkey default
 """
 
@@ -30,8 +30,6 @@ from scripts.compute_hash import compute_hash
 SCAN_MAX_BLOCKS = 20
 SCAN_MAX_EXTRINSICS_PER_BLOCK = 100
 MAX_MODEL_SIZE_MB = 200
-MAX_COMMITMENT_BYTES = 128  # Chain metadata limit
-HASH_LENGTH = 64  # SHA-256 hash
 MAX_REPO_BYTES = 51
 REQUIRED_ONNX_VERSION = "1.20.0"
 REQUIRED_ONNXRUNTIME_VERSION = "1.20.1"
