@@ -32,6 +32,9 @@ dependencies = [
     "onnx==1.20.0",
 ]
 
+[project.scripts]
+miner-cli = "neurons.miner_cli:main_sync"
+
 [dependency-groups]
 dev = [
     "pytest>=8",
