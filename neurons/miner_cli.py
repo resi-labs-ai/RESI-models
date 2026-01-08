@@ -3,8 +3,8 @@
 RESI Miner CLI - Evaluate and submit ONNX models to the RESI subnet.
 
 Usage:
-    python neurons/test_miner_cli.py evaluate --model_path ./model.onnx
-    python neurons/test_miner_cli.py submit --hf_repo_id user/repo --wallet_name miner --wallet_hotkey default
+    python neurons/miner_cli.py evaluate --model_path ./model.onnx
+    python neurons/miner_cli.py submit --hf_repo_id user/repo --wallet_name miner --wallet_hotkey default
 """
 
 # Standard library
