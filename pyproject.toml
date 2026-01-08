@@ -28,8 +28,8 @@ dependencies = [
     "tenacity>=9.1.2",
     "apscheduler>=3.11.1",
     "huggingface-hub>=0.20.0",
-    "onnxruntime>=1.16.0",
-    "onnx>=1.20.0",
+    "onnxruntime==1.20.1",
+    "onnx==1.20.0",
 ]
 
 [dependency-groups]

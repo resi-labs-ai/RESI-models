@@ -18,5 +18,5 @@ graph = helper.make_graph(
     [output_tensor]
 )
 
-model = helper.make_model(graph, producer_name='dummy-model')
+model = helper.make_model(graph, producer_name='dummy-model', ir_version=8, opset_imports=[helper.make_opsetid("", 17)])
 onnx.save(model, 'dummy_identity.onnx')
