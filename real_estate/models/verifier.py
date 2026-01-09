@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-#TODO (Seby) refer to an actual, existing license
+# TODO (Seby) refer to an actual, existing license
 REQUIRED_LICENSE = "Lorem Ipsum"
 HF_RAW_URL = "https://huggingface.co/{repo_id}/resolve/main/{filename}"
 
@@ -37,9 +37,6 @@ class ModelVerifier:
     2. Pre-download: Check model size via HF API
     3. Pre-download: Verify extrinsic_record.json against chain
     4. Post-download: Verify file hash matches commitment
-
-    Note: ONNX integrity verification is NOT done here - it must be done
-    in the sandboxed Docker evaluator for security reasons.
     """
 
     def __init__(
@@ -72,7 +69,9 @@ class ModelVerifier:
         """
         url = HF_RAW_URL.format(repo_id=hf_repo_id, filename="LICENSE")
 
-        async with httpx.AsyncClient(timeout=self._http_timeout, follow_redirects=True) as client:
+        async with httpx.AsyncClient(
+            timeout=self._http_timeout, follow_redirects=True
+        ) as client:
             try:
                 response = await client.get(url)
 
@@ -91,7 +90,9 @@ class ModelVerifier:
                 logger.debug(f"License verified for {hf_repo_id}")
 
             except httpx.HTTPError as e:
-                raise LicenseError(f"Failed to fetch LICENSE from {hf_repo_id}: {e}") from e
+                raise LicenseError(
+                    f"Failed to fetch LICENSE from {hf_repo_id}: {e}"
+                ) from e
 
     async def check_size(self, hf_repo_id: str, max_size_bytes: int) -> int:
         """
@@ -110,7 +111,9 @@ class ModelVerifier:
         # Use tree endpoint which includes file sizes
         api_url = f"https://huggingface.co/api/models/{hf_repo_id}/tree/main"
 
-        async with httpx.AsyncClient(timeout=self._http_timeout, follow_redirects=True) as client:
+        async with httpx.AsyncClient(
+            timeout=self._http_timeout, follow_redirects=True
+        ) as client:
             try:
                 response = await client.get(api_url)
                 response.raise_for_status()
@@ -161,7 +164,9 @@ class ModelVerifier:
         # 1. Fetch extrinsic_record.json
         url = HF_RAW_URL.format(repo_id=hf_repo_id, filename="extrinsic_record.json")
 
-        async with httpx.AsyncClient(timeout=self._http_timeout, follow_redirects=True) as client:
+        async with httpx.AsyncClient(
+            timeout=self._http_timeout, follow_redirects=True
+        ) as client:
             try:
                 response = await client.get(url)
 
@@ -239,7 +244,7 @@ class ModelVerifier:
         Extract model hash from commitment extrinsic call_args.
 
         Structure: [{'name': 'info', 'value': {'fields': [{'Raw65': '0x...'}]}}]
-        The hex decodes to JSON: {"h": "sha256:abc...", "r": "user/repo", ...}
+        The hex decodes to JSON: {"h": "abc12345", "r": "user/repo", ...}
         """
         for arg in call_args:
             if arg.get("name") == "info":
@@ -254,7 +259,9 @@ class ModelVerifier:
                             break
                     if hex_data:
                         try:
-                            hex_str = hex_data[2:] if hex_data.startswith("0x") else hex_data
+                            hex_str = (
+                                hex_data[2:] if hex_data.startswith("0x") else hex_data
+                            )
                             decoded = bytes.fromhex(hex_str).decode("utf-8")
                             data = json.loads(decoded)
                             return data.get("h")

@@ -19,14 +19,6 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     """
 
     parser.add_argument(
-        "--realm",
-        type=str,
-        choices=["devnet", "testnet", "mainnet"],
-        help="Bittensor network realm.",
-        default=os.environ.get("REALM", "devnet"),
-    )
-
-    parser.add_argument(
         "--netuid",
         type=int,
         help="Subnet netuid to validate on.",
@@ -66,43 +58,52 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--scraper.url",
-        dest="scraper_url",
+        "--validation_data.url",
+        dest="validation_data_url",
         type=str,
-        help="URL of the scraper service.",
-        default=os.environ.get("SCRAPER_URL", "http://localhost:8001"),
+        help="URL of the validation data API (dashboard).",
+        default=os.environ.get("VALIDATION_DATA_URL", "https://dashboard.resilabs.ai"),
     )
 
     parser.add_argument(
-        "--scraper.schedule_hour",
-        dest="scraper_schedule_hour",
+        "--validation_data.schedule_hour",
+        dest="validation_data_schedule_hour",
         type=int,
-        help="Hour (UTC) for daily data fetch (0-23).",
-        default=int(os.environ.get("SCRAPER_SCHEDULE_HOUR", "16")),
+        help="Hour (UTC) for daily validation data fetch (0-23).",
+        default=int(os.environ.get("VALIDATION_DATA_SCHEDULE_HOUR", "2")),
     )
 
     parser.add_argument(
-        "--scraper.schedule_minute",
-        dest="scraper_schedule_minute",
+        "--validation_data.schedule_minute",
+        dest="validation_data_schedule_minute",
         type=int,
-        help="Minute for daily data fetch (0-59).",
-        default=int(os.environ.get("SCRAPER_SCHEDULE_MINUTE", "0")),
+        help="Minute for daily validation data fetch (0-59).",
+        default=int(os.environ.get("VALIDATION_DATA_SCHEDULE_MINUTE", "0")),
     )
 
     parser.add_argument(
-        "--scraper.max_retries",
-        dest="scraper_max_retries",
+        "--validation_data.max_retries",
+        dest="validation_data_max_retries",
         type=int,
-        help="Max retry attempts for failed data fetches.",
-        default=int(os.environ.get("SCRAPER_MAX_RETRIES", "3")),
+        help="Max retry attempts for failed validation data fetches.",
+        default=int(os.environ.get("VALIDATION_DATA_MAX_RETRIES", "3")),
     )
 
     parser.add_argument(
-        "--scraper.retry_delay",
-        dest="scraper_retry_delay",
+        "--validation_data.retry_delay",
+        dest="validation_data_retry_delay",
         type=int,
-        help="Delay in seconds between retry attempts.",
-        default=int(os.environ.get("SCRAPER_RETRY_DELAY", "600")),
+        help="Delay in seconds between validation data retry attempts.",
+        default=int(os.environ.get("VALIDATION_DATA_RETRY_DELAY", "300")),
+    )
+
+    parser.add_argument(
+        "--validation_data.download_raw",
+        dest="validation_data_download_raw",
+        action="store_true",
+        help="Download raw state files for verification.",
+        default=os.environ.get("VALIDATION_DATA_DOWNLOAD_RAW", "false").lower()
+        == "true",
     )
 
     parser.add_argument(
@@ -252,7 +253,6 @@ def check_config(config: argparse.Namespace) -> None:
 def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
     """Convert config to dictionary for logging."""
     return {
-        "realm": config.realm,
         "netuid": config.netuid,
         "wallet_name": config.wallet_name,
         "wallet_hotkey": config.wallet_hotkey,
@@ -260,11 +260,12 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "pylon_url": config.pylon_url,
         "pylon_token": "***" if config.pylon_token else "",
         "pylon_identity": config.pylon_identity,
-        "scraper_url": config.scraper_url,
-        "scraper_schedule_hour": config.scraper_schedule_hour,
-        "scraper_schedule_minute": config.scraper_schedule_minute,
-        "scraper_max_retries": config.scraper_max_retries,
-        "scraper_retry_delay": config.scraper_retry_delay,
+        "validation_data_url": config.validation_data_url,
+        "validation_data_schedule_hour": config.validation_data_schedule_hour,
+        "validation_data_schedule_minute": config.validation_data_schedule_minute,
+        "validation_data_max_retries": config.validation_data_max_retries,
+        "validation_data_retry_delay": config.validation_data_retry_delay,
+        "validation_data_download_raw": config.validation_data_download_raw,
         "epoch_length": config.epoch_length,
         "disable_set_weights": config.disable_set_weights,
         "state_path": str(config.state_path),

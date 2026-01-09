@@ -1,6 +1,5 @@
 """Feature encoder for converting property data to ONNX model input."""
 
-import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -11,7 +10,6 @@ import yaml
 from .errors import (
     FeatureConfigError,
     MissingFieldError,
-    UnknownCategoryError,
 )
 from .feature_transforms import _FEATURE_TRANSFORM_REGISTRY
 
@@ -22,9 +20,9 @@ class FeatureEncoder:
     """
     Encodes property dicts into numpy arrays for ONNX model input.
 
-    Loads feature configuration and mappings from YAML/JSON files.
+    Loads feature configuration from YAML.
     Validates input fields against config during encoding.
-    Outputs a flat numpy array with numeric and integer-encoded categorical features.
+    Outputs a flat numpy array with numeric features and computed transforms.
     """
 
     def __init__(self, config_path: Path | None = None):
@@ -38,11 +36,9 @@ class FeatureEncoder:
             config_path = Path(__file__).parent / "mappings" / "feature_config.yaml"
 
         self._config_path = config_path
-        self._mappings_dir = config_path.parent
 
         self._load_config()
         self._validate_feature_transforms()
-        self._load_mappings()
 
         logger.info(
             f"FeatureEncoder initialized with {self.get_feature_count()} features "
@@ -63,7 +59,7 @@ class FeatureEncoder:
 
         required_keys = {
             "numeric_fields",
-            "categorical_fields",
+            "boolean_fields",
             "feature_order",
             "feature_transforms",
         }
@@ -87,24 +83,6 @@ class FeatureEncoder:
                 f"Use @feature_transform('{missing[0]}') decorator to register."
             )
 
-    def _load_mappings(self) -> None:
-        """Load categorical mappings from JSON files."""
-        self._mappings: dict[str, dict[str, int]] = {}
-
-        for field, filename in self._config["categorical_fields"].items():
-            mapping_path = self._mappings_dir / filename
-            try:
-                with open(mapping_path) as f:
-                    self._mappings[field] = json.load(f)
-            except FileNotFoundError as e:
-                raise FeatureConfigError(
-                    f"Mapping file not found for field '{field}': {mapping_path}"
-                ) from e
-            except json.JSONDecodeError as e:
-                raise FeatureConfigError(
-                    f"Invalid JSON in mapping file for field '{field}': {e}"
-                ) from e
-
     def encode(self, properties: list[dict[str, Any]]) -> np.ndarray:
         """
         Encode a batch of properties to numpy array.
@@ -117,7 +95,6 @@ class FeatureEncoder:
 
         Raises:
             MissingFieldError: If a required field is missing
-            UnknownCategoryError: If a categorical value is not in the mapping
         """
         logger.debug(f"Encoding {len(properties)} properties")
 
@@ -135,8 +112,8 @@ class FeatureEncoder:
         """Encode a single property according to feature_order."""
         features = []
         numeric_fields = self._config["numeric_fields"]
+        boolean_fields = self._config["boolean_fields"]
         feature_transforms = self._config["feature_transforms"]
-        categorical_fields = self._config["categorical_fields"]
 
         for field in self._config["feature_order"]:
             if field in numeric_fields:
@@ -146,33 +123,21 @@ class FeatureEncoder:
                     )
                 features.append(float(prop[field]))
 
+            elif field in boolean_fields:
+                if field not in prop:
+                    raise MissingFieldError(
+                        f"Missing required boolean field: '{field}'"
+                    )
+                value = prop[field]
+                if value is None:
+                    raise MissingFieldError(f"Boolean field '{field}' is None")
+                features.append(1.0 if value else 0.0)
+
             elif field in feature_transforms:
                 value = _FEATURE_TRANSFORM_REGISTRY[field](prop)
                 features.append(value)
 
-            elif field in categorical_fields:
-                if field not in prop:
-                    raise MissingFieldError(
-                        f"Missing required categorical field: '{field}'"
-                    )
-                value = self._encode_categorical(field, prop[field])
-                features.append(float(value))
-
         return features
-
-    def _encode_categorical(self, field: str, value: str) -> int:
-        """Encode categorical value to integer."""
-        mapping = self._mappings.get(field)
-        if mapping is None:
-            raise FeatureConfigError(f"No mapping found for categorical field: {field}")
-
-        if value not in mapping:
-            raise UnknownCategoryError(
-                f"Unknown value '{value}' for field '{field}'. "
-                f"Valid values: {list(mapping.keys())}"
-            )
-
-        return mapping[value]
 
     def get_feature_names(self) -> list[str]:
         """Return ordered list of feature names."""
@@ -181,9 +146,3 @@ class FeatureEncoder:
     def get_feature_count(self) -> int:
         """Return total number of features in encoded output."""
         return len(self._config["feature_order"])
-
-    def get_categorical_mapping(self, field: str) -> dict[str, int]:
-        """Return mapping for a categorical field."""
-        if field not in self._mappings:
-            raise FeatureConfigError(f"No mapping for field: {field}")
-        return self._mappings[field].copy()

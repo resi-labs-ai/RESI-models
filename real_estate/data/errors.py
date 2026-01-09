@@ -30,19 +30,7 @@ class MissingFieldError(DataError):
 
     This can happen when:
     - Property dict doesn't have a required numeric field
-    - Property dict doesn't have a required categorical field
-    """
-
-    pass
-
-
-class UnknownCategoryError(DataError):
-    """
-    Raised when a categorical value is not in the mapping.
-
-    This can happen when:
-    - Property has a category value not defined in the mapping JSON
-    - New category appears in data that wasn't in training set
+    - Property dict doesn't have a required field for a transform
     """
 
     pass
@@ -75,37 +63,79 @@ class InvalidTransformValueError(DataError):
     pass
 
 
-# --- Scraper client errors ---
+# --- Validation Data API errors ---
 
 
-class ScraperError(DataError):
-    """Base exception for scraper-related errors."""
-
-    pass
-
-
-class ScraperAuthError(ScraperError):
-    """
-    Raised when scraper authentication fails.
-
-    This can happen when:
-    - Invalid hotkey signature (401)
-    - Hotkey not in whitelist (403)
-    - Nonce validation failed
-    """
+class ValidationDataError(DataError):
+    """Base exception for validation data API errors."""
 
     pass
 
 
-class ScraperRequestError(ScraperError):
+class ValidationDataAuthError(ValidationDataError):
     """
-    Raised when scraper request fails.
+    Raised when validation data API authentication fails.
 
-    This can happen when:
-    - Connection error
-    - HTTP error status
-    - Invalid JSON response
-    - Missing 'properties' key in response
+    HTTP 401: Invalid signature, expired nonce, unknown hotkey, etc.
     """
 
     pass
+
+
+class ValidationDataNotFoundError(ValidationDataError):
+    """
+    Raised when no validation set exists for requested date.
+
+    HTTP 404: No data available.
+    """
+
+    pass
+
+
+class ValidationDataRateLimitError(ValidationDataError):
+    """
+    Raised when rate limit exceeded.
+
+    HTTP 429: Too many requests (10/min limit).
+    """
+
+    pass
+
+
+class ValidationDataRequestError(ValidationDataError):
+    """
+    Raised when validation data API request fails.
+
+    Connection errors, invalid responses, etc.
+    """
+
+    pass
+
+
+class ValidationDataProcessingError(ValidationDataError):
+    """
+    Raised when validation set is still being processed.
+
+    HTTP 200 with status: "processing" - data not ready yet, retry later.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        validation_date: str | None = None,
+        estimated_ready_time: str | None = None,
+        retry_after: int | None = None,
+    ):
+        """
+        Initialize ValidationDataProcessingError.
+
+        Args:
+            message: Error message
+            validation_date: Date of validation set being processed
+            estimated_ready_time: ISO timestamp when data is estimated to be ready
+            retry_after: Seconds to wait before retrying
+        """
+        super().__init__(message)
+        self.validation_date = validation_date
+        self.estimated_ready_time = estimated_ready_time
+        self.retry_after = retry_after

@@ -207,3 +207,28 @@ class ModelCache:
             logger.info(f"Cleanup removed {len(removed)} corrupted entries")
 
         return removed
+
+    def cleanup_stale(self, active_hotkeys: set[str]) -> list[str]:
+        """
+        Remove cache entries for hotkeys no longer on chain.
+
+        Called periodically to prevent unbounded cache growth when
+        miners deregister or commitments are removed.
+
+        Args:
+            active_hotkeys: Set of hotkeys with current commitments
+
+        Returns:
+            List of removed hotkeys
+        """
+        removed = []
+        for hotkey in self.get_all_hotkeys():
+            if hotkey not in active_hotkeys:
+                self.remove(hotkey)
+                removed.append(hotkey)
+                logger.info(f"Removed stale cache entry for {hotkey}")
+
+        if removed:
+            logger.info(f"Cleanup removed {len(removed)} stale entries")
+
+        return removed

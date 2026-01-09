@@ -7,12 +7,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from scalecodec.utils.ss58 import ss58_encode
-
-from pylon._internal.common.types import CommitmentDataHex
-from pylon.v1 import (
+from pylon_client.v1 import (
     AsyncConfig,
     AsyncPylonClient,
+    CommitmentDataHex,
     Hotkey,
     PylonForbidden,
     PylonRequestException,
@@ -20,6 +18,7 @@ from pylon.v1 import (
     PylonUnauthorized,
     Weight,
 )
+from scalecodec.utils.ss58 import ss58_encode
 
 from .errors import (
     AuthenticationError,
@@ -37,7 +36,7 @@ from .models import (
 )
 
 if TYPE_CHECKING:
-    from pylon.v1 import Neuron as PylonNeuron
+    from pylon_client.v1 import Neuron as PylonNeuron
 
 logger = logging.getLogger(__name__)
 
@@ -365,7 +364,9 @@ class ChainClient:
         client = self._ensure_client()
 
         try:
-            response = await client.identity.get_extrinsic(block_number, extrinsic_index)
+            response = await client.identity.get_extrinsic(
+                block_number, extrinsic_index
+            )
 
             return ExtrinsicData(
                 block_number=response.block_number,
@@ -386,7 +387,9 @@ class ChainClient:
             raise ChainConnectionError(f"Connection error: {e}") from e
         except PylonResponseException:
             # Could be 404 if extrinsic not found
-            logger.debug(f"Extrinsic not found: block={block_number}, index={extrinsic_index}")
+            logger.debug(
+                f"Extrinsic not found: block={block_number}, index={extrinsic_index}"
+            )
             return None
 
     async def health_check(self) -> bool:

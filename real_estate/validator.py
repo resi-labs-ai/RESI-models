@@ -11,14 +11,21 @@ import argparse
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import bittensor as bt
 import numpy as np
 
-from real_estate.chain import ChainClient, PylonConfig
 from real_estate.chain.models import Metagraph
+
+if TYPE_CHECKING:
+    from real_estate.chain import ChainClient
 from real_estate.config import check_config, config_to_dict, get_config, setup_logging
-from real_estate.data import ScraperClient, ScraperConfig, ValidationDataset
+from real_estate.data import (
+    ValidationDataset,
+    ValidationDatasetClient,
+    ValidationDatasetClientConfig,
+)
 from real_estate.models import (
     DownloadConfig,
     DownloadResult,
@@ -58,6 +65,8 @@ class Validator:
         logger.info(f"Config: {config_to_dict(config)}")
 
         # Pylon client config (client created as context manager in run())
+        from real_estate.chain import PylonConfig
+
         self._pylon_config = PylonConfig(
             url=self.config.pylon_url,
             token=self.config.pylon_token,
@@ -77,15 +86,16 @@ class Validator:
         self.hotkey: str = self.wallet.hotkey.ss58_address
         logger.info(f"Loaded wallet: {self.wallet.name}/{self.wallet.hotkey_str}")
 
-        # Scraper client for fetching validation data
-        self.scraper = ScraperClient(
-            ScraperConfig(
-                url=self.config.scraper_url,
-                realm=self.config.realm,
-                schedule_hour=self.config.scraper_schedule_hour,
-                schedule_minute=self.config.scraper_schedule_minute,
-                max_retries=self.config.scraper_max_retries,
-                retry_delay_seconds=self.config.scraper_retry_delay,
+        # Validation data client for fetching validation data from dashboard API
+        self.validation_client = ValidationDatasetClient(
+            ValidationDatasetClientConfig(
+                url=self.config.validation_data_url,
+                timeout=60.0,
+                max_retries=self.config.validation_data_max_retries,
+                retry_delay_seconds=self.config.validation_data_retry_delay,
+                schedule_hour=self.config.validation_data_schedule_hour,
+                schedule_minute=self.config.validation_data_schedule_minute,
+                download_raw=self.config.validation_data_download_raw,
             ),
             self.wallet.hotkey,
         )
@@ -96,6 +106,7 @@ class Validator:
         # State
         self.metagraph: Metagraph | None = None
         self.validation_data: ValidationDataset | None = None
+        self.raw_data: dict[str, dict] | None = None  # Raw state files
         self.scores: np.ndarray = np.array([], dtype=np.float32)
         self.hotkeys: list[str] = []
         self.uid: int | None = None
@@ -278,10 +289,20 @@ class Validator:
         epoch_length: int = self.config.epoch_length
         return elapsed > epoch_length
 
-    def _on_validation_data_fetched(self, data: ValidationDataset) -> None:
+    def _on_validation_data_fetched(
+        self,
+        validation_data: ValidationDataset | None,
+        raw_data: dict[str, dict] | None,
+    ) -> None:
         """Callback when new validation data is fetched."""
-        self.validation_data = data
-        logger.info(f"Validation data updated: {len(data)} properties")
+        self.validation_data = validation_data
+        self.raw_data = raw_data
+
+        if validation_data:
+            logger.info(f"Validation data updated: {len(validation_data)} properties")
+
+        if raw_data:
+            logger.info(f"Raw data updated: {len(raw_data)} states")
 
     async def run(self) -> None:
         """
@@ -290,6 +311,8 @@ class Validator:
         Metagraph is updated on-demand via update_metagraph() when needed.
         """
         logger.info(f"Starting validator for subnet {self.config.netuid}")
+
+        from real_estate.chain import ChainClient
 
         async with ChainClient(self._pylon_config) as chain:
             self.chain = chain
@@ -302,7 +325,7 @@ class Validator:
                     max_model_size_bytes=self.config.model_max_size_mb * 1024 * 1024,
                 ),
                 scheduler_config=SchedulerConfig(
-                    min_commitment_age_blocks=0,  #TODO For testing - accept all commitments
+                    min_commitment_age_blocks=0,  # TODO For testing - accept all commitments
                 ),
                 required_license=self.config.model_required_license,
             )
@@ -332,20 +355,28 @@ class Validator:
             try:
                 # TODO Use a future eval_time to download immediately without waiting
                 eval_time = datetime.now(UTC) + timedelta(hours=1)
-                self.download_results = await self._model_scheduler.run_pre_download(eval_time)
+                self.download_results = await self._model_scheduler.run_pre_download(
+                    eval_time
+                )
             except Exception as e:
                 logger.warning(f"Initial model download failed: {e}")
 
             # Initial validation data fetch
             logger.info("Performing initial validation data fetch...")
             try:
-                data = await self.scraper.fetch_with_retry()
-                self._on_validation_data_fetched(data)
+                (
+                    validation_data,
+                    raw_data,
+                ) = await self.validation_client.fetch_with_retry(
+                    download_validation=True,
+                    download_raw=self.config.validation_data_download_raw,
+                )
+                self._on_validation_data_fetched(validation_data, raw_data)
             except Exception as e:
                 logger.warning(f"Initial validation data fetch failed: {e}")
 
             # Start scheduled daily data fetcher (cron job)
-            scheduler = self.scraper.start_scheduled(
+            validation_scheduler = self.validation_client.start_scheduled(
                 on_fetch=self._on_validation_data_fetched,
             )
 
@@ -374,7 +405,7 @@ class Validator:
             except KeyboardInterrupt:
                 logger.info("Validator stopped by keyboard interrupt")
             finally:
-                scheduler.shutdown()
+                validation_scheduler.shutdown()
 
 
 async def main() -> None:

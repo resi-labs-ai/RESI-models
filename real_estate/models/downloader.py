@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import shutil
 import tempfile
@@ -10,7 +11,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import httpx
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import (
     EntryNotFoundError,
@@ -162,12 +162,16 @@ class ModelDownloader:
 
             # 9. Move to cache
             actual_size = temp_path.stat().st_size
+            temp_dir = temp_path.parent
             cached_path = self._cache.put(
                 hotkey=hotkey,
                 temp_model_path=temp_path,
                 model_hash=expected_hash,
                 size_bytes=actual_size,
             )
+
+            # 10. Clean up temp directory (file was moved, dir may have HF cache files)
+            self._cleanup_temp_dir(str(temp_dir))
 
             self._record_success()
             logger.info(f"Successfully downloaded and cached model for {hotkey}")
@@ -192,8 +196,6 @@ class ModelDownloader:
         Raises:
             ModelDownloadError: If all retries exhausted
         """
-        import asyncio
-
         last_error: Exception | None = None
         delay = self._config.initial_retry_delay_seconds
 
@@ -202,31 +204,44 @@ class ModelDownloader:
             try:
                 temp_dir = tempfile.mkdtemp(prefix="model_download_")
 
-                downloaded_path = hf_hub_download(
-                    repo_id=hf_repo_id,
-                    filename="model.onnx",
-                    local_dir=temp_dir,
-                    local_dir_use_symlinks=False,
+                # Run synchronous hf_hub_download in thread pool with timeout
+                downloaded_path = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        hf_hub_download,
+                        repo_id=hf_repo_id,
+                        filename="model.onnx",
+                        local_dir=temp_dir,
+                        local_dir_use_symlinks=False,
+                    ),
+                    timeout=self._config.download_timeout_seconds,
                 )
 
-                self._record_success()
                 return Path(downloaded_path)
 
             except RepositoryNotFoundError as e:
                 self._cleanup_temp_dir(temp_dir)
-                self._record_failure()
-                raise ModelDownloadError(
-                    f"Repository not found: {hf_repo_id}"
-                ) from e
+                # Don't record failure - this is a permanent config error, not transient
+                raise ModelDownloadError(f"Repository not found: {hf_repo_id}") from e
 
             except EntryNotFoundError as e:
                 self._cleanup_temp_dir(temp_dir)
-                self._record_failure()
-                raise ModelDownloadError(
-                    f"model.onnx not found in {hf_repo_id}"
-                ) from e
+                # Don't record failure - this is a permanent config error, not transient
+                raise ModelDownloadError(f"model.onnx not found in {hf_repo_id}") from e
 
-            except (HfHubHTTPError, httpx.HTTPError) as e:
+            except asyncio.TimeoutError as e:
+                self._cleanup_temp_dir(temp_dir)
+                last_error = e
+                self._record_failure()
+
+                if attempt < self._config.max_retries - 1:
+                    logger.warning(
+                        f"Download attempt {attempt + 1} timed out for {hf_repo_id} "
+                        f"(>{self._config.download_timeout_seconds}s). Retrying in {delay}s..."
+                    )
+                    await asyncio.sleep(delay)
+                    delay *= 2  # Exponential backoff
+
+            except HfHubHTTPError as e:
                 self._cleanup_temp_dir(temp_dir)
                 last_error = e
                 self._record_failure()
@@ -315,3 +330,15 @@ class ModelDownloader:
         """Get path to cached model if exists."""
         cached = self._cache.get(hotkey)
         return cached.path if cached else None
+
+    def cleanup_stale_cache(self, active_hotkeys: set[str]) -> list[str]:
+        """
+        Remove cached models for hotkeys no longer on chain.
+
+        Args:
+            active_hotkeys: Set of hotkeys with current commitments
+
+        Returns:
+            List of removed hotkeys
+        """
+        return self._cache.cleanup_stale(active_hotkeys)

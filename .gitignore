@@ -163,4 +163,7 @@ testing/
 
 # Editors
 .vscode/settings.json
-mcli/
+
+# Test artifacts
+test_model_cache/
+*.onnx

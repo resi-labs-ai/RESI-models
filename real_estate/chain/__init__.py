@@ -1,6 +1,5 @@
 """Chain interaction layer via Pylon."""
 
-from .client import ChainClient, PylonConfig
 from .errors import (
     AuthenticationError,
     ChainConnectionError,
@@ -18,8 +17,18 @@ from .models import (
     Neuron,
 )
 
+
+def __getattr__(name: str):
+    """Lazy import ChainClient and PylonConfig to avoid pylon dependency at import time."""
+    if name in ("ChainClient", "PylonConfig"):
+        from .client import ChainClient, PylonConfig
+
+        return ChainClient if name == "ChainClient" else PylonConfig
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
-    # Client
+    # Client (lazy loaded)
     "ChainClient",
     "PylonConfig",
     # Errors
