@@ -54,9 +54,9 @@ def mock_config() -> MagicMock:
 def validator(mock_config: MagicMock) -> Validator:
     """Create a Validator instance with mocked dependencies."""
     with (
-        patch("real_estate.validator.check_config"),
-        patch("real_estate.validator.bt.subtensor") as mock_subtensor,
-        patch("real_estate.validator.bt.wallet") as mock_wallet,
+        patch("real_estate.validator.validator.check_config"),
+        patch("real_estate.validator.validator.bt.subtensor") as mock_subtensor,
+        patch("real_estate.validator.validator.bt.wallet") as mock_wallet,
     ):
         mock_subtensor.return_value = MagicMock(chain_endpoint="mock_endpoint")
         mock_wallet.return_value = MagicMock(hotkey=MagicMock(ss58_address="our_hotkey"))

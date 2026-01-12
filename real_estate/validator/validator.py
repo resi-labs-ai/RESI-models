@@ -20,7 +20,7 @@ from real_estate.chain.models import Metagraph
 
 if TYPE_CHECKING:
     from real_estate.chain import ChainClient
-from real_estate.config import check_config, config_to_dict, get_config, setup_logging
+
 from real_estate.data import (
     ValidationDataset,
     ValidationDatasetClient,
@@ -33,6 +33,8 @@ from real_estate.models import (
     create_model_scheduler,
 )
 from real_estate.utils.misc import ttl_get_block
+
+from .config import check_config, config_to_dict, get_config, setup_logging
 
 logger = logging.getLogger(__name__)
 
