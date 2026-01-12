@@ -167,3 +167,5 @@ testing/
 # Test artifacts
 test_model_cache/
 *.onnx
+
+caleb-scratchpads/
