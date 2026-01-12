@@ -26,12 +26,14 @@ from real_estate.data import (
     ValidationDatasetClient,
     ValidationDatasetClientConfig,
 )
+from real_estate.incentives import NoValidModelsError
 from real_estate.models import (
     DownloadConfig,
     DownloadResult,
     SchedulerConfig,
     create_model_scheduler,
 )
+from real_estate.orchestration import ValidationOrchestrator
 from real_estate.utils.misc import ttl_get_block
 
 from .config import check_config, config_to_dict, get_config, setup_logging
@@ -43,13 +45,12 @@ class Validator:
     """
     Real Estate Subnet Validator.
 
-    Responsibilities:
-    - Sync metagraph periodically
-    - Set weights periodically
-    - Manage scores for miners
+    Runs two concurrent loops:
+    - _evaluation_loop: Waits for validation data, runs evaluation via orchestrator
+    - _weight_setting_loop: Periodically sets weights on chain
 
-    The actual validation/evaluation logic will be added via
-    the validation_loop() method.
+    Evaluation is triggered when new validation data arrives (daily).
+    The ValidationOrchestrator handles the actual evaluation logic.
     """
 
     def __init__(self, config: argparse.Namespace):
@@ -92,7 +93,6 @@ class Validator:
         self.validation_client = ValidationDatasetClient(
             ValidationDatasetClientConfig(
                 url=self.config.validation_data_url,
-                timeout=60.0,
                 max_retries=self.config.validation_data_max_retries,
                 retry_delay_seconds=self.config.validation_data_retry_delay,
                 schedule_hour=self.config.validation_data_schedule_hour,
@@ -105,10 +105,12 @@ class Validator:
         # Model scheduler (initialized in run() when chain is available)
         self._model_scheduler = None
 
+        # Validation orchestrator
+        self._orchestrator = ValidationOrchestrator.create()
+
         # State
         self.metagraph: Metagraph | None = None
         self.validation_data: ValidationDataset | None = None
-        self.raw_data: dict[str, dict] | None = None  # Raw state files
         self.scores: np.ndarray = np.array([], dtype=np.float32)
         self.hotkeys: list[str] = []
         self.uid: int | None = None
@@ -116,6 +118,9 @@ class Validator:
 
         # Block tracker for weight setting
         self._last_weight_set_block: int = 0
+
+        # Event to signal new validation data needs evaluation
+        self._evaluation_event: asyncio.Event = asyncio.Event()
 
     @property
     def block(self) -> int:
@@ -245,40 +250,6 @@ class Validator:
         except Exception as e:
             logger.error(f"set_weights failed: {e}")
 
-    def save_state(self) -> None:
-        """Save validator state to disk."""
-        state_file = self.config.state_path / "state.npz"
-
-        np.savez(
-            state_file,
-            scores=self.scores,
-            hotkeys=np.array(self.hotkeys, dtype=object),
-        )
-        logger.debug(f"State saved to {state_file}")
-
-    def load_state(self) -> bool:
-        """
-        Load validator state from disk.
-
-        Returns:
-            True if state was loaded, False if no state file exists.
-        """
-        state_file = self.config.state_path / "state.npz"
-
-        if not state_file.exists():
-            logger.info("No saved state found")
-            return False
-
-        try:
-            state = np.load(state_file, allow_pickle=True)
-            self.scores = state["scores"]
-            self.hotkeys = list(state["hotkeys"])
-            logger.info(f"State loaded: {len(self.hotkeys)} hotkeys")
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to load state: {e}")
-            return False
-
     def should_set_weights(self) -> bool:
         """
         Check if enough blocks have elapsed to set weights.
@@ -294,23 +265,101 @@ class Validator:
     def _on_validation_data_fetched(
         self,
         validation_data: ValidationDataset | None,
-        raw_data: dict[str, dict] | None,
+        raw_data: dict[str, dict] | None,  # noqa: ARG002
     ) -> None:
         """Callback when new validation data is fetched."""
         self.validation_data = validation_data
-        self.raw_data = raw_data
 
         if validation_data:
             logger.info(f"Validation data updated: {len(validation_data)} properties")
+            self._evaluation_event.set()
 
-        if raw_data:
-            logger.info(f"Raw data updated: {len(raw_data)} states")
+    async def _run_evaluation(self, dataset: ValidationDataset) -> None:
+        """
+        Run evaluation pipeline on the given dataset.
+
+        Updates self.scores based on orchestrator results.
+        """
+        # Get current metagraph hotkeys
+        registered_hotkeys = set(self.hotkeys)
+
+        # Get successful model paths, filtered to registered hotkeys only
+        model_paths = {
+            hotkey: result.model_path
+            for hotkey, result in self.download_results.items()
+            if result.success
+            and result.model_path is not None
+            and hotkey in registered_hotkeys
+        }
+
+        if not model_paths:
+            logger.warning("No models available for evaluation")
+            return
+
+        # Get cached metadata from scheduler, filtered to models we're evaluating
+        chain_metadata = {
+            hotkey: meta
+            for hotkey, meta in self._model_scheduler.known_commitments.items()
+            if hotkey in model_paths
+        }
+
+        logger.info(f"Running evaluation with {len(model_paths)} models")
+
+        try:
+            result = await self._orchestrator.run(dataset, model_paths, chain_metadata)
+
+            # Update scores from weights
+            for hotkey, weight in result.weights.weights.items():
+                if hotkey in self.hotkeys:
+                    uid = self.hotkeys.index(hotkey)
+                    self.scores[uid] = weight
+
+            logger.info(
+                f"Evaluation complete: winner={result.winner.winner_hotkey}, "
+                f"score={result.winner.winner_score:.4f}"
+            )
+
+        except NoValidModelsError as e:
+            logger.warning(f"Evaluation skipped: {e}")
+
+    async def _evaluation_loop(self) -> None:
+        """Loop that waits for evaluation events and runs evaluation."""
+        while True:
+            await self._evaluation_event.wait()
+            self._evaluation_event.clear()
+
+            if self.validation_data is None:
+                continue
+
+            try:
+                await self.update_metagraph()
+                await self._run_evaluation(self.validation_data)
+            except Exception as e:
+                logger.error(f"Evaluation failed: {e}")
+
+    async def _weight_setting_loop(self) -> None:
+        """Loop that periodically checks and sets weights."""
+        while True:
+            if self.should_set_weights():
+                try:
+                    await self.update_metagraph()
+                    if not self.is_registered():
+                        logger.error(
+                            f"Hotkey {self.hotkey} is not registered on subnet "
+                            f"{self.config.netuid}"
+                        )
+                    else:
+                        await self.set_weights()
+                except Exception as e:
+                    logger.warning(f"Weight setting failed: {e}")
+
+            await asyncio.sleep(60)
 
     async def run(self) -> None:
         """
-        Main entry point - single loop that handles everything.
+        Main entry point.
 
-        Metagraph is updated on-demand via update_metagraph() when needed.
+        Runs concurrent loops for evaluation and weight setting.
         """
         logger.info(f"Starting validator for subnet {self.config.netuid}")
 
@@ -332,82 +381,62 @@ class Validator:
                 required_license=self.config.model_required_license,
             )
 
-            # Initial metagraph fetch - required for startup
-            try:
-                await self.update_metagraph()
-            except Exception as e:
-                logger.error(f"Failed to fetch initial metagraph: {e}")
-                raise SystemExit(1) from e
-
-            if not self.is_registered():
-                raise SystemExit(
-                    f"Hotkey {self.hotkey} is not registered on subnet {self.config.netuid}. "
-                    f"Please register with `btcli subnets register`"
-                )
-
-            self.load_state()
-
-            # Initialize weight tracking block
-            self._last_weight_set_block = self.block
-
-            logger.info(f"Validator ready - UID {self.uid}, {len(self.hotkeys)} miners")
-
-            # Initial model download using scheduler
-            logger.info("Downloading miner models...")
-            try:
-                # TODO Use a future eval_time to download immediately without waiting
-                eval_time = datetime.now(UTC) + timedelta(hours=1)
-                self.download_results = await self._model_scheduler.run_pre_download(
-                    eval_time
-                )
-            except Exception as e:
-                logger.warning(f"Initial model download failed: {e}")
-
-            # Initial validation data fetch
-            logger.info("Performing initial validation data fetch...")
-            try:
-                (
-                    validation_data,
-                    raw_data,
-                ) = await self.validation_client.fetch_with_retry(
-                    download_validation=True,
-                    download_raw=self.config.validation_data_download_raw,
-                )
-                self._on_validation_data_fetched(validation_data, raw_data)
-            except Exception as e:
-                logger.warning(f"Initial validation data fetch failed: {e}")
+            await self._startup()
 
             # Start scheduled daily data fetcher (cron job)
             validation_scheduler = self.validation_client.start_scheduled(
                 on_fetch=self._on_validation_data_fetched,
             )
 
-            # Main loop
             try:
-                while True:
-                    # TODO: REMOVE - temporary hardcoded scores for testing
-                    self.scores = np.array([0.3, 0.7], dtype=np.float32)
-
-                    # Set weights if needed
-                    if self.should_set_weights():
-                        try:
-                            await self.update_metagraph()
-                            if not self.is_registered():
-                                raise ValueError(
-                                    f"Hotkey {self.hotkey} is not registered on subnet {self.config.netuid}."
-                                    f"Please register with `btcli subnets register`"
-                                )
-                            await self.set_weights()
-                        except Exception as e:
-                            logger.warning(f"Weight setting failed: {e}")
-
-                    self.save_state()
-                    await asyncio.sleep(5)  # TODO: change back to 60 after testing
-
+                await asyncio.gather(
+                    self._evaluation_loop(),
+                    self._weight_setting_loop(),
+                )
             except KeyboardInterrupt:
                 logger.info("Validator stopped by keyboard interrupt")
             finally:
                 validation_scheduler.shutdown()
+
+    async def _startup(self) -> None:
+        """Run startup tasks: metagraph, models, initial data fetch."""
+        # Initial metagraph fetch - required for startup
+        try:
+            await self.update_metagraph()
+        except Exception as e:
+            logger.error(f"Failed to fetch initial metagraph: {e}")
+            raise SystemExit(1) from e
+
+        if not self.is_registered():
+            raise SystemExit(
+                f"Hotkey {self.hotkey} is not registered on subnet {self.config.netuid}. "
+                f"Please register with `btcli subnets register`"
+            )
+
+        self._last_weight_set_block = self.block
+
+        logger.info(f"Validator ready - UID {self.uid}, {len(self.hotkeys)} miners")
+
+        # Initial model download
+        logger.info("Downloading miner models...")
+        try:
+            eval_time = datetime.now(UTC) + timedelta(hours=1)
+            self.download_results = await self._model_scheduler.run_pre_download(
+                eval_time
+            )
+        except Exception as e:
+            logger.warning(f"Initial model download failed: {e}")
+
+        # Initial validation data fetch
+        logger.info("Performing initial validation data fetch...")
+        try:
+            validation_data, raw_data = await self.validation_client.fetch_with_retry(
+                download_validation=True,
+                download_raw=self.config.validation_data_download_raw,
+            )
+            self._on_validation_data_fetched(validation_data, raw_data)
+        except Exception as e:
+            logger.warning(f"Initial validation data fetch failed: {e}")
 
 
 async def main() -> None:

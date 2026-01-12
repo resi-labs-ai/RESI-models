@@ -64,6 +64,11 @@ class ModelDownloadScheduler:
         self._chain = chain_client
         self._known_commitments: dict[str, ChainModelMetadata] = {}
 
+    @property
+    def known_commitments(self) -> dict[str, ChainModelMetadata]:
+        """Cached commitments from last download run."""
+        return self._known_commitments
+
     async def run_pre_download(
         self,
         eval_time: datetime,
