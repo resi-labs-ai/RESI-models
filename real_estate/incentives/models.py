@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NewType
 
+# Type-safe threshold for winner selection.
+# Models within this threshold of best score are considered equivalent.
+# Default 0.005 (0.5%) means if best score is 0.90, models with score >= 0.895
+# are in the "winner set". Among those, earliest commit (lowest block) wins.
+ScoreThreshold = NewType("ScoreThreshold", float)
 
-@dataclass(frozen=True)
-class WinnerSelectionConfig:
-    """Configuration for winner selection."""
-
-    score_threshold: float = 0.005
-    """Models within this threshold of best score are considered equivalent."""
+DEFAULT_SCORE_THRESHOLD: ScoreThreshold = ScoreThreshold(0.005)
 
 
 @dataclass(frozen=True)
@@ -19,7 +19,12 @@ class DistributorConfig:
     """Configuration for incentive distribution."""
 
     winner_share: float = 0.99
-    """Share of emissions allocated to the winner (0.0-1.0)."""
+    """
+    Share of emissions allocated to the winner (0.0-1.0).
+
+    Default 0.99 (99%) gives winner almost all emissions. Remaining 1% is split
+    proportionally among valid non-winner models. Copiers receive 0%.
+    """
 
     @property
     def non_winner_share(self) -> float:

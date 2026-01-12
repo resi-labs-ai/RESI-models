@@ -130,6 +130,13 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
+        "--score_threshold",
+        type=float,
+        help="Score threshold for winner set. Models within this of best are equivalent.",
+        default=float(os.environ.get("SCORE_THRESHOLD", "0.005")),
+    )
+
+    parser.add_argument(
         "--disable_set_weights",
         action="store_true",
         help="Disable automatic weight setting.",
@@ -267,6 +274,7 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "validation_data_retry_delay": config.validation_data_retry_delay,
         "validation_data_download_raw": config.validation_data_download_raw,
         "epoch_length": config.epoch_length,
+        "score_threshold": config.score_threshold,
         "disable_set_weights": config.disable_set_weights,
         "state_path": str(config.state_path),
         "moving_average_alpha": config.moving_average_alpha,

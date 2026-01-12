@@ -7,7 +7,7 @@ from real_estate.chain.models import ChainModelMetadata
 from real_estate.evaluation.models import EvaluationResult, PredictionMetrics
 from real_estate.incentives import (
     NoValidModelsError,
-    WinnerSelectionConfig,
+    ScoreThreshold,
     WinnerSelector,
 )
 
@@ -165,8 +165,7 @@ class TestWinnerSelector:
         assert result_default.winner_set_size == 1
 
         # With larger threshold (0.10), both are in winner set
-        config = WinnerSelectionConfig(score_threshold=0.10)
-        selector_large = WinnerSelector(config)
+        selector_large = WinnerSelector(ScoreThreshold(0.10))
         result_large = selector_large.select_winner(results, metadata)
         assert result_large.winner_hotkey == "hotkey_b"  # Earlier commit
         assert result_large.winner_set_size == 2
@@ -250,9 +249,8 @@ class TestWinnerSelector:
         assert len(result_dict["candidates"]) == 2
 
     def test_threshold_property(self):
-        """Threshold property returns config value."""
-        config = WinnerSelectionConfig(score_threshold=0.01)
-        selector = WinnerSelector(config)
+        """Threshold property returns configured value."""
+        selector = WinnerSelector(ScoreThreshold(0.01))
         assert selector.threshold == 0.01
 
     def test_many_candidates_in_winner_set(self):

@@ -6,7 +6,12 @@ import logging
 from typing import TYPE_CHECKING
 
 from .errors import NoValidModelsError
-from .models import WinnerCandidate, WinnerSelectionConfig, WinnerSelectionResult
+from .models import (
+    DEFAULT_SCORE_THRESHOLD,
+    ScoreThreshold,
+    WinnerCandidate,
+    WinnerSelectionResult,
+)
 
 if TYPE_CHECKING:
     from ..chain.models import ChainModelMetadata
@@ -30,19 +35,19 @@ class WinnerSelector:
         print(f"Winner: {result.winner_hotkey}")
     """
 
-    def __init__(self, config: WinnerSelectionConfig | None = None):
+    def __init__(self, score_threshold: ScoreThreshold | None = None):
         """
         Initialize winner selector.
 
         Args:
-            config: Configuration for winner selection. Uses defaults if None.
+            score_threshold: Threshold for winner set. Uses default if None.
         """
-        self._config = config or WinnerSelectionConfig()
+        self._threshold = score_threshold or DEFAULT_SCORE_THRESHOLD
 
     @property
     def threshold(self) -> float:
         """Score threshold for winner set."""
-        return self._config.score_threshold
+        return self._threshold
 
     def select_winner(
         self,
@@ -73,7 +78,7 @@ class WinnerSelector:
         best_score = sorted_results[0].score
 
         # Define winner set (within threshold of best)
-        threshold_cutoff = best_score - self._config.score_threshold
+        threshold_cutoff = best_score - self._threshold
         winner_set_results = [r for r in sorted_results if r.score >= threshold_cutoff]
 
         # Build candidates with metadata
@@ -110,5 +115,5 @@ class WinnerSelector:
             winner_block=winner.block_number,
             candidates=tuple(candidates),
             best_score=best_score,
-            threshold=self._config.score_threshold,
+            threshold=self._threshold,
         )

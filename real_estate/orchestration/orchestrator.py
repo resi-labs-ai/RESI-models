@@ -15,7 +15,7 @@ from real_estate.incentives import (
     DistributorConfig,
     IncentiveDistributor,
     NoValidModelsError,
-    WinnerSelectionConfig,
+    ScoreThreshold,
     WinnerSelector,
 )
 
@@ -92,11 +92,21 @@ class ValidationOrchestrator:
         Returns:
             Configured ValidationOrchestrator ready to run evaluations.
         """
+        if evaluation_config is not None:
+            evaluator = create_eval_orchestrator(
+                max_concurrent=evaluation_config.max_concurrent,
+                docker_memory=evaluation_config.docker_config.memory_limit,
+                docker_timeout=evaluation_config.docker_config.timeout_seconds,
+                metrics_config=evaluation_config.metrics_config,
+            )
+        else:
+            evaluator = create_eval_orchestrator()
+
         return cls(
             encoder=FeatureEncoder(config_path=feature_config_path),
-            evaluator=create_eval_orchestrator(config=evaluation_config),
+            evaluator=evaluator,
             detector=create_duplicate_detector(similarity_threshold=similarity_threshold),
-            selector=WinnerSelector(WinnerSelectionConfig(score_threshold=score_threshold)),
+            selector=WinnerSelector(ScoreThreshold(score_threshold)),
             distributor=IncentiveDistributor(DistributorConfig(winner_share=winner_share)),
         )
 
