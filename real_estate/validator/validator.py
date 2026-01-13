@@ -268,11 +268,17 @@ class Validator:
         raw_data: dict[str, dict] | None,  # noqa: ARG002
     ) -> None:
         """Callback when new validation data is fetched."""
-        self.validation_data = validation_data
+        if validation_data is None:
+            logger.warning("Validation data fetch returned None")
+            return
 
-        if validation_data:
-            logger.info(f"Validation data updated: {len(validation_data)} properties")
-            self._evaluation_event.set()
+        if len(validation_data) == 0:
+            logger.warning("Validation data is empty, skipping evaluation")
+            return
+
+        self.validation_data = validation_data
+        logger.info(f"Validation data updated: {len(validation_data)} properties")
+        self._evaluation_event.set()
 
     async def _run_evaluation(self, dataset: ValidationDataset) -> None:
         """
