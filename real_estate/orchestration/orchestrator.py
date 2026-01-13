@@ -105,9 +105,13 @@ class ValidationOrchestrator:
         return cls(
             encoder=FeatureEncoder(config_path=feature_config_path),
             evaluator=evaluator,
-            detector=create_duplicate_detector(similarity_threshold=similarity_threshold),
+            detector=create_duplicate_detector(
+                similarity_threshold=similarity_threshold
+            ),
             selector=WinnerSelector(ScoreThreshold(score_threshold)),
-            distributor=IncentiveDistributor(DistributorConfig(winner_share=winner_share)),
+            distributor=IncentiveDistributor(
+                DistributorConfig(winner_share=winner_share)
+            ),
         )
 
     async def run(
@@ -131,8 +135,7 @@ class ValidationOrchestrator:
             NoValidModelsError: If no models pass evaluation or all are copiers
         """
         logger.info(
-            f"Starting evaluation: {len(model_paths)} models, "
-            f"{len(dataset)} samples"
+            f"Starting evaluation: {len(model_paths)} models, {len(dataset)} samples"
         )
 
         # 1. Encode features
@@ -176,13 +179,13 @@ class ValidationOrchestrator:
 
         # 4. Filter copiers and select winner
         valid_results = [
-            r
-            for r in eval_batch.results
-            if r.success and r.hotkey not in copiers
+            r for r in eval_batch.results if r.success and r.hotkey not in copiers
         ]
 
         if not valid_results:
-            raise NoValidModelsError("No valid models identified for this validation round")
+            raise NoValidModelsError(
+                "No valid models identified for this validation round"
+            )
 
         logger.debug(f"Selecting winner from {len(valid_results)} valid models...")
         winner = self._selector.select_winner(valid_results, chain_metadata)
