@@ -3,15 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, NewType
-
-# Type-safe threshold for winner selection.
-# Models within this threshold of best score are considered equivalent.
-# Default 0.005 (0.5%) means if best score is 0.90, models with score >= 0.895
-# are in the "winner set". Among those, earliest commit (lowest block) wins.
-ScoreThreshold = NewType("ScoreThreshold", float)
-
-DEFAULT_SCORE_THRESHOLD: ScoreThreshold = ScoreThreshold(0.005)
+from typing import Any
 
 
 @dataclass(frozen=True)

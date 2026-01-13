@@ -10,14 +10,10 @@ Main components:
 - IncentiveDistributor: Calculates weight distribution for chain
 
 Usage:
-    from real_estate.incentives import (
-        WinnerSelector,
-        IncentiveDistributor,
-        ScoreThreshold,
-    )
+    from real_estate.incentives import WinnerSelector, IncentiveDistributor
 
     # Select winner
-    selector = WinnerSelector(ScoreThreshold(0.005))
+    selector = WinnerSelector(score_threshold=0.005)
     winner_result = selector.select_winner(evaluation_results, chain_metadata)
 
     # Calculate weights
@@ -36,10 +32,8 @@ Usage:
 from .distributor import IncentiveDistributor
 from .errors import IncentiveError, NoValidModelsError
 from .models import (
-    DEFAULT_SCORE_THRESHOLD,
     DistributorConfig,
     IncentiveWeights,
-    ScoreThreshold,
     WinnerCandidate,
     WinnerSelectionResult,
 )
@@ -50,8 +44,6 @@ __all__ = [
     "WinnerSelector",
     "IncentiveDistributor",
     # Configuration
-    "ScoreThreshold",
-    "DEFAULT_SCORE_THRESHOLD",
     "DistributorConfig",
     # Result models
     "WinnerSelectionResult",

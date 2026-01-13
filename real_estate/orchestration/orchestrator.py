@@ -15,7 +15,6 @@ from real_estate.incentives import (
     DistributorConfig,
     IncentiveDistributor,
     NoValidModelsError,
-    ScoreThreshold,
     WinnerSelector,
 )
 
@@ -108,7 +107,7 @@ class ValidationOrchestrator:
             detector=create_duplicate_detector(
                 similarity_threshold=similarity_threshold
             ),
-            selector=WinnerSelector(ScoreThreshold(score_threshold)),
+            selector=WinnerSelector(score_threshold),
             distributor=IncentiveDistributor(
                 DistributorConfig(winner_share=winner_share)
             ),

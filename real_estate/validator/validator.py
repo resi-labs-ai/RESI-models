@@ -106,7 +106,9 @@ class Validator:
         self._model_scheduler = None
 
         # Validation orchestrator
-        self._orchestrator = ValidationOrchestrator.create()
+        self._orchestrator = ValidationOrchestrator.create(
+            score_threshold=self.config.score_threshold,
+        )
 
         # State
         self.metagraph: Metagraph | None = None

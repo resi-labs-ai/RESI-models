@@ -6,12 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from .errors import NoValidModelsError
-from .models import (
-    DEFAULT_SCORE_THRESHOLD,
-    ScoreThreshold,
-    WinnerCandidate,
-    WinnerSelectionResult,
-)
+from .models import WinnerCandidate, WinnerSelectionResult
 
 if TYPE_CHECKING:
     from ..chain.models import ChainModelMetadata
@@ -30,19 +25,19 @@ class WinnerSelector:
     3. Reward innovation: If you improve by more than threshold, you win
 
     Usage:
-        selector = WinnerSelector()
+        selector = WinnerSelector(score_threshold=0.005)
         result = selector.select_winner(evaluation_results, chain_metadata)
         print(f"Winner: {result.winner_hotkey}")
     """
 
-    def __init__(self, score_threshold: ScoreThreshold | None = None):
+    def __init__(self, score_threshold: float):
         """
         Initialize winner selector.
 
         Args:
-            score_threshold: Threshold for winner set. Uses default if None.
+            score_threshold: Threshold for winner set (e.g., 0.005 = 0.5%).
         """
-        self._threshold = score_threshold or DEFAULT_SCORE_THRESHOLD
+        self._threshold = score_threshold
 
     @property
     def threshold(self) -> float:
