@@ -167,3 +167,6 @@ testing/
 # Test artifacts
 test_model_cache/
 *.onnx
+
+# LLM documentation
+claude-docs/
