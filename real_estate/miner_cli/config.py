@@ -1,5 +1,13 @@
 """Miner CLI configuration defaults."""
 
+# Network to subnet UID mapping
+NETWORK_NETUIDS = {
+    "finney": 46,
+    "mainnet": 46,
+    "test": 428,
+    "testnet": 428,
+}
+
 # Model validation
 MAX_MODEL_SIZE_MB = 200
 REQUIRED_ONNX_VERSION = "1.20.0"

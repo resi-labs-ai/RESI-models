@@ -3,8 +3,8 @@
 RESI Miner CLI - Evaluate and submit ONNX models to the RESI subnet.
 
 Usage:
-    miner-cli evaluate ./model.onnx
-    miner-cli submit --hf_repo_id user/repo --wallet_name miner --wallet_hotkey default
+    miner-cli evaluate --model.path ./model.onnx
+    miner-cli submit --hf.repo_id user/repo --wallet.name miner --wallet.hotkey default
 """
 
 import argparse
@@ -21,7 +21,7 @@ from huggingface_hub import hf_hub_download
 from scripts.compute_hash import compute_hash
 
 from .chain import build_commitment, scan_for_extrinsic_id
-from .config import MAX_REPO_BYTES, SCAN_MAX_BLOCKS
+from .config import MAX_REPO_BYTES, NETWORK_NETUIDS, SCAN_MAX_BLOCKS
 from .utils import check_hf_file_exists, validate_model_file
 
 LICENSE_NOTICE = """
@@ -194,20 +194,10 @@ def parse_args() -> argparse.Namespace:
         "evaluate", help="Evaluate an ONNX model locally with dummy data"
     )
     eval_parser.add_argument(
-        "model_path",
-        nargs="?",
-        default=None,
-        metavar="MODEL_PATH",
-        help="Path to ONNX model",
-    )
-    eval_parser.add_argument(
-        "--model_path",
-        "--model-path",
         "--model.path",
-        "-m",
-        dest="model_path_flag",
-        default=None,
-        help="Path to ONNX model (alternative to positional)",
+        dest="model_path",
+        required=True,
+        help="Path to ONNX model",
     )
 
     # SUBMIT
@@ -217,24 +207,18 @@ def parse_args() -> argparse.Namespace:
 
     # HuggingFace args
     submit_parser.add_argument(
-        "--hf_repo_id",
-        "--hf-repo-id",
         "--hf.repo_id",
         dest="hf_repo_id",
         required=True,
         help='HuggingFace repo ID, e.g., "user/repo"',
     )
     submit_parser.add_argument(
-        "--hf_model_filename",
-        "--hf-model-filename",
         "--hf.model_filename",
         dest="hf_model_filename",
         default="model.onnx",
         help="Filename in HF repo (default: model.onnx)",
     )
     submit_parser.add_argument(
-        "--hf_token",
-        "--hf-token",
         "--hf.token",
         dest="hf_token",
         default=os.environ.get("HF_TOKEN"),
@@ -244,32 +228,23 @@ def parse_args() -> argparse.Namespace:
     # Chain args
     submit_parser.add_argument(
         "--network",
-        "--subtensor.network",
-        "--chain",
-        "--subtensor.chain_endpoint",
-        dest="network",
         default="finney",
-        help="Network (finney/test/local) or endpoint URL (ws://...)",
+        help="Network (finney/mainnet/test/testnet) or endpoint URL (requires --netuid)",
     )
     submit_parser.add_argument(
-        "--netuid", type=int, default=46, help="Subnet UID (default: 46)"
+        "--netuid", type=int, default=None,
+        help="Subnet UID (optional, inferred from network for finney/test)"
     )
 
     # Wallet args
     submit_parser.add_argument(
-        "--wallet_name",
-        "--wallet-name",
         "--wallet.name",
-        "--name",
         dest="wallet_name",
         required=True,
         help="Bittensor wallet name",
     )
     submit_parser.add_argument(
-        "--wallet_hotkey",
-        "--wallet-hotkey",
         "--wallet.hotkey",
-        "--hotkey",
         dest="wallet_hotkey",
         required=True,
         help="Bittensor wallet hotkey",
@@ -277,9 +252,8 @@ def parse_args() -> argparse.Namespace:
 
     # Scanning args
     submit_parser.add_argument(
-        "--extrinsic_scan_blocks",
-        "--extrinsic-scan-blocks",
         "--extrinsic.scan_blocks",
+        dest="extrinsic_scan_blocks",
         type=int,
         default=SCAN_MAX_BLOCKS,
         help=f"Max blocks to scan for extrinsic (default: {SCAN_MAX_BLOCKS})",
@@ -293,16 +267,16 @@ async def main() -> int:
     config = parse_args()
 
     if config.action == "evaluate":
-        model_path = config.model_path or config.model_path_flag
-        if not model_path:
-            bt.logging.error(
-                "Model path required. Usage: evaluate <model.onnx> or "
-                "evaluate --model.path <model.onnx>"
-            )
-            return 2
-        return await evaluate_model(model_path)
+        return await evaluate_model(config.model_path)
 
     elif config.action == "submit":
+        netuid = config.netuid or NETWORK_NETUIDS.get(config.network)
+        if netuid is None:
+            bt.logging.error(
+                f"Unknown network '{config.network}'. Use --netuid to specify subnet UID."
+            )
+            return 2
+
         wallet = bt.wallet(name=config.wallet_name, hotkey=config.wallet_hotkey)
         subtensor = bt.subtensor(network=config.network)
         return await submit_model(
@@ -311,7 +285,7 @@ async def main() -> int:
             hf_token=config.hf_token,
             wallet=wallet,
             subtensor=subtensor,
-            netuid=config.netuid,
+            netuid=netuid,
             extrinsic_scan_blocks=config.extrinsic_scan_blocks,
         )
 

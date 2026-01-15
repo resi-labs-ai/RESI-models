@@ -89,14 +89,14 @@ def check_hf_file_exists(
         ):
             bt.logging.error(
                 f"File '{filename}' not found in repo '{repo_id}'. "
-                f"Use --hf_model_filename if your model has a different name."
+                f"Use --hf.model_filename if your model has a different name."
             )
             return False
         return True
     except huggingface_hub.utils.RepositoryNotFoundError:
         bt.logging.error(
             f"Repository '{repo_id}' not found or private.\n"
-            f"  If private, provide --hf_token or set HF_TOKEN env var."
+            f"  If private, provide --hf.token or set HF_TOKEN env var."
         )
         return False
     except Exception as e:
