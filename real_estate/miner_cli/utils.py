@@ -6,24 +6,20 @@ import bittensor as bt
 import huggingface_hub
 import onnx
 
-# Constants
-MAX_MODEL_SIZE_MB = 200
-REQUIRED_ONNX_VERSION = "1.20.0"
-REQUIRED_ONNXRUNTIME_VERSION = "1.20.1"
+from .config import (
+    MAX_MODEL_SIZE_MB,
+    REQUIRED_ONNX_VERSION,
+    REQUIRED_ONNXRUNTIME_VERSION,
+)
 
 
 def check_onnx_versions() -> bool:
-    """
-    Verify onnx and onnxruntime versions match validator requirements.
-
-    Returns:
-        True if versions match, False otherwise.
-    """
+    """Verify onnx and onnxruntime versions match validator requirements."""
     try:
         import onnxruntime as ort
     except ImportError:
         bt.logging.error(
-            "onnxruntime not installed. Run: pip install onnxruntime==1.20.1"
+            f"onnxruntime not installed. Run: pip install onnxruntime=={REQUIRED_ONNXRUNTIME_VERSION}"
         )
         return False
 
@@ -55,17 +51,7 @@ def check_onnx_versions() -> bool:
 
 
 def validate_model_file(model_path: str) -> bool:
-    """
-    Validate a local ONNX model file.
-
-    Checks existence, size limit, and ONNX format.
-
-    Args:
-        model_path: Path to the ONNX model file.
-
-    Returns:
-        True if valid, False otherwise.
-    """
+    """Validate a local ONNX model file (existence, size limit, ONNX format)."""
     if not check_onnx_versions():
         return False
 
@@ -96,17 +82,7 @@ def validate_model_file(model_path: str) -> bool:
 def check_hf_file_exists(
     repo_id: str, filename: str, token: str | None = None
 ) -> bool:
-    """
-    Check if file exists in HuggingFace repo.
-
-    Args:
-        repo_id: HuggingFace repository ID (e.g., "user/repo").
-        filename: Name of the file to check.
-        token: Optional HuggingFace token for private repos.
-
-    Returns:
-        True if file exists, False otherwise.
-    """
+    """Check if file exists in HuggingFace repo."""
     try:
         if not huggingface_hub.file_exists(
             repo_id=repo_id, filename=filename, repo_type="model", token=token

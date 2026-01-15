@@ -4,22 +4,11 @@ import json
 
 import bittensor as bt
 
-# Constants
-SCAN_MAX_BLOCKS = 20
-SCAN_MAX_EXTRINSICS_PER_BLOCK = 100
+from .config import SCAN_MAX_BLOCKS, SCAN_MAX_EXTRINSICS_PER_BLOCK
 
 
 def build_commitment(model_hash: str, hf_repo_id: str) -> str:
-    """
-    Build RESI commitment as compact JSON string.
-
-    Args:
-        model_hash: 64-char SHA-256 hash.
-        hf_repo_id: HuggingFace repo ID (e.g., "user/repo").
-
-    Returns:
-        Compact JSON string: {"h":"...","r":"..."}
-    """
+    """Build commitment JSON: {"h": hash, "r": repo_id}."""
     return json.dumps({"h": model_hash, "r": hf_repo_id}, separators=(",", ":"))
 
 

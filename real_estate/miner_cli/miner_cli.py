@@ -20,11 +20,9 @@ from huggingface_hub import hf_hub_download
 
 from scripts.compute_hash import compute_hash
 
-from .chain import SCAN_MAX_BLOCKS, build_commitment, scan_for_extrinsic_id
+from .chain import build_commitment, scan_for_extrinsic_id
+from .config import MAX_REPO_BYTES, SCAN_MAX_BLOCKS
 from .utils import check_hf_file_exists, validate_model_file
-
-# Constants
-MAX_REPO_BYTES = 51
 
 LICENSE_NOTICE = """
 License Notice:
@@ -33,15 +31,7 @@ Your HuggingFace model repository should be licensed under MIT.
 
 
 async def evaluate_model(model_path: str) -> int:
-    """
-    Evaluate an ONNX model locally with dummy data.
-
-    Args:
-        model_path: Path to the ONNX model file.
-
-    Returns:
-        Exit code (0 = success, 1 = error).
-    """
+    """Evaluate an ONNX model locally with dummy data."""
     print("Evaluating model locally...")
 
     if not validate_model_file(model_path):
@@ -87,21 +77,7 @@ async def submit_model(
     netuid: int,
     extrinsic_scan_blocks: int,
 ) -> int:
-    """
-    Submit a model commitment to the chain.
-
-    Args:
-        hf_repo_id: HuggingFace repository ID (e.g., "user/repo").
-        hf_model_filename: Filename in the HF repo.
-        hf_token: Optional HuggingFace token for private repos.
-        wallet: Bittensor wallet instance.
-        subtensor: Bittensor subtensor instance.
-        netuid: Subnet UID.
-        extrinsic_scan_blocks: Max blocks to scan for extrinsic.
-
-    Returns:
-        Exit code (0 = success, 1 = error, 2 = invalid args).
-    """
+    """Submit a model commitment to the chain."""
     print(LICENSE_NOTICE)
     print("Submitting model to chain...")
 
