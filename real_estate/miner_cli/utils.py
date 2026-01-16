@@ -1,6 +1,6 @@
 """Validation utilities for miner CLI."""
 
-import os
+from pathlib import Path
 
 import bittensor as bt
 import huggingface_hub
@@ -55,11 +55,11 @@ def validate_model_file(model_path: str) -> bool:
     if not check_onnx_versions():
         return False
 
-    if not os.path.exists(model_path):
+    if not Path(model_path).exists():
         bt.logging.error(f"Model file does not exist: {model_path}")
         return False
 
-    size_mb = os.path.getsize(model_path) / (1024 * 1024)
+    size_mb = Path(model_path).stat().st_size / (1024 * 1024)
     if size_mb > MAX_MODEL_SIZE_MB:
         bt.logging.error(
             f"Model too large: {size_mb:.2f}MB exceeds {MAX_MODEL_SIZE_MB}MB limit"

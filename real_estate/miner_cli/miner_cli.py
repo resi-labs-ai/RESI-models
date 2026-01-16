@@ -32,7 +32,7 @@ Your HuggingFace model repository should be licensed under MIT.
 
 async def evaluate_model(model_path: str) -> int:
     """Evaluate an ONNX model locally with dummy data."""
-    print("Evaluating model locally...")
+    bt.logging.info("Evaluating model locally...")
 
     if not validate_model_file(model_path):
         return 1
@@ -58,9 +58,9 @@ async def evaluate_model(model_path: str) -> int:
             bt.logging.error("Model produced NaN/Inf - will fail on validator")
             return 1
 
-        print(
-            f"\nEvaluation passed! Inference: {inference_ms:.2f}ms, "
-            f"Output shape: {predictions.shape}\n"
+        bt.logging.success(
+            f"Evaluation passed! Inference: {inference_ms:.2f}ms, "
+            f"Output shape: {predictions.shape}"
         )
         return 0
     except Exception as e:
@@ -78,8 +78,8 @@ async def submit_model(
     extrinsic_scan_blocks: int,
 ) -> int:
     """Submit a model commitment to the chain."""
-    print(LICENSE_NOTICE)
-    print("Submitting model to chain...")
+    bt.logging.info(LICENSE_NOTICE)
+    bt.logging.info("Submitting model to chain...")
 
     # Validate repo_id fits in chain metadata space
     repo_bytes = len(hf_repo_id.encode("utf-8"))
@@ -166,11 +166,11 @@ async def submit_model(
 
     # Print extrinsic ID for user
     if extrinsic_id:
-        print("SUCCESS! Model committed to chain.")
-        print(f"\nExtrinsic ID: {extrinsic_id}")
-        print("\nAdd this to your HuggingFace model card:")
-        print(f"  Repository: {hf_repo_id}")
-        print(f"  Extrinsic:  {extrinsic_id}")
+        bt.logging.success("Model committed to chain.")
+        bt.logging.info(f"Extrinsic ID: {extrinsic_id}")
+        bt.logging.info("Add this to your HuggingFace model card:")
+        bt.logging.info(f"  Repository: {hf_repo_id}")
+        bt.logging.info(f"  Extrinsic:  {extrinsic_id}")
     else:
         bt.logging.warning(
             "Commitment submitted but extrinsic ID not found. "
@@ -290,7 +290,7 @@ async def main() -> int:
         )
 
     else:
-        print(f"ERROR: Unknown action: {config.action}")
+        bt.logging.error(f"Unknown action: {config.action}")
         return 2
 
 
