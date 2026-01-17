@@ -1,7 +1,7 @@
 """Tests for Validator class."""
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -227,3 +227,87 @@ class TestSetWeights:
             "hotkey_0": 0.25,
             "hotkey_2": 0.75
         })
+
+
+class TestGetNextEvalTime:
+    """Tests for _get_next_eval_time method."""
+
+    def test_returns_today_if_before_scheduled_time(
+        self, validator: Validator
+    ) -> None:
+        """If current time is before scheduled time, returns today."""
+        # Schedule at 14:00 UTC
+        validator.config.validation_data_schedule_hour = 14
+        validator.config.validation_data_schedule_minute = 0
+
+        # Mock "now" as 10:00 UTC
+        mock_now = datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC)
+        with patch("real_estate.validator.validator.datetime") as mock_datetime:
+            mock_datetime.now.return_value = mock_now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            result = validator._get_next_eval_time()
+
+        # Should be today at 14:00
+        expected = datetime(2025, 1, 15, 14, 0, 0, tzinfo=UTC)
+        assert result == expected
+
+    def test_returns_tomorrow_if_after_scheduled_time(
+        self, validator: Validator
+    ) -> None:
+        """If current time is after scheduled time, returns tomorrow."""
+        # Schedule at 14:00 UTC
+        validator.config.validation_data_schedule_hour = 14
+        validator.config.validation_data_schedule_minute = 0
+
+        # Mock "now" as 16:00 UTC (after scheduled time)
+        mock_now = datetime(2025, 1, 15, 16, 0, 0, tzinfo=UTC)
+        with patch("real_estate.validator.validator.datetime") as mock_datetime:
+            mock_datetime.now.return_value = mock_now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            result = validator._get_next_eval_time()
+
+        # Should be tomorrow at 14:00
+        expected = datetime(2025, 1, 16, 14, 0, 0, tzinfo=UTC)
+        assert result == expected
+
+    def test_returns_tomorrow_if_exactly_at_scheduled_time(
+        self, validator: Validator
+    ) -> None:
+        """If current time equals scheduled time, returns tomorrow."""
+        # Schedule at 14:00 UTC
+        validator.config.validation_data_schedule_hour = 14
+        validator.config.validation_data_schedule_minute = 0
+
+        # Mock "now" as exactly 14:00 UTC
+        mock_now = datetime(2025, 1, 15, 14, 0, 0, tzinfo=UTC)
+        with patch("real_estate.validator.validator.datetime") as mock_datetime:
+            mock_datetime.now.return_value = mock_now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            result = validator._get_next_eval_time()
+
+        # Should be tomorrow at 14:00 (since <= triggers tomorrow)
+        expected = datetime(2025, 1, 16, 14, 0, 0, tzinfo=UTC)
+        assert result == expected
+
+    def test_respects_minute_configuration(
+        self, validator: Validator
+    ) -> None:
+        """Scheduled minute is respected."""
+        # Schedule at 02:30 UTC
+        validator.config.validation_data_schedule_hour = 2
+        validator.config.validation_data_schedule_minute = 30
+
+        # Mock "now" as 01:00 UTC
+        mock_now = datetime(2025, 1, 15, 1, 0, 0, tzinfo=UTC)
+        with patch("real_estate.validator.validator.datetime") as mock_datetime:
+            mock_datetime.now.return_value = mock_now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            result = validator._get_next_eval_time()
+
+        # Should be today at 02:30
+        expected = datetime(2025, 1, 15, 2, 30, 0, tzinfo=UTC)
+        assert result == expected

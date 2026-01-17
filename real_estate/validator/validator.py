@@ -269,6 +269,19 @@ class Validator:
         epoch_length: int = self.config.epoch_length
         return elapsed > epoch_length
 
+    def _get_next_eval_time(self) -> datetime:
+        """Calculate next scheduled evaluation time based on config."""
+        now = datetime.now(UTC)
+        next_eval = now.replace(
+            hour=self.config.validation_data_schedule_hour,
+            minute=self.config.validation_data_schedule_minute,
+            second=0,
+            microsecond=0,
+        )
+        if next_eval <= now:
+            next_eval += timedelta(days=1)
+        return next_eval
+
     def _on_validation_data_fetched(
         self,
         validation_data: ValidationDataset | None,
@@ -342,6 +355,7 @@ class Validator:
             self._evaluation_event.clear()
 
             if self.validation_data is None:
+                logger.warning("Evaluation triggered but validation_data is None")
                 continue
 
             try:
@@ -430,12 +444,13 @@ class Validator:
 
         logger.info(f"Validator ready - UID {self.uid}, {len(self.hotkeys)} miners")
 
-        # Initial model download
+        # Initial model download - spread until next scheduled eval time
         logger.info("Downloading miner models...")
         try:
-            eval_time = datetime.now(UTC) + timedelta(hours=1)
+            next_eval = self._get_next_eval_time()
+            logger.info(f"Next evaluation scheduled at {next_eval}")
             self.download_results = await self._model_scheduler.run_pre_download(
-                eval_time
+                eval_time=next_eval
             )
         except Exception as e:
             logger.warning(f"Initial model download failed: {e}")

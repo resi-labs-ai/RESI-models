@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -521,3 +522,178 @@ class TestRunCatchUp:
         results = await scheduler.run_catch_up()
 
         assert results == {}
+
+
+class TestRunPreDownloadTiming:
+    """Tests for run_pre_download elastic window timing."""
+
+    @pytest.mark.asyncio
+    async def test_uses_full_window_when_plenty_of_time(
+        self,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """Uses full pre_download_hours window when time_available > max_window."""
+        config = SchedulerConfig(
+            pre_download_hours=3.0,
+            catch_up_minutes=30.0,
+            min_delay_between_downloads_seconds=0,
+            min_commitment_age_blocks=0,
+        )
+        mock_downloader = MagicMock()
+        mock_downloader.is_cached.return_value = False
+        mock_downloader.download_model = AsyncMock(return_value=Path("/model.onnx"))
+        mock_downloader.cleanup_stale_cache = MagicMock()
+
+        commitment = MagicMock()
+        commitment.hotkey = "5Hotkey"
+        commitment.block_number = 1000
+        commitment.model_hash = "hash"
+
+        mock_chain_client.get_all_commitments = AsyncMock(return_value=[commitment])
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(config, mock_downloader, mock_chain_client)
+
+        # eval_time is 5 hours from now - plenty of time
+        now = datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC)
+        eval_time = now + timedelta(hours=5)
+
+        with (
+            patch("real_estate.models.scheduler.datetime") as mock_datetime,
+            patch("real_estate.models.scheduler.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            mock_datetime.now.return_value = now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            await scheduler.run_pre_download(eval_time)
+
+        # Should have downloaded the model
+        mock_downloader.download_model.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_compresses_window_when_less_time_available(
+        self,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """Compresses window when time_available < max_window."""
+        config = SchedulerConfig(
+            pre_download_hours=3.0,
+            catch_up_minutes=30.0,
+            min_delay_between_downloads_seconds=0,
+            min_commitment_age_blocks=0,
+        )
+        mock_downloader = MagicMock()
+        mock_downloader.is_cached.return_value = False
+        mock_downloader.download_model = AsyncMock(return_value=Path("/model.onnx"))
+        mock_downloader.cleanup_stale_cache = MagicMock()
+
+        commitments = [
+            MagicMock(hotkey=f"5Hotkey{i}", block_number=1000, model_hash=f"hash{i}")
+            for i in range(3)
+        ]
+
+        mock_chain_client.get_all_commitments = AsyncMock(return_value=commitments)
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(config, mock_downloader, mock_chain_client)
+
+        # eval_time is 1 hour from now, deadline is 30 min from now
+        # time_available = 30 min = 1800 seconds (less than 3 hours)
+        now = datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC)
+        eval_time = now + timedelta(hours=1)
+
+        with (
+            patch("real_estate.models.scheduler.datetime") as mock_datetime,
+            patch("real_estate.models.scheduler.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            mock_datetime.now.return_value = now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            await scheduler.run_pre_download(eval_time)
+
+        # All models should be downloaded (window compressed but still works)
+        assert mock_downloader.download_model.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_downloads_immediately_when_past_deadline(
+        self,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """Downloads immediately with minimal delays when past deadline."""
+        config = SchedulerConfig(
+            pre_download_hours=3.0,
+            catch_up_minutes=30.0,
+            min_delay_between_downloads_seconds=0,
+            min_commitment_age_blocks=0,
+        )
+        mock_downloader = MagicMock()
+        mock_downloader.is_cached.return_value = False
+        mock_downloader.download_model = AsyncMock(return_value=Path("/model.onnx"))
+        mock_downloader.cleanup_stale_cache = MagicMock()
+
+        commitments = [
+            MagicMock(hotkey=f"5Hotkey{i}", block_number=1000, model_hash=f"hash{i}")
+            for i in range(3)
+        ]
+
+        mock_chain_client.get_all_commitments = AsyncMock(return_value=commitments)
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(config, mock_downloader, mock_chain_client)
+
+        # eval_time is NOW - deadline was 30 min ago
+        now = datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC)
+        eval_time = now  # Past deadline
+
+        with (
+            patch("real_estate.models.scheduler.datetime") as mock_datetime,
+            patch("real_estate.models.scheduler.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            mock_datetime.now.return_value = now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            await scheduler.run_pre_download(eval_time)
+
+        # All models should be downloaded (ASAP mode)
+        assert mock_downloader.download_model.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_deadline_accounts_for_catch_up_buffer(
+        self,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """Deadline is eval_time minus catch_up_minutes."""
+        config = SchedulerConfig(
+            pre_download_hours=3.0,
+            catch_up_minutes=30.0,
+            min_delay_between_downloads_seconds=0,
+            min_commitment_age_blocks=0,
+        )
+        mock_downloader = MagicMock()
+        mock_downloader.is_cached.return_value = False
+        mock_downloader.download_model = AsyncMock(return_value=Path("/model.onnx"))
+        mock_downloader.cleanup_stale_cache = MagicMock()
+
+        commitment = MagicMock(hotkey="5Hotkey", block_number=1000, model_hash="hash")
+        mock_chain_client.get_all_commitments = AsyncMock(return_value=[commitment])
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(config, mock_downloader, mock_chain_client)
+
+        # eval_time is 35 min from now
+        # deadline = eval_time - 30 min = 5 min from now
+        # time_available = 5 min = 300 seconds (compressed window)
+        now = datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC)
+        eval_time = now + timedelta(minutes=35)
+
+        with (
+            patch("real_estate.models.scheduler.datetime") as mock_datetime,
+            patch("real_estate.models.scheduler.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            mock_datetime.now.return_value = now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            await scheduler.run_pre_download(eval_time)
+
+        # Should download (within compressed window)
+        mock_downloader.download_model.assert_called_once()
