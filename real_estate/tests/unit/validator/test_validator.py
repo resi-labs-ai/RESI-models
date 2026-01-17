@@ -1,5 +1,6 @@
 """Tests for Validator class."""
 
+import asyncio
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -35,20 +36,28 @@ def create_mock_metagraph(hotkeys: list[str], block: int = 1000) -> Metagraph:
         timestamp=datetime.now(),
     )
 
+
 @pytest.fixture
 def mock_config() -> MagicMock:
     """Create a mock config for Validator."""
     config = MagicMock()
     config.pylon_url = "http://test.pylon"
     config.pylon_token = "test_token"
+    config.pylon_identity = None
     config.subtensor_network = "test"
     config.netuid = 1
     config.hotkey = "our_hotkey"
     config.state_path = MagicMock()
     config.disable_set_weights = False
     config.epoch_length = 100
-    config.moving_average_alpha = 0.1
+    config.validation_data_url = "http://test.validation"
+    config.validation_data_max_retries = 3
+    config.validation_data_retry_delay = 1
+    config.validation_data_schedule_hour = 2
+    config.validation_data_schedule_minute = 0
+    config.validation_data_download_raw = False
     return config
+
 
 @pytest.fixture
 def validator(mock_config: MagicMock) -> Validator:
@@ -57,10 +66,13 @@ def validator(mock_config: MagicMock) -> Validator:
         patch("real_estate.validator.validator.check_config"),
         patch("real_estate.validator.validator.bt.subtensor") as mock_subtensor,
         patch("real_estate.validator.validator.bt.wallet") as mock_wallet,
+        patch("real_estate.validator.validator.ValidationDatasetClient"),
+        patch("real_estate.validator.validator.ValidationOrchestrator"),
     ):
         mock_subtensor.return_value = MagicMock(chain_endpoint="mock_endpoint")
         mock_wallet.return_value = MagicMock(hotkey=MagicMock(ss58_address="our_hotkey"))
         return Validator(mock_config)
+
 
 class TestOnMetagraphUpdated:
     """Tests for _on_metagraph_updated method."""
@@ -87,13 +99,13 @@ class TestOnMetagraphUpdated:
         # Initialize with original hotkeys and scores
         validator.hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey", "hotkey_3"]
         validator.scores = np.array([0.5, 0.8, 0.3, 0.9], dtype=np.float32)
-        
+
         # Update metagraph with hotkey_1 replaced by new_hotkey_1
         new_hotkeys = ["hotkey_0", "new_hotkey_1", "our_hotkey", "hotkey_3"]
         validator.metagraph = create_mock_metagraph(new_hotkeys)
-        
+
         validator._on_metagraph_updated()
-        
+
         # Score at UID 1 should be zeroed, others unchanged
         expected_scores = np.array([0.5, 0.0, 0.3, 0.9], dtype=np.float32)
         np.testing.assert_array_equal(validator.scores, expected_scores)
@@ -106,13 +118,13 @@ class TestOnMetagraphUpdated:
         # Initialize with original hotkeys and scores
         validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2", "hotkey_3", "hotkey_4"]
         validator.scores = np.array([0.5, 0.8, 0.3, 0.9, 0.7], dtype=np.float32)
-        
+
         # Replace hotkeys at UIDs 0, 2, and 4
         new_hotkeys = ["new_hotkey_0", "hotkey_1", "new_hotkey_2", "hotkey_3", "new_hotkey_4"]
         validator.metagraph = create_mock_metagraph(new_hotkeys)
-        
+
         validator._on_metagraph_updated()
-        
+
         # Scores at UIDs 0, 2, and 4 should be zeroed
         expected_scores = np.array([0.0, 0.8, 0.0, 0.9, 0.0], dtype=np.float32)
         np.testing.assert_array_equal(validator.scores, expected_scores)
@@ -125,39 +137,72 @@ class TestOnMetagraphUpdated:
         # Initialize with original hotkeys and scores
         validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
         validator.scores = np.array([0.5, 0.8, 0.3], dtype=np.float32)
-        
+
         # Replace hotkey at UID 1 and add new hotkeys
         new_hotkeys = ["hotkey_0", "new_hotkey_1", "hotkey_2", "hotkey_3", "hotkey_4"]
         validator.metagraph = create_mock_metagraph(new_hotkeys)
-        
+
         validator._on_metagraph_updated()
-        
-        # Score at UID 1 should be zeroed, UID 0, 2 should remain unchanged, new UIDs should get 0 scores
+
+        # Score at UID 1 should be zeroed, UID 0, 2 unchanged, new UIDs get 0
         expected_scores = np.array([0.5, 0.0, 0.3, 0.0, 0.0], dtype=np.float32)
         np.testing.assert_array_equal(validator.scores, expected_scores)
         assert validator.hotkeys == new_hotkeys
-        
+
     def test_validator_deregistered_uid_becomes_none(
         self, validator: Validator
     ) -> None:
         """Test that when validator's hotkey is removed from metagraph, uid becomes None."""
-        # Ensure validator's hotkey is set correctly
-        assert validator.hotkey == "our_hotkey", f"Expected hotkey to be 'our_hotkey', got '{validator.hotkey}'"
-        
+        assert validator.hotkey == "our_hotkey"
+
         # Initialize with validator at UID 2
         validator.hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey", "hotkey_3"]
         validator.scores = np.array([0.5, 0.8, 0.3, 0.9], dtype=np.float32)
         validator.uid = 2
-        
+
         # Validator's hotkey removed from metagraph
         new_hotkeys = ["hotkey_0", "hotkey_1", "new_hotkey_2", "hotkey_3"]
         validator.metagraph = create_mock_metagraph(new_hotkeys)
-        
+
         validator._on_metagraph_updated()
-        
+
         # Validator's uid should now be None (deregistered)
         assert validator.uid is None
-        
+
+
+class TestUpdateMetagraph:
+    """Tests for update_metagraph method."""
+
+    @pytest.mark.asyncio
+    async def test_concurrent_updates_are_serialized(
+        self, validator: Validator
+    ) -> None:
+        """Concurrent update_metagraph calls don't interleave."""
+        call_order: list[str] = []
+
+        async def slow_get_metagraph() -> Metagraph:
+            """Simulate slow chain fetch."""
+            call_order.append("start")
+            await asyncio.sleep(0.05)  # Small delay
+            call_order.append("end")
+            return create_mock_metagraph(["hotkey_0", "our_hotkey"])
+
+        # Setup mock chain
+        mock_chain = MagicMock()
+        mock_chain.get_metagraph = slow_get_metagraph
+        validator.chain = mock_chain
+
+        # Launch two concurrent updates
+        await asyncio.gather(
+            validator.update_metagraph(),
+            validator.update_metagraph(),
+        )
+
+        # Without lock: [start, start, end, end] (interleaved)
+        # With lock: [start, end, start, end] (serialized)
+        assert call_order == ["start", "end", "start", "end"]
+
+
 class TestSetWeights:
     """Tests for set_weights method."""
 
@@ -177,7 +222,7 @@ class TestSetWeights:
 
         await validator.set_weights()
 
-        # [1, 0, 3, 0] / 4 = [0.25, 0, 0.75, 0] → only non-zero in dict
+        # [1, 0, 3, 0] / 4 = [0.25, 0, 0.75, 0] -> only non-zero in dict
         mock_chain.set_weights.assert_called_once_with({
             "hotkey_0": 0.25,
             "hotkey_2": 0.75

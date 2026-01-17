@@ -124,6 +124,9 @@ class Validator:
         # Event to signal new validation data needs evaluation
         self._evaluation_event: asyncio.Event = asyncio.Event()
 
+        # Lock to prevent concurrent metagraph updates
+        self._metagraph_lock: asyncio.Lock = asyncio.Lock()
+
     @property
     def block(self) -> int:
         """Current block number with TTL caching (12 seconds)."""
@@ -141,21 +144,23 @@ class Validator:
         Fetch fresh metagraph from Pylon and update local state.
 
         Updates self.metagraph, hotkeys, scores, and uid.
+        Uses lock to prevent concurrent updates from multiple loops.
 
         Raises:
             Exception: If metagraph fetch fails.
         """
-        logger.debug("Fetching fresh metagraph...")
+        async with self._metagraph_lock:
+            logger.debug("Fetching fresh metagraph...")
 
-        self.metagraph = await self._ensure_chain().get_metagraph()
+            self.metagraph = await self._ensure_chain().get_metagraph()
 
-        logger.info(
-            f"Metagraph updated: {len(self.metagraph.neurons)} neurons "
-            f"at block {self.metagraph.block}"
-        )
+            logger.info(
+                f"Metagraph updated: {len(self.metagraph.neurons)} neurons "
+                f"at block {self.metagraph.block}"
+            )
 
-        # Update local state (hotkeys, scores, uid)
-        self._on_metagraph_updated()
+            # Update local state (hotkeys, scores, uid)
+            self._on_metagraph_updated()
 
     def _on_metagraph_updated(self) -> None:
         """Handle metagraph changes - update hotkeys and scores."""
