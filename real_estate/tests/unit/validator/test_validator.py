@@ -229,6 +229,96 @@ class TestSetWeights:
         })
 
 
+class TestRunEvaluationScores:
+    """Tests for score updates in _run_evaluation."""
+
+    @pytest.mark.asyncio
+    async def test_old_scores_are_zeroed_before_update(
+        self, validator: Validator
+    ) -> None:
+        """Miners not in evaluation results get 0, not stale scores."""
+        # Setup: 4 hotkeys, hotkey_1 had old score
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2", "hotkey_3"]
+        validator.scores = np.array([0.0, 0.5, 0.0, 0.0], dtype=np.float32)  # hotkey_1 has old score
+        validator.metagraph = create_mock_metagraph(validator.hotkeys)
+
+        # Mock download results - only hotkey_0 and hotkey_2 have models
+        validator.download_results = {
+            "hotkey_0": MagicMock(success=True, model_path="/model_0.onnx"),
+            "hotkey_2": MagicMock(success=True, model_path="/model_2.onnx"),
+        }
+
+        # Mock scheduler
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.known_commitments = {
+            "hotkey_0": MagicMock(),
+            "hotkey_2": MagicMock(),
+        }
+
+        # Mock orchestrator - returns weights only for evaluated miners
+        mock_weights = MagicMock()
+        mock_weights.weights = {"hotkey_0": 0.99, "hotkey_2": 0.01}  # hotkey_1 NOT included
+        mock_winner = MagicMock()
+        mock_winner.winner_hotkey = "hotkey_0"
+        mock_winner.winner_score = 0.95
+        mock_result = MagicMock()
+        mock_result.weights = mock_weights
+        mock_result.winner = mock_winner
+
+        validator._orchestrator = MagicMock()
+        validator._orchestrator.run = AsyncMock(return_value=mock_result)
+
+        # Run evaluation
+        mock_dataset = MagicMock()
+        mock_dataset.__len__ = MagicMock(return_value=10)
+        await validator._run_evaluation(mock_dataset)
+
+        # Verify: hotkey_1's old score (0.5) should be zeroed, not preserved
+        assert validator.scores[0] == 0.99  # hotkey_0 - from weights
+        assert validator.scores[1] == 0.0   # hotkey_1 - zeroed (was 0.5)
+        assert validator.scores[2] == 0.01  # hotkey_2 - from weights
+        assert validator.scores[3] == 0.0   # hotkey_3 - zeroed
+
+    @pytest.mark.asyncio
+    async def test_all_scores_come_from_current_evaluation(
+        self, validator: Validator
+    ) -> None:
+        """After evaluation, scores exactly match weights from orchestrator."""
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
+        validator.scores = np.array([0.3, 0.4, 0.3], dtype=np.float32)  # All have old scores
+        validator.metagraph = create_mock_metagraph(validator.hotkeys)
+
+        validator.download_results = {
+            "hotkey_0": MagicMock(success=True, model_path="/model_0.onnx"),
+        }
+
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.known_commitments = {"hotkey_0": MagicMock()}
+
+        # Only hotkey_0 gets weight
+        mock_weights = MagicMock()
+        mock_weights.weights = {"hotkey_0": 1.0}
+        mock_winner = MagicMock()
+        mock_winner.winner_hotkey = "hotkey_0"
+        mock_winner.winner_score = 0.95
+        mock_result = MagicMock()
+        mock_result.weights = mock_weights
+        mock_result.winner = mock_winner
+
+        validator._orchestrator = MagicMock()
+        validator._orchestrator.run = AsyncMock(return_value=mock_result)
+
+        mock_dataset = MagicMock()
+        mock_dataset.__len__ = MagicMock(return_value=10)
+        await validator._run_evaluation(mock_dataset)
+
+        # All old scores replaced
+        np.testing.assert_array_equal(
+            validator.scores,
+            np.array([1.0, 0.0, 0.0], dtype=np.float32)
+        )
+
+
 class TestGetNextEvalTime:
     """Tests for _get_next_eval_time method."""
 

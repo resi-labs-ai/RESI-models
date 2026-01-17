@@ -334,6 +334,9 @@ class Validator:
         try:
             result = await self._orchestrator.run(dataset, model_paths, chain_metadata)
 
+            # Reset all scores - miners not evaluated get 0
+            self.scores.fill(0.0)
+
             # Update scores from weights
             for hotkey, weight in result.weights.weights.items():
                 if hotkey in self.hotkeys:

@@ -151,13 +151,6 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--moving_average_alpha",
-        type=float,
-        help="Alpha for exponential moving average of scores.",
-        default=float(os.environ.get("MOVING_AVERAGE_ALPHA", "0.1")),
-    )
-
-    parser.add_argument(
         "--log_level",
         type=str,
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -250,9 +243,6 @@ def check_config(config: argparse.Namespace) -> None:
     if not config.pylon_identity:
         raise ValueError("--pylon.identity is required (or set PYLON_IDENTITY env var)")
 
-    if config.moving_average_alpha < 0 or config.moving_average_alpha > 1:
-        raise ValueError("--moving_average_alpha must be between 0 and 1")
-
     # Ensure state directory exists
     config.state_path.mkdir(parents=True, exist_ok=True)
 
@@ -277,7 +267,6 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "score_threshold": config.score_threshold,
         "disable_set_weights": config.disable_set_weights,
         "state_path": str(config.state_path),
-        "moving_average_alpha": config.moving_average_alpha,
         "log_level": config.log_level,
         "wandb_off": config.wandb_off,
         "wandb_project": config.wandb_project,
