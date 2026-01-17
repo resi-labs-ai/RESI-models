@@ -15,7 +15,7 @@ class CachedModelMetadata:
     Full commitment data comes from chain via Pylon (already cached there).
     """
 
-    hash: str  # SHA-1 prefix (8 chars) - compared with chain commitment
+    hash: str  # SHA-256 hash (64 chars) - compared with chain commitment
     size_bytes: int  # For disk space tracking
 
     def to_dict(self) -> dict:

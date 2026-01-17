@@ -18,7 +18,7 @@ class ChainModelMetadata:
 
     hotkey: str
     hf_repo_id: str
-    model_hash: str  # SHA-1 prefix (8 chars)
+    model_hash: str  # SHA-256 hash (64 chars)
     block_number: int
     timestamp: int  # Unix timestamp
 
@@ -35,10 +35,10 @@ class ChainModelMetadata:
 
         Expected format (compact JSON):
         {
-            "h": "abc12345",     # model hash (8 chars)
-            "r": "user/model",   # HF repo
-            "v": "1.0.0",        # version (optional)
-            "t": 1700000000      # timestamp
+            "h": "abc123...def456",  # model hash (64 chars SHA-256)
+            "r": "user/model",       # HF repo
+            "v": "1.0.0",            # version (optional)
+            "t": 1700000000          # timestamp
         }
         """
         return cls(

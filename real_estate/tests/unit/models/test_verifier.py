@@ -403,10 +403,10 @@ class TestComputeHash:
 
         assert hash1 == hash2
 
-    def test_returns_8_character_hex(
+    def test_returns_64_character_sha256_hex(
         self, mock_chain_client: MagicMock, tmp_path: Path
     ) -> None:
-        """Returns 8-character hexadecimal string."""
+        """Returns 64-character hexadecimal SHA-256 hash."""
         verifier = ModelVerifier(mock_chain_client)
 
         test_file = tmp_path / "test.onnx"
@@ -414,7 +414,7 @@ class TestComputeHash:
 
         result = verifier.compute_hash(test_file)
 
-        assert len(result) == 8
+        assert len(result) == 64
         assert all(c in "0123456789abcdef" for c in result)
 
     def test_different_content_produces_different_hash(
