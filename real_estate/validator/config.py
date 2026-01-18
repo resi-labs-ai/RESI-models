@@ -22,7 +22,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--netuid",
         type=int,
         help="Subnet netuid to validate on.",
-        default=int(os.environ.get("NETUID", "1")),
+        default=int(os.environ.get("NETUID", "46")),
     )
 
     parser.add_argument(
@@ -126,7 +126,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--epoch_length",
         type=int,
         help="Number of blocks between metagraph syncs and weight setting.",
-        default=int(os.environ.get("EPOCH_LENGTH", "100")),
+        default=int(os.environ.get("EPOCH_LENGTH", "360")),
     )
 
     parser.add_argument(
@@ -141,13 +141,6 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Disable automatic weight setting.",
         default=os.environ.get("DISABLE_SET_WEIGHTS", "false").lower() == "true",
-    )
-
-    parser.add_argument(
-        "--state_path",
-        type=str,
-        help="Path to store validator state.",
-        default=os.environ.get("STATE_PATH", "./validator_state"),
     )
 
     parser.add_argument(
@@ -218,7 +211,6 @@ def get_config() -> argparse.Namespace:
     config = parser.parse_args()
 
     # Convert paths to Path objects
-    config.state_path = Path(config.state_path)
     config.model_cache_path = Path(config.model_cache_path)
 
     return config
@@ -243,9 +235,6 @@ def check_config(config: argparse.Namespace) -> None:
     if not config.pylon_identity:
         raise ValueError("--pylon.identity is required (or set PYLON_IDENTITY env var)")
 
-    # Ensure state directory exists
-    config.state_path.mkdir(parents=True, exist_ok=True)
-
 
 def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
     """Convert config to dictionary for logging."""
@@ -266,7 +255,6 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "epoch_length": config.epoch_length,
         "score_threshold": config.score_threshold,
         "disable_set_weights": config.disable_set_weights,
-        "state_path": str(config.state_path),
         "log_level": config.log_level,
         "wandb_off": config.wandb_off,
         "wandb_project": config.wandb_project,

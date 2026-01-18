@@ -12,7 +12,7 @@ Uses mocks to avoid real chain/API calls while testing async coordination.
 
 import asyncio
 import sys
-from typing import Generator
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -38,8 +38,6 @@ def mock_validator_config() -> MagicMock:
     config.validation_data_schedule_hour = 2
     config.validation_data_schedule_minute = 0
     config.validation_data_download_raw = False
-    config.state_path = MagicMock()
-    config.state_path.mkdir = MagicMock()
     config.disable_set_weights = False
     config.epoch_length = 100
     return config

@@ -1,7 +1,7 @@
 """Tests for Validator class."""
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -47,7 +47,6 @@ def mock_config() -> MagicMock:
     config.subtensor_network = "test"
     config.netuid = 1
     config.hotkey = "our_hotkey"
-    config.state_path = MagicMock()
     config.disable_set_weights = False
     config.epoch_length = 100
     config.validation_data_url = "http://test.validation"
