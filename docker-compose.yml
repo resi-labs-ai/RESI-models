@@ -7,7 +7,7 @@ services:
     image: backenddevelopersltd/bittensor-pylon:1.0.0
     container_name: resi_pylon
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - PYLON_BITTENSOR_NETWORK=${SUBTENSOR_NETWORK:-finney}
       - PYLON_BITTENSOR_WALLET_PATH=/root/.bittensor/wallets
