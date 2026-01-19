@@ -7,19 +7,16 @@ from typing import Any
 
 
 @dataclass(frozen=True)
-class WinnerSelectionConfig:
-    """Configuration for winner selection."""
-
-    score_threshold: float = 0.005
-    """Models within this threshold of best score are considered equivalent."""
-
-
-@dataclass(frozen=True)
 class DistributorConfig:
     """Configuration for incentive distribution."""
 
     winner_share: float = 0.99
-    """Share of emissions allocated to the winner (0.0-1.0)."""
+    """
+    Share of emissions allocated to the winner (0.0-1.0).
+
+    Default 0.99 (99%) gives winner almost all emissions. Remaining 1% is split
+    proportionally among valid non-winner models. Copiers receive 0%.
+    """
 
     @property
     def non_winner_share(self) -> float:

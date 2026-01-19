@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -277,6 +277,23 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/57/fa/15b368611bfebce30104631b462b29df0464a56d06c282b89f72886e5e60/bittensor_drand-1.0.1-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:a7ef622f6d9fa568763e5026ff1b22ea48eda809ffe530f6a92e0b05dcb4148c", size = 2068740, upload-time = "2025-10-29T20:59:56.566Z" },
     { url = "https://files.pythonhosted.org/packages/59/27/28dba25445f6d6e8793d8bd06426a6a4770842c4deb75dcc50e657aa0590/bittensor_drand-1.0.1-cp313-cp313-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:58b98e5b61637dcea437c5a52f8e282372a22050a7392d83fe1be65c346c9bf2", size = 2160648, upload-time = "2025-10-29T21:00:02.987Z" },
     { url = "https://files.pythonhosted.org/packages/76/6d/d334e0fd95ad0fc33dc6203d977f80a62a1216825b5094c3a3bde228106f/bittensor_drand-1.0.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7c4b72ae5ff3df756b648aa9decd507560c7569ebb3cd9c357230cb2995b184c", size = 2087792, upload-time = "2025-10-29T21:00:09.547Z" },
+]
+
+[[package]]
+name = "bittensor-pylon-client"
+version = "1.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "apscheduler" },
+    { name = "docker" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "tenacity" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6e/c9/0de2f26a6dc4f11c01310e46b6a381173cbf58b42a46cba40e642521194c/bittensor_pylon_client-1.5.0.tar.gz", hash = "sha256:0d3dc73ef13b92e084d5445961dacc331eb1fc75d95434b2176108a5d78fa896", size = 23269, upload-time = "2026-01-15T15:09:52.527Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bb/56/d77e77ae268cb50416a07b457817fc9991dd8011111804da0822697a2475/bittensor_pylon_client-1.5.0-py3-none-any.whl", hash = "sha256:a9620ebafd34fd873b1137c2962fb3fe942f81d4c4ef7e1438e2c6b5a2af1269", size = 33089, upload-time = "2026-01-15T15:09:51.269Z" },
 ]
 
 [[package]]
@@ -1874,6 +1891,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pydantic-settings"
+version = "2.12.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/4b/ac7e0aae12027748076d72a8764ff1c9d82ca75a7a52622e67ed3f765c54/pydantic_settings-2.12.0.tar.gz", hash = "sha256:005538ef951e3c2a68e1c08b292b5f2e71490def8589d4221b95dab00dafcfd0", size = 194184, upload-time = "2025-11-10T14:25:47.013Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c1/60/5d4751ba3f4a40a6891f24eec885f51afd78d208498268c734e256fb13c4/pydantic_settings-2.12.0-py3-none-any.whl", hash = "sha256:fddb9fd99a5b18da837b29710391e945b1e30c135477f484084ee513adb93809", size = 51880, upload-time = "2025-11-10T14:25:45.546Z" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.19.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1932,6 +1963,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5e/f7/c933acc76f5208b3b00089573cf6a2bc26dc80a8aece8f52bb7d6b1855ca/pytest_cov-7.0.0.tar.gz", hash = "sha256:33c97eda2e049a0c5298e91f519302a1334c26ac65c1a483d6206fd458361af1", size = 54328, upload-time = "2025-09-09T10:57:02.113Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ee/49/1377b49de7d0c1ce41292161ea0f721913fa8722c19fb9c1e3aa0367eecb/pytest_cov-7.0.0-py3-none-any.whl", hash = "sha256:3b8e9558b16cc1479da72058bdecf8073661c7f57f7d3c5f22a1c23507f2d861", size = 22424, upload-time = "2025-09-09T10:57:00.695Z" },
+]
+
+[[package]]
+name = "python-dotenv"
+version = "1.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f0/26/19cadc79a718c5edbec86fd4919a6b6d3f681039a2f6d66d14be94e75fb9/python_dotenv-1.2.1.tar.gz", hash = "sha256:42667e897e16ab0d66954af0e60a9caa94f0fd4ecf3aaf6d2d260eec1aa36ad6", size = 44221, upload-time = "2025-10-26T15:12:10.434Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/1b/a298b06749107c305e1fe0f814c6c74aea7b2f1e10989cb30f544a1b3253/python_dotenv-1.2.1-py3-none-any.whl", hash = "sha256:b81ee9561e9ca4004139c6cbba3a238c32b03e4894671e181b671e8cb8425d61", size = 21230, upload-time = "2025-10-26T15:12:09.109Z" },
 ]
 
 [[package]]
@@ -2024,6 +2064,7 @@ source = { editable = "." }
 dependencies = [
     { name = "apscheduler" },
     { name = "bittensor" },
+    { name = "bittensor-pylon-client" },
     { name = "bittensor-wallet" },
     { name = "httpx" },
     { name = "huggingface-hub" },
@@ -2050,6 +2091,7 @@ dev = [
 requires-dist = [
     { name = "apscheduler", specifier = ">=3.11.1" },
     { name = "bittensor", specifier = ">=8.0.0" },
+    { name = "bittensor-pylon-client", specifier = ">=1.5.0" },
     { name = "bittensor-wallet", specifier = ">=4.0.1" },
     { name = "httpx", specifier = ">=0.26.0" },
     { name = "huggingface-hub", specifier = ">=0.20.0" },

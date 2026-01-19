@@ -7,7 +7,6 @@ from real_estate.chain.models import ChainModelMetadata
 from real_estate.evaluation.models import EvaluationResult, PredictionMetrics
 from real_estate.incentives import (
     NoValidModelsError,
-    WinnerSelectionConfig,
     WinnerSelector,
 )
 
@@ -63,7 +62,7 @@ class TestWinnerSelector:
         results = [make_result("hotkey_a", score=0.90)]
         metadata = {"hotkey_a": make_metadata("hotkey_a", block_number=1000)}
 
-        selector = WinnerSelector()
+        selector = WinnerSelector(0.005)
         result = selector.select_winner(results, metadata)
 
         assert result.winner_hotkey == "hotkey_a"
@@ -82,7 +81,7 @@ class TestWinnerSelector:
             "hotkey_b": make_metadata("hotkey_b", block_number=1000),  # Earlier commit
         }
 
-        selector = WinnerSelector()
+        selector = WinnerSelector(0.005)
         result = selector.select_winner(results, metadata)
 
         # hotkey_a wins because score difference (0.10) > threshold (0.005)
@@ -100,7 +99,7 @@ class TestWinnerSelector:
             "hotkey_b": make_metadata("hotkey_b", block_number=1000),  # Earlier commit
         }
 
-        selector = WinnerSelector()
+        selector = WinnerSelector(0.005)
         result = selector.select_winner(results, metadata)
 
         # hotkey_b wins despite lower score (earlier commit)
@@ -122,7 +121,7 @@ class TestWinnerSelector:
             "hotkey_b": make_metadata("hotkey_b", block_number=1000),
         }
 
-        selector = WinnerSelector()
+        selector = WinnerSelector(0.005)
         result = selector.select_winner(results, metadata)
 
         # Both should be in winner set (0.895 >= 0.895)
@@ -140,7 +139,7 @@ class TestWinnerSelector:
             "hotkey_b": make_metadata("hotkey_b", block_number=1000),
         }
 
-        selector = WinnerSelector()
+        selector = WinnerSelector(0.005)
         result = selector.select_winner(results, metadata)
 
         # Only hotkey_a in winner set
@@ -159,14 +158,13 @@ class TestWinnerSelector:
         }
 
         # With default threshold (0.005), only hotkey_a is in winner set
-        selector_default = WinnerSelector()
+        selector_default = WinnerSelector(0.005)
         result_default = selector_default.select_winner(results, metadata)
         assert result_default.winner_hotkey == "hotkey_a"
         assert result_default.winner_set_size == 1
 
         # With larger threshold (0.10), both are in winner set
-        config = WinnerSelectionConfig(score_threshold=0.10)
-        selector_large = WinnerSelector(config)
+        selector_large = WinnerSelector(0.10)
         result_large = selector_large.select_winner(results, metadata)
         assert result_large.winner_hotkey == "hotkey_b"  # Earlier commit
         assert result_large.winner_set_size == 2
@@ -182,7 +180,7 @@ class TestWinnerSelector:
             "hotkey_b": make_metadata("hotkey_b", block_number=2000),
         }
 
-        selector = WinnerSelector()
+        selector = WinnerSelector(0.005)
         result = selector.select_winner(results, metadata)
 
         assert result.winner_hotkey == "hotkey_b"
@@ -198,7 +196,7 @@ class TestWinnerSelector:
             # hotkey_a missing from metadata - this is a bug
         }
 
-        selector = WinnerSelector()
+        selector = WinnerSelector(0.005)
         with pytest.raises(ValueError, match="Missing chain metadata"):
             selector.select_winner(results, metadata)
 
@@ -207,13 +205,13 @@ class TestWinnerSelector:
         results = [make_failed_result("hotkey_a")]
         metadata = {"hotkey_a": make_metadata("hotkey_a", block_number=1000)}
 
-        selector = WinnerSelector()
+        selector = WinnerSelector(0.005)
         with pytest.raises(NoValidModelsError, match="No successful evaluation"):
             selector.select_winner(results, metadata)
 
     def test_select_winner_empty_results_raises(self):
         """Empty results raises NoValidModelsError."""
-        selector = WinnerSelector()
+        selector = WinnerSelector(0.005)
         with pytest.raises(NoValidModelsError, match="No successful evaluation"):
             selector.select_winner([], {})
 
@@ -225,7 +223,7 @@ class TestWinnerSelector:
         ]
         metadata = {}  # No metadata - this is a bug
 
-        selector = WinnerSelector()
+        selector = WinnerSelector(0.005)
         with pytest.raises(ValueError, match="Missing chain metadata"):
             selector.select_winner(results, metadata)
 
@@ -240,7 +238,7 @@ class TestWinnerSelector:
             "hotkey_b": make_metadata("hotkey_b", block_number=1000),
         }
 
-        selector = WinnerSelector()
+        selector = WinnerSelector(0.005)
         result = selector.select_winner(results, metadata)
         result_dict = result.to_dict()
 
@@ -250,9 +248,8 @@ class TestWinnerSelector:
         assert len(result_dict["candidates"]) == 2
 
     def test_threshold_property(self):
-        """Threshold property returns config value."""
-        config = WinnerSelectionConfig(score_threshold=0.01)
-        selector = WinnerSelector(config)
+        """Threshold property returns configured value."""
+        selector = WinnerSelector(0.01)
         assert selector.threshold == 0.01
 
     def test_many_candidates_in_winner_set(self):
@@ -272,7 +269,7 @@ class TestWinnerSelector:
             "hotkey_e": make_metadata("hotkey_e", block_number=2000),
         }
 
-        selector = WinnerSelector()
+        selector = WinnerSelector(0.005)
         result = selector.select_winner(results, metadata)
 
         assert result.winner_hotkey == "hotkey_c"  # Earliest commit
