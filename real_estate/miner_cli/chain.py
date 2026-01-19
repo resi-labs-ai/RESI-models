@@ -5,6 +5,7 @@ import json
 import bittensor as bt
 
 from .config import SCAN_MAX_BLOCKS, SCAN_MAX_EXTRINSICS_PER_BLOCK
+from .errors import ExtrinsicNotFoundError
 
 
 def build_commitment(model_hash: str, hf_repo_id: str) -> str:
@@ -18,7 +19,7 @@ def scan_for_extrinsic_id(
     start_block: int,
     max_blocks: int = SCAN_MAX_BLOCKS,
     max_per_block: int = SCAN_MAX_EXTRINSICS_PER_BLOCK,
-) -> str | None:
+) -> str:
     """
     Scan blocks for a commitment extrinsic matching the signer.
 
@@ -30,7 +31,10 @@ def scan_for_extrinsic_id(
         max_per_block: Maximum extrinsic indices to check per block.
 
     Returns:
-        Extrinsic ID as "{block}-{index}" or None if not found.
+        Extrinsic ID as "{block}-{index}".
+
+    Raises:
+        ExtrinsicNotFoundError: If extrinsic not found within scan range.
     """
     bt.logging.info(f"Scanning {max_blocks} blocks starting from {start_block}...")
 
@@ -91,5 +95,7 @@ def scan_for_extrinsic_id(
                 bt.logging.warning(f"Error scanning block {block_num}: {e}")
                 continue
 
-    bt.logging.error(f"Commitment not found in {max_blocks} blocks")
-    return None
+    raise ExtrinsicNotFoundError(
+        f"Commitment not found in {max_blocks} blocks starting from {start_block}. "
+        f"Check a block explorer manually."
+    )

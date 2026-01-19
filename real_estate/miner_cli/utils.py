@@ -11,17 +11,29 @@ from .config import (
     REQUIRED_ONNX_VERSION,
     REQUIRED_ONNXRUNTIME_VERSION,
 )
+from .errors import (
+    DependencyError,
+    InvalidONNXFormatError,
+    ModelFileNotFoundError,
+    ModelNotFoundError,
+    ModelSizeExceededError,
+    RepoNotFoundError,
+)
 
 
-def check_onnx_versions() -> bool:
-    """Verify onnx and onnxruntime versions match validator requirements."""
+def check_onnx_versions() -> None:
+    """
+    Verify onnx and onnxruntime versions match validator requirements.
+
+    Raises:
+        DependencyError: If onnxruntime is not installed or versions don't match.
+    """
     try:
         import onnxruntime as ort
-    except ImportError:
-        bt.logging.error(
+    except ImportError as e:
+        raise DependencyError(
             f"onnxruntime not installed. Run: pip install onnxruntime=={REQUIRED_ONNXRUNTIME_VERSION}"
-        )
-        return False
+        ) from e
 
     onnx_version = onnx.__version__
     ort_version = ort.__version__
@@ -37,68 +49,73 @@ def check_onnx_versions() -> bool:
         )
 
     if errors:
-        bt.logging.error(
+        raise DependencyError(
             f"Version mismatch - your model may fail on validator!\n"
             f"  Installed: {', '.join(errors)}\n"
             f"  Fix with: pip install onnx=={REQUIRED_ONNX_VERSION} onnxruntime=={REQUIRED_ONNXRUNTIME_VERSION}"
         )
-        return False
 
     bt.logging.info(
         f"ONNX versions match validator (onnx=={onnx_version}, onnxruntime=={ort_version})"
     )
-    return True
 
 
-def validate_model_file(model_path: str) -> bool:
-    """Validate a local ONNX model file (existence, size limit, ONNX format)."""
-    if not check_onnx_versions():
-        return False
+def validate_model_file(model_path: str) -> None:
+    """
+    Validate a local ONNX model file (existence, size limit, ONNX format).
+
+    Args:
+        model_path: Path to the ONNX model file.
+
+    Raises:
+        DependencyError: If onnx/onnxruntime versions don't match.
+        ModelNotFoundError: If model file doesn't exist.
+        ModelSizeExceededError: If model exceeds size limit.
+        InvalidONNXFormatError: If model is not valid ONNX format.
+    """
+    check_onnx_versions()
 
     if not Path(model_path).exists():
-        bt.logging.error(f"Model file does not exist: {model_path}")
-        return False
+        raise ModelNotFoundError(f"Model file does not exist: {model_path}")
 
     size_mb = Path(model_path).stat().st_size / (1024 * 1024)
     if size_mb > MAX_MODEL_SIZE_MB:
-        bt.logging.error(
+        raise ModelSizeExceededError(
             f"Model too large: {size_mb:.2f}MB exceeds {MAX_MODEL_SIZE_MB}MB limit"
         )
-        return False
 
     bt.logging.info(f"Model size: {size_mb:.2f}MB")
 
     try:
         onnx.checker.check_model(model_path)
-        return True
     except onnx.checker.ValidationError as e:
-        bt.logging.error(f"Invalid ONNX format: {e}")
-        return False
+        raise InvalidONNXFormatError(f"Invalid ONNX format: {e}") from e
     except Exception as e:
-        bt.logging.error(f"Error reading ONNX model: {e}")
-        return False
+        raise InvalidONNXFormatError(f"Error reading ONNX model: {e}") from e
 
 
-def check_hf_file_exists(
-    repo_id: str, filename: str, token: str | None = None
-) -> bool:
-    """Check if file exists in HuggingFace repo."""
+def check_hf_file_exists(repo_id: str, filename: str) -> None:
+    """
+    Check if file exists in a public HuggingFace repo.
+
+    Args:
+        repo_id: HuggingFace repository ID (e.g., "user/repo").
+        filename: Name of the file to check.
+
+    Raises:
+        RepoNotFoundError: If repository doesn't exist.
+        ModelFileNotFoundError: If file doesn't exist in repository.
+    """
     try:
         if not huggingface_hub.file_exists(
-            repo_id=repo_id, filename=filename, repo_type="model", token=token
+            repo_id=repo_id, filename=filename, repo_type="model"
         ):
-            bt.logging.error(
+            raise ModelFileNotFoundError(
                 f"File '{filename}' not found in repo '{repo_id}'. "
                 f"Use --hf.model_filename if your model has a different name."
             )
-            return False
-        return True
-    except huggingface_hub.utils.RepositoryNotFoundError:
-        bt.logging.error(
-            f"Repository '{repo_id}' not found or private.\n"
-            f"  If private, provide --hf.token or set HF_TOKEN env var."
-        )
-        return False
-    except Exception as e:
-        bt.logging.error(f"Error checking HuggingFace repo: {e}")
-        return False
+    except huggingface_hub.utils.RepositoryNotFoundError as e:
+        raise RepoNotFoundError(
+            f"Repository '{repo_id}' not found. "
+            f"Ensure the repository exists and is public."
+        ) from e

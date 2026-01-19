@@ -8,9 +8,6 @@ Usage:
 """
 
 import argparse
-import asyncio
-import os
-import time
 from pathlib import Path
 
 import bittensor as bt
@@ -21,7 +18,22 @@ from huggingface_hub import hf_hub_download
 from scripts.compute_hash import compute_hash
 
 from .chain import build_commitment, scan_for_extrinsic_id
-from .config import MAX_REPO_BYTES, NETWORK_NETUIDS, SCAN_MAX_BLOCKS
+from .config import (
+    EXPECTED_NUM_FEATURES,
+    MAX_REPO_BYTES,
+    NETWORK_NETUIDS,
+    SCAN_MAX_BLOCKS,
+    TEST_SAMPLES,
+)
+from .errors import (
+    HashComputationError,
+    HotkeyNotRegisteredError,
+    InferenceError,
+    InvalidPredictionError,
+    MinerCLIError,
+    ModelDownloadError,
+    ModelInterfaceError,
+)
 from .utils import check_hf_file_exists, validate_model_file
 
 LICENSE_NOTICE = """
@@ -30,64 +42,277 @@ Your HuggingFace model repository should be licensed under MIT.
 """
 
 
-async def evaluate_model(model_path: str) -> int:
-    """Evaluate an ONNX model locally with dummy data."""
-    bt.logging.info("Evaluating model locally...")
+def validate_model_interface(session: ort.InferenceSession) -> tuple[str, int]:
+    """
+    Validate model input/output shapes match validator expectations.
 
-    if not validate_model_file(model_path):
-        return 1
+    Args:
+        session: ONNX runtime inference session.
 
+    Returns:
+        Tuple of (input_name, num_features).
+
+    Raises:
+        ModelInterfaceError: If interface doesn't match expected format.
+    """
+    # Check inputs
+    inputs = session.get_inputs()
+    if len(inputs) != 1:
+        raise ModelInterfaceError(
+            f"Model has {len(inputs)} inputs, expected 1. "
+            "Model should have a single input for features."
+        )
+
+    input_info = inputs[0]
+    input_shape = input_info.shape
+
+    # Expect shape like (batch, num_features) or (None, num_features)
+    if len(input_shape) != 2:
+        raise ModelInterfaceError(
+            f"Input shape {input_shape} invalid. "
+            f"Expected 2D shape (batch, {EXPECTED_NUM_FEATURES})."
+        )
+
+    # Check feature dimension
+    feature_dim = input_shape[1]
+    if isinstance(feature_dim, int) and feature_dim != EXPECTED_NUM_FEATURES:
+        raise ModelInterfaceError(
+            f"Model expects {feature_dim} features, validator expects {EXPECTED_NUM_FEATURES}. "
+            "Ensure your model was trained with the correct feature set."
+        )
+
+    # Check outputs
+    outputs = session.get_outputs()
+    if len(outputs) != 1:
+        raise ModelInterfaceError(
+            f"Model has {len(outputs)} outputs, expected 1. "
+            "Model should output a single price prediction."
+        )
+
+    output_shape = outputs[0].shape
+    # Accept (batch,), (batch, 1), or dynamic shapes
+    if len(output_shape) == 2:
+        out_dim = output_shape[1]
+        if isinstance(out_dim, int) and out_dim != 1:
+            raise ModelInterfaceError(
+                f"Output shape {output_shape} invalid. "
+                "Expected (batch,) or (batch, 1) for price predictions."
+            )
+
+    return input_info.name, EXPECTED_NUM_FEATURES
+
+
+def load_test_samples() -> tuple[np.ndarray, np.ndarray]:
+    """
+    Load embedded test samples.
+
+    Returns:
+        Tuple of (features, actual_prices) as numpy arrays.
+    """
+    features = np.array(
+        [sample["features"] for sample in TEST_SAMPLES], dtype=np.float32
+    )
+    actual_prices = np.array(
+        [sample["actual_price"] for sample in TEST_SAMPLES], dtype=np.float32
+    )
+    return features, actual_prices
+
+
+def run_inference(
+    session: ort.InferenceSession, input_name: str, features: np.ndarray
+) -> np.ndarray:
+    """
+    Run inference on the model.
+
+    Args:
+        session: ONNX runtime inference session.
+        input_name: Name of the model's input.
+        features: Input features array of shape (batch, num_features).
+
+    Returns:
+        Predictions array of shape (batch,).
+
+    Raises:
+        InferenceError: If inference fails.
+    """
+    try:
+        outputs = session.run(None, {input_name: features})
+        predictions = outputs[0]
+        # Flatten to 1D if needed (handles both (batch,) and (batch, 1))
+        return predictions.flatten()  # type: ignore[no-any-return]
+    except Exception as e:
+        raise InferenceError(f"Inference failed: {e}") from e
+
+
+def validate_predictions(predictions: np.ndarray) -> None:
+    """
+    Validate predictions are finite values.
+
+    Args:
+        predictions: Model predictions array.
+
+    Raises:
+        InvalidPredictionError: If predictions contain NaN or Inf.
+    """
+    if np.any(np.isnan(predictions)):
+        raise InvalidPredictionError(
+            "Model produced NaN values. Check your model for numerical instability."
+        )
+    if np.any(np.isinf(predictions)):
+        raise InvalidPredictionError(
+            "Model produced Inf values. Check your model for overflow issues."
+        )
+    if np.any(predictions <= 0):
+        bt.logging.warning(
+            "Model produced non-positive price predictions. "
+            "This may indicate an issue with the model."
+        )
+
+
+def calculate_mape(predictions: np.ndarray, actual: np.ndarray) -> float:
+    """
+    Calculate Mean Absolute Percentage Error.
+
+    Args:
+        predictions: Predicted values.
+        actual: Actual values.
+
+    Returns:
+        MAPE as a decimal (e.g., 0.05 for 5%).
+    """
+    return float(np.mean(np.abs((actual - predictions) / actual)))
+
+
+def display_results(predictions: np.ndarray, actual_prices: np.ndarray) -> None:
+    """
+    Calculate metrics and display results.
+
+    Args:
+        predictions: Model predictions.
+        actual_prices: Actual prices from test samples.
+    """
+    bt.logging.info("")
+    bt.logging.info("Test inference results:")
+
+    # Per-sample results
+    for i, (pred, actual) in enumerate(zip(predictions, actual_prices)):
+        error_pct = abs(actual - pred) / actual * 100
+        bt.logging.info(
+            f"  Sample {i + 1}: Predicted ${pred:,.0f} vs actual ${actual:,.0f} "
+            f"({error_pct:.2f}% error)"
+        )
+
+    # Calculate MAPE and score
+    mape = calculate_mape(predictions, actual_prices)
+    score = 1.0 - mape
+
+    bt.logging.info("")
+    bt.logging.info("Metrics:")
+    bt.logging.info(f"  MAPE:  {mape * 100:.2f}%")
+    bt.logging.info(f"  Score: {score:.4f}")
+    bt.logging.info("")
+
+    # Pass/fail threshold (matching validator)
+    if mape < 0.5:  # Less than 50% MAPE
+        bt.logging.success("Model ready for submission")
+    else:
+        bt.logging.warning(
+            "Model has high error rate. Consider improving before submission."
+        )
+
+
+def evaluate_model(model_path: str) -> None:
+    """
+    Evaluate an ONNX model locally with real sample data.
+
+    Validates:
+    - Model file exists, valid ONNX format, within size limit
+    - Input shape matches expected features
+    - Output shape is single price prediction
+    - Predictions are valid (no NaN/Inf)
+
+    Displays:
+    - Interface validation results
+    - Sample predictions vs actual prices
+    - MAPE and score (matching validator scoring)
+
+    Args:
+        model_path: Path to the ONNX model file.
+
+    Raises:
+        ModelInterfaceError: If model interface doesn't match validator expectations.
+        InferenceError: If model inference fails.
+        InvalidPredictionError: If model produces NaN/Inf values.
+    """
+    bt.logging.info(f"Evaluating model: {model_path}")
+    bt.logging.info("")
+
+    # 1. Validate model file (exists, size, ONNX format)
+    validate_model_file(model_path)
+    bt.logging.success("Model file valid")
+
+    # 2. Load model and validate interface
     try:
         session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
-
-        # Get model info
-        input_info = session.get_inputs()[0]
-        bt.logging.info(f"Model input: {input_info.name}, shape={input_info.shape}")
-
-        # Generate dummy input (replace dynamic dims with 1)
-        shape = [d if isinstance(d, int) and d > 0 else 1 for d in input_info.shape]
-        dummy_input = np.random.randn(*shape).astype(np.float32)
-
-        # Run inference
-        start = time.time()
-        predictions = session.run(None, {input_info.name: dummy_input})[0]
-        inference_ms = (time.time() - start) * 1000
-
-        # Validate output (same checks as validator)
-        if np.any(np.isnan(predictions)) or np.any(np.isinf(predictions)):
-            bt.logging.error("Model produced NaN/Inf - will fail on validator")
-            return 1
-
-        bt.logging.success(
-            f"Evaluation passed! Inference: {inference_ms:.2f}ms, "
-            f"Output shape: {predictions.shape}"
-        )
-        return 0
     except Exception as e:
-        bt.logging.error(f"Evaluation failed: {e}")
-        return 1
+        raise InferenceError(f"Failed to load model: {e}") from e
+
+    bt.logging.info("")
+    bt.logging.info("Interface validation:")
+    input_name, num_features = validate_model_interface(session)
+
+    input_info = session.get_inputs()[0]
+    output_info = session.get_outputs()[0]
+    bt.logging.success(
+        f"  Input: {input_info.shape} features - matches validator ({num_features} features)"
+    )
+    bt.logging.success(f"  Output: {output_info.shape} price prediction")
+
+    # 3. Run inference on test samples
+    features, actual_prices = load_test_samples()
+    predictions = run_inference(session, input_name, features)
+
+    # 4. Validate predictions
+    validate_predictions(predictions)
+
+    # 5. Calculate and display metrics
+    display_results(predictions, actual_prices)
 
 
-async def submit_model(
+def submit_model(
     hf_repo_id: str,
     hf_model_filename: str,
-    hf_token: str | None,
     wallet: bt.wallet,
     subtensor: bt.subtensor,
     netuid: int,
     extrinsic_scan_blocks: int,
-) -> int:
-    """Submit a model commitment to the chain."""
+) -> None:
+    """
+    Submit a model commitment to the chain.
+
+    Args:
+        hf_repo_id: HuggingFace repository ID.
+        hf_model_filename: Model filename in the repository.
+        wallet: Bittensor wallet instance.
+        subtensor: Bittensor subtensor instance.
+        netuid: Subnet UID.
+        extrinsic_scan_blocks: Maximum blocks to scan for extrinsic.
+
+    Raises:
+        ValueError: If repo_id exceeds maximum length.
+        HotkeyNotRegisteredError: If hotkey is not registered on subnet.
+        ModelDownloadError: If model download fails.
+        HashComputationError: If hash computation fails.
+    """
     bt.logging.info(LICENSE_NOTICE)
     bt.logging.info("Submitting model to chain...")
 
     # Validate repo_id fits in chain metadata space
     repo_bytes = len(hf_repo_id.encode("utf-8"))
     if repo_bytes > MAX_REPO_BYTES:
-        bt.logging.error(
+        raise ValueError(
             f"hf_repo_id too long: {repo_bytes} bytes (max {MAX_REPO_BYTES})"
         )
-        return 2
 
     # Log wallet info
     bt.logging.info(f"Initialized Coldkey: {wallet.name}, Hotkey: {wallet.hotkey}")
@@ -100,17 +325,15 @@ async def submit_model(
         netuid=netuid,
         block=None,
     ):
-        bt.logging.error(
+        raise HotkeyNotRegisteredError(
             f"Hotkey not registered on netuid {netuid}. "
             "Run `btcli subnets register` first"
         )
-        return 1
 
     bt.logging.success(f"Hotkey is registered on netuid {netuid}")
 
     # Check if file exists in HuggingFace before downloading
-    if not check_hf_file_exists(hf_repo_id, hf_model_filename, hf_token):
-        return 1
+    check_hf_file_exists(hf_repo_id, hf_model_filename)
 
     # Download model from HuggingFace
     try:
@@ -118,24 +341,22 @@ async def submit_model(
         model_path = hf_hub_download(
             repo_id=hf_repo_id,
             filename=hf_model_filename,
-            token=hf_token,
         )
         bt.logging.success(f"Successfully downloaded model to {model_path}")
+    except MinerCLIError:
+        raise
     except Exception as e:
-        bt.logging.error(f"Failed to download model: {e}")
-        return 1
+        raise ModelDownloadError(f"Failed to download model: {e}") from e
 
     # Validate downloaded model (exists + size + ONNX format)
-    if not validate_model_file(model_path):
-        return 1
+    validate_model_file(model_path)
 
     # Compute hash
     try:
         model_hash = compute_hash(Path(model_path))
         bt.logging.info(f"Model hash: {model_hash}")
     except Exception as e:
-        bt.logging.error(f"Failed to compute hash: {e}")
-        return 1
+        raise HashComputationError(f"Failed to compute hash: {e}") from e
 
     # Build commitment
     commitment = build_commitment(
@@ -148,13 +369,9 @@ async def submit_model(
     current_block = subtensor.get_current_block()
     bt.logging.info(f"Current Block: {current_block}")
 
-    # Submit to chain
-    try:
-        subtensor.commit(wallet, netuid, commitment)
-        bt.logging.success("Commitment submitted to chain")
-    except Exception as e:
-        bt.logging.error(f"Failed to submit commitment: {e}")
-        return 1
+    # Submit to chain (let bittensor handle errors)
+    subtensor.commit(wallet, netuid, commitment)
+    bt.logging.success("Commitment submitted to chain")
 
     # Scan for extrinsic ID
     extrinsic_id = scan_for_extrinsic_id(
@@ -164,19 +381,13 @@ async def submit_model(
         max_blocks=extrinsic_scan_blocks,
     )
 
-    # Print extrinsic ID for user
-    if extrinsic_id:
-        bt.logging.success("Model committed to chain.")
-        bt.logging.info(f"Extrinsic ID: {extrinsic_id}")
-        bt.logging.info("Add this to your HuggingFace model card:")
-        bt.logging.info(f"  Repository: {hf_repo_id}")
-        bt.logging.info(f"  Extrinsic:  {extrinsic_id}")
-    else:
-        bt.logging.warning(
-            "Commitment submitted but extrinsic ID not found. "
-            "Check a block explorer manually."
-        )
-    return 0
+    bt.logging.success("Model committed to chain.")
+
+    # Always print extrinsic info (critical for user, even in quiet mode)
+    print(f"\nExtrinsic ID: {extrinsic_id}")
+    print("Add this to your HuggingFace model card:")
+    print(f"  Repository: {hf_repo_id}")
+    print(f"  Extrinsic:  {extrinsic_id}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -185,13 +396,21 @@ def parse_args() -> argparse.Namespace:
         description="RESI Miner CLI - Evaluate and submit ONNX models",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+
+    # Global args
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress info logging (only show warnings and errors)",
+    )
+
     subparsers = parser.add_subparsers(
         dest="action", required=True, help="Action to perform"
     )
 
     # EVALUATE
     eval_parser = subparsers.add_parser(
-        "evaluate", help="Evaluate an ONNX model locally with dummy data"
+        "evaluate", help="Evaluate an ONNX model locally with real sample data"
     )
     eval_parser.add_argument(
         "--model.path",
@@ -217,12 +436,6 @@ def parse_args() -> argparse.Namespace:
         dest="hf_model_filename",
         default="model.onnx",
         help="Filename in HF repo (default: model.onnx)",
-    )
-    submit_parser.add_argument(
-        "--hf.token",
-        dest="hf_token",
-        default=os.environ.get("HF_TOKEN"),
-        help="HuggingFace token (default: $HF_TOKEN env var)",
     )
 
     # Chain args
@@ -262,42 +475,52 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-async def main() -> int:
-    """Async CLI entry point."""
+def main() -> int:
+    """CLI entry point."""
     config = parse_args()
 
-    if config.action == "evaluate":
-        return await evaluate_model(config.model_path)
+    if not config.quiet:
+        bt.logging.set_info(True)
 
-    elif config.action == "submit":
-        netuid = config.netuid or NETWORK_NETUIDS.get(config.network)
-        if netuid is None:
-            bt.logging.error(
-                f"Unknown network '{config.network}'. Use --netuid to specify subnet UID."
+    try:
+        if config.action == "evaluate":
+            evaluate_model(config.model_path)
+            return 0
+
+        elif config.action == "submit":
+            netuid = config.netuid or NETWORK_NETUIDS.get(config.network)
+            if netuid is None:
+                bt.logging.error(
+                    f"Unknown network '{config.network}'. Use --netuid to specify subnet UID."
+                )
+                return 2
+
+            wallet = bt.wallet(name=config.wallet_name, hotkey=config.wallet_hotkey)
+            subtensor = bt.subtensor(network=config.network)
+            submit_model(
+                hf_repo_id=config.hf_repo_id,
+                hf_model_filename=config.hf_model_filename,
+                wallet=wallet,
+                subtensor=subtensor,
+                netuid=netuid,
+                extrinsic_scan_blocks=config.extrinsic_scan_blocks,
             )
+            return 0
+
+        else:
+            bt.logging.error(f"Unknown action: {config.action}")
             return 2
 
-        wallet = bt.wallet(name=config.wallet_name, hotkey=config.wallet_hotkey)
-        subtensor = bt.subtensor(network=config.network)
-        return await submit_model(
-            hf_repo_id=config.hf_repo_id,
-            hf_model_filename=config.hf_model_filename,
-            hf_token=config.hf_token,
-            wallet=wallet,
-            subtensor=subtensor,
-            netuid=netuid,
-            extrinsic_scan_blocks=config.extrinsic_scan_blocks,
-        )
-
-    else:
-        bt.logging.error(f"Unknown action: {config.action}")
+    except ValueError as e:
+        bt.logging.error(str(e))
         return 2
-
-
-def main_sync() -> int:
-    """Synchronous CLI entry point for script installation."""
-    return asyncio.run(main())
+    except MinerCLIError as e:
+        bt.logging.error(str(e))
+        return 1
+    except Exception as e:
+        bt.logging.error(f"Unexpected error: {e}")
+        return 1
 
 
 if __name__ == "__main__":
-    raise SystemExit(main_sync())
+    raise SystemExit(main())

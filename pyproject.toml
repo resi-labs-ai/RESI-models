@@ -33,7 +33,7 @@ dependencies = [
 ]
 
 [project.scripts]
-miner-cli = "real_estate.miner_cli:main_sync"
+miner-cli = "real_estate.miner_cli:main"
 
 [dependency-groups]
 dev = [
