@@ -1,0 +1,27 @@
+# Pylon provides chain interaction (metagraph, weights, commitments).
+# Note for Mac (Apple Silicon) users: Pylon has no ARM64 build.
+# Run with: DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose up -d
+
+services:
+  pylon:
+    image: backenddevelopersltd/bittensor-pylon:1.0.0
+    container_name: resi_pylon
+    ports:
+      - "8000:8000"
+    environment:
+      - PYLON_BITTENSOR_NETWORK=${SUBTENSOR_NETWORK:-finney}
+      - PYLON_BITTENSOR_WALLET_PATH=/root/.bittensor/wallets
+      - PYLON_IDENTITIES=["validator"]
+      - PYLON_ID_VALIDATOR_NETUID=${NETUID:-46}
+      - PYLON_ID_VALIDATOR_WALLET_NAME=${WALLET_NAME:-validator}
+      - PYLON_ID_VALIDATOR_HOTKEY_NAME=${WALLET_HOTKEY:-default}
+      - PYLON_ID_VALIDATOR_TOKEN=${PYLON_TOKEN}
+    volumes:
+      - ${BITTENSOR_WALLET_PATH:-~/.bittensor/wallets}:/root/.bittensor/wallets:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.connect(('localhost', 8000)); s.close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from .downloader import ModelDownloader
@@ -64,6 +64,11 @@ class ModelDownloadScheduler:
         self._chain = chain_client
         self._known_commitments: dict[str, ChainModelMetadata] = {}
 
+    @property
+    def known_commitments(self) -> dict[str, ChainModelMetadata]:
+        """Cached commitments from last download run."""
+        return self._known_commitments
+
     async def run_pre_download(
         self,
         eval_time: datetime,
@@ -73,8 +78,14 @@ class ModelDownloadScheduler:
 
         1. Fetch all commitments from chain
         2. Sort by priority (new/changed hash first)
-        3. Spread downloads across (pre_download_hours - catch_up_minutes)
+        3. Spread downloads to finish before eval_time - catch_up_minutes
         4. Return results for each hotkey
+
+        Timing logic:
+        - Downloads must complete by: eval_time - catch_up_minutes
+        - If enough time available: spread over pre_download_hours window
+        - If less time: compress to fit available time
+        - If past deadline: download immediately with minimal delays
 
         Args:
             eval_time: Scheduled evaluation time (UTC)
@@ -82,7 +93,14 @@ class ModelDownloadScheduler:
         Returns:
             Dict mapping hotkey to DownloadResult
         """
-        logger.info(f"Starting pre-download phase for eval at {eval_time}")
+        now = datetime.now(UTC)
+        deadline = eval_time - timedelta(minutes=self._config.catch_up_minutes)
+        time_available = (deadline - now).total_seconds()
+
+        logger.info(
+            f"Pre-download phase: eval at {eval_time}, "
+            f"deadline {deadline}, {time_available:.0f}s available"
+        )
 
         # Fetch all commitments and current block
         commitments = await self._chain.get_all_commitments()
@@ -101,10 +119,20 @@ class ModelDownloadScheduler:
         cutoff_block = current_block - self._config.min_commitment_age_blocks
         to_download = self._filter_needs_download(commitments, cutoff_block)
 
-        # Calculate download window
-        window_seconds = (
-            self._config.pre_download_hours * 3600 - self._config.catch_up_minutes * 60
-        )
+        # Calculate download window based on available time
+        max_window = self._config.pre_download_hours * 3600
+        if time_available <= 0:
+            # Past deadline - download ASAP
+            window_seconds = 0.0
+            logger.warning("Past deadline, downloading immediately")
+        elif time_available < max_window:
+            # Less time than ideal - compress window
+            window_seconds = time_available
+            logger.info(f"Compressed window: {window_seconds:.0f}s")
+        else:
+            # Plenty of time - use configured window
+            window_seconds = max_window
+            logger.info(f"Full window: {window_seconds:.0f}s")
 
         # Schedule downloads
         schedule = self._calculate_download_schedule(to_download, window_seconds)
