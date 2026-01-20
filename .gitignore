@@ -170,3 +170,6 @@ test_model_cache/
 
 # LLM documentation
 claude-docs/
+
+# PM2 config (generated with machine-specific paths)
+config/ecosystem.config.js
