@@ -445,8 +445,10 @@ def parse_args() -> argparse.Namespace:
         help="Network (finney/mainnet/test/testnet) or endpoint URL (requires --netuid)",
     )
     submit_parser.add_argument(
-        "--netuid", type=int, default=None,
-        help="Subnet UID (optional, inferred from network for finney/test)"
+        "--netuid",
+        type=int,
+        default=None,
+        help="Subnet UID (optional, inferred from network for finney/test)",
     )
 
     # Wallet args
