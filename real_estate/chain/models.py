@@ -20,7 +20,6 @@ class ChainModelMetadata:
     hf_repo_id: str
     model_hash: str  # SHA-256 hash (64 chars)
     block_number: int
-    timestamp: int  # Unix timestamp
 
     def is_committed_before(self, block: int) -> bool:
         """Check if model was committed before a specific block."""
@@ -36,9 +35,7 @@ class ChainModelMetadata:
         Expected format (compact JSON):
         {
             "h": "abc123...def456",  # model hash (64 chars SHA-256)
-            "r": "user/model",       # HF repo
-            "v": "1.0.0",            # version (optional)
-            "t": 1700000000          # timestamp
+            "r": "user/model"        # HF repo
         }
         """
         return cls(
@@ -46,7 +43,6 @@ class ChainModelMetadata:
             hf_repo_id=data.get("r", ""),
             model_hash=data.get("h", ""),
             block_number=data.get("b", 0),
-            timestamp=data.get("t", 0),
         )
 
     @classmethod
@@ -72,7 +68,6 @@ class ChainModelMetadata:
             hf_repo_id=data.get("r", ""),
             model_hash=data.get("h", ""),
             block_number=block_number or data.get("b", 0),
-            timestamp=data.get("t", 0),
         )
 
 
