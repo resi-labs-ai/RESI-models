@@ -200,6 +200,39 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=os.environ.get("MODEL_REQUIRED_LICENSE", "Lorem Ipsum"),
     )
 
+    # Docker execution settings
+    parser.add_argument(
+        "--docker.memory",
+        dest="docker_memory",
+        type=str,
+        help="Docker container memory limit (e.g., '2g', '4g').",
+        default=os.environ.get("DOCKER_MEMORY", "2g"),
+    )
+
+    parser.add_argument(
+        "--docker.cpu",
+        dest="docker_cpu",
+        type=float,
+        help="Docker container CPU limit (1.0 = 1 core).",
+        default=float(os.environ.get("DOCKER_CPU", "1.0")),
+    )
+
+    parser.add_argument(
+        "--docker.timeout",
+        dest="docker_timeout",
+        type=int,
+        help="Docker inference timeout in seconds.",
+        default=int(os.environ.get("DOCKER_TIMEOUT", "300")),
+    )
+
+    parser.add_argument(
+        "--docker.max_concurrent",
+        dest="docker_max_concurrent",
+        type=int,
+        help="Maximum concurrent Docker evaluations.",
+        default=int(os.environ.get("DOCKER_MAX_CONCURRENT", "4")),
+    )
+
 
 def get_config() -> argparse.Namespace:
     """Parse arguments and return configuration."""
@@ -262,6 +295,10 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "model_cache_path": str(config.model_cache_path),
         "model_max_size_mb": config.model_max_size_mb,
         "model_required_license": config.model_required_license,
+        "docker_memory": config.docker_memory,
+        "docker_cpu": config.docker_cpu,
+        "docker_timeout": config.docker_timeout,
+        "docker_max_concurrent": config.docker_max_concurrent,
     }
 
 

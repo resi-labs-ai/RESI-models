@@ -219,6 +219,7 @@ class EvaluationOrchestrator:
 def create_orchestrator(
     max_concurrent: int = 4,
     docker_memory: str = "2g",
+    docker_cpu: float = 1.0,
     docker_timeout: int = 300,
     metrics_config: MetricsConfig | None = None,
 ) -> EvaluationOrchestrator:
@@ -228,6 +229,7 @@ def create_orchestrator(
     Args:
         max_concurrent: Maximum concurrent evaluations
         docker_memory: Docker memory limit (e.g., '2g', '4g')
+        docker_cpu: Docker CPU limit (1.0 = 1 core)
         docker_timeout: Inference timeout in seconds
         metrics_config: Optional metrics configuration
 
@@ -238,6 +240,7 @@ def create_orchestrator(
         orchestrator = create_orchestrator(
             max_concurrent=8,
             docker_memory="4g",
+            docker_cpu=2.0,
             docker_timeout=600,
         )
     """
@@ -245,6 +248,7 @@ def create_orchestrator(
         max_concurrent=max_concurrent,
         docker_config=DockerConfig(
             memory_limit=docker_memory,
+            cpu_limit=docker_cpu,
             timeout_seconds=docker_timeout,
         ),
         metrics_config=metrics_config or MetricsConfig(),
