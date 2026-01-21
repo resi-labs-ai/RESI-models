@@ -16,23 +16,7 @@ This subnet incentivizes the development of accurate real estate price predictio
 
 ### For Validators
 
-```bash
-# Clone and install
-git clone https://github.com/resi-labs-ai/RESI-models.git
-cd RESI-models
-uv sync
-
-# Configure
-cp .env.example .env
-# Edit .env with your wallet and Pylon token
-
-# Start Pylon and validator
-docker compose up -d
-set -a && source .env && set +a
-python scripts/start_validator.py
-```
-
-See the full [Validator Setup Guide](docs/VALIDATOR_SETUP.md) for detailed instructions.
+See the [Validator Setup Guide](docs/VALIDATOR_SETUP.md) for setup instructions.
 
 ### For Miners
 

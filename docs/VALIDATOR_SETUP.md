@@ -2,6 +2,15 @@
 
 This guide explains how to set up and run a validator for the Real Estate Price Prediction Subnet (RESI).
 
+## Hardware Requirements
+
+Suggested starting point - adjust based on your load and number of miners on the subnet.
+
+- 4+ CPU cores
+- 16+ GB RAM
+- 50+ GB SSD (model cache for up to 256 miners)
+- Stable internet connection
+
 ## Prerequisites
 
 - **Docker** installed and running
@@ -38,33 +47,11 @@ The validator consists of two components:
 1. **Pylon** (Docker) - Handles all chain interactions (metagraph, weights, commitments)
 2. **Validator Process** (PM2) - Evaluates miner models and sets weights
 
-## Quick Start
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/resi-labs/resi-subnet.git
-cd resi-subnet
-
-# 2. Install dependencies
-uv sync
-
-# 3. Configure environment
-cp .env.example .env
-# Edit .env with your values (see Configuration section)
-
-# 4. Start Pylon
-docker compose up -d
-
-# 5. Start validator with auto-updates
-set -a && source .env && set +a
-python scripts/start_validator.py
-```
-
 ## Step 1: Clone and Install
 
 ```bash
-git clone https://github.com/resi-labs/resi-subnet.git
-cd resi-subnet
+git clone https://github.com/resi-labs-ai/RESI-models.git
+cd RESI-models
 uv sync
 ```
 
@@ -348,15 +335,6 @@ btcli subnet metagraph --netuid 46 --subtensor.network finney
 # Verify wallet files are readable
 ls -la ~/.bittensor/wallets/$WALLET_NAME/hotkeys/
 ```
-
-## Hardware Requirements
-
-Suggested starting point - adjust based on your load and number of miners on the subnet.
-
-- 4+ CPU cores
-- 8+ GB RAM
-- 50+ GB SSD
-- Stable internet connection
 
 ## Security Recommendations
 
