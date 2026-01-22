@@ -1,15 +1,27 @@
 # Validator Setup Guide
 
-This guide explains how to set up and run a validator for the Real Estate Price Prediction Subnet (RESI).
+## Table of Contents
 
-## Hardware Requirements
+- [Overview](#overview)
+- [Prerequisites](#prerequisites)
+- [Hardware Requirements](#hardware-requirements)
+- [Installation](#installation)
+- [Running the Validator](#running-the-validator)
+- [Managing the Validator](#managing-the-validator)
+- [Configuration Reference](#configuration-reference)
+- [Network Configuration](#network-configuration)
+- [Troubleshooting](#troubleshooting)
+- [Architecture](#architecture)
+- [Security Recommendations](#security-recommendations)
+- [Support](#support)
 
-Suggested starting point - adjust based on your load and number of miners on the subnet.
+## Overview
 
-- 4+ CPU cores
-- 16+ GB RAM
-- 50+ GB SSD (model cache for up to 256 miners)
-- Stable internet connection
+The main responsibilities of a RESI validator are:
+
+Download Models: Fetch miner ONNX models from HuggingFace
+Evaluate: Run inference against daily validation data
+Set Weights: Submit scores to the Bittensor blockchain
 
 ## Prerequisites
 
@@ -20,34 +32,18 @@ Suggested starting point - adjust based on your load and number of miners on the
 - **Bittensor wallet** with sufficient TAO for registration
 - Registered hotkey on subnet 46
 
-## Architecture Overview
+## Hardware Requirements
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Validator Machine                       │
-│                                                              │
-│  ┌────────────────────┐       ┌────────────────────────────┐│
-│  │    PM2 managed     │       │     Docker container       ││
-│  │                    │ HTTP  │                            ││
-│  │  validator.py      │──────►│   Pylon 1.0.0              ││
-│  │                    │ :8000 │                            ││
-│  │  (auto-updates)    │       │   (chain interactions)     ││
-│  └────────────────────┘       └───────────┬────────────────┘│
-│                                           │                  │
-└───────────────────────────────────────────┼──────────────────┘
-                                            │ WebSocket
-                                            ▼
-                                      ┌───────────┐
-                                      │ Bittensor │
-                                      │   Chain   │
-                                      └───────────┘
-```
+Suggested starting point - adjust based on your load and number of miners on the subnet.
 
-The validator consists of two components:
-1. **Pylon** (Docker) - Handles all chain interactions (metagraph, weights, commitments)
-2. **Validator Process** (PM2) - Evaluates miner models and sets weights
+- 4+ CPU cores
+- 16+ GB RAM
+- 50+ GB SSD (model cache for up to 256 miners)
+- Stable internet connection
 
-## Step 1: Clone and Install
+## Installation
+
+### Clone and Install
 
 ```bash
 git clone https://github.com/resi-labs-ai/RESI-models.git
@@ -55,11 +51,7 @@ cd RESI-models
 uv sync
 ```
 
-## Step 2: Configure Environment
-
 ### Generate Pylon Token
-
-First, generate a secure authentication token:
 
 ```bash
 openssl rand -base64 32
@@ -68,8 +60,6 @@ openssl rand -base64 32
 Save this token - you'll need it for the `.env` file.
 
 ### Create Environment File
-
-Copy the example and edit:
 
 ```bash
 cp .env.example .env
@@ -99,7 +89,9 @@ SUBTENSOR_NETWORK=finney
 NETUID=46
 ```
 
-## Step 3: Start Pylon
+## Running the Validator
+
+### Start Pylon
 
 Pylon handles all Bittensor chain interactions. Start it with Docker Compose:
 
@@ -110,7 +102,7 @@ docker compose up -d
 > **Note for Mac (Apple Silicon) users:** Pylon has no ARM64 build.
 > Run with: `DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose up -d`
 
-### Verify Pylon is Running
+Verify Pylon is running:
 
 ```bash
 # Check container status
@@ -123,9 +115,9 @@ docker logs resi_pylon
 curl http://localhost:8000/api/v1/identity/validator/subnet/46/block/latest/neurons
 ```
 
-## Step 4: Start the Validator
+### Start Validator
 
-### Option A: With Auto-Updates (Recommended)
+**Option A: With Auto-Updates (Recommended)**
 
 The auto-update script checks for new versions every 5 minutes and automatically restarts:
 
@@ -152,7 +144,7 @@ The script will:
 3. Monitor git for updates every 5 minutes
 4. Auto-restart on new versions
 
-### Option B: Manual Start (No Auto-Updates)
+**Option B: Manual Start (No Auto-Updates)**
 
 ```bash
 uv run python -m real_estate.validator.validator \
@@ -163,28 +155,27 @@ uv run python -m real_estate.validator.validator \
     --pylon.identity validator
 ```
 
-## Step 5: Verify Everything Works
+### Verify Startup
 
-### Check PM2 Status
+#### Check PM2 Status
 
 ```bash
 pm2 status
 pm2 logs resi_validator --lines 50
 ```
 
-### Check Pylon Logs
+#### Check Pylon Logs
 
 ```bash
 docker logs -f resi_pylon
 ```
 
-### Expected Startup Logs
+#### Expected Startup Logs
 
 ```
 INFO | Config: {'netuid': 46, 'wallet_name': 'validator', ...}
 INFO | Validator initialized
 INFO | Starting metagraph sync...
-INFO | Next evaluation scheduled at 2026-01-20 02:00:00+00:00
 INFO | Pre-download phase: ...
 ```
 
@@ -335,6 +326,35 @@ btcli subnet metagraph --netuid 46 --subtensor.network finney
 # Verify wallet files are readable
 ls -la ~/.bittensor/wallets/$WALLET_NAME/hotkeys/
 ```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Validator Machine                       │
+│                                                              │
+│  ┌────────────────────┐       ┌────────────────────────────┐│
+│  │    PM2 managed     │       │     Docker container       ││
+│  │                    │ HTTP  │                            ││
+│  │  validator.py      │──────►│   Pylon 1.0.0              ││
+│  │                    │ :8000 │                            ││
+│  │  (auto-updates)    │       │   (chain interactions)     ││
+│  └────────────────────┘       └───────────┬────────────────┘│
+│                                           │                  │
+└───────────────────────────────────────────┼──────────────────┘
+                                            │ WebSocket
+                                            ▼
+                                      ┌───────────┐
+                                      │ Bittensor │
+                                      │   Chain   │
+                                      └───────────┘
+```
+
+The validator consists of two components:
+
+**Pylon** (Docker) - Handles all Bittensor chain interactions including metagraph sync, weight setting, and commitment queries. Runs as a separate service to isolate chain communication.
+
+**Validator Process** (PM2) - Downloads miner models from HuggingFace, runs daily evaluation against validation data, scores predictions, and determines weight distribution.
 
 ## Security Recommendations
 
