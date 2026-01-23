@@ -111,8 +111,8 @@ docker ps
 # Check logs
 docker logs resi_pylon
 
-# Test API is responding
-curl http://localhost:8000/api/v1/identity/validator/subnet/46/block/latest/neurons
+# Test API is responding (NETUID: mainnet=46, testnet=428 , local=ws://your-node:port)
+curl http://localhost:8000/api/v1/identity/validator/subnet/<NETUID>/block/latest/neurons
 ```
 
 ### Start Validator
@@ -147,6 +147,7 @@ The script will:
 **Option B: Manual Start (No Auto-Updates)**
 
 ```bash
+set -a && source .env && set +a 
 pm2 start "uv run python -m real_estate.validator.validator \
     --wallet.name validator \
     --wallet.hotkey default \
@@ -256,13 +257,13 @@ NETUID=46
 
 ```bash
 SUBTENSOR_NETWORK=test
-NETUID=46
+NETUID=428
 ```
 
 ### Custom Endpoint
 
 ```bash
-SUBTENSOR_NETWORK=ws://your-node:9944
+SUBTENSOR_NETWORK=ws://your-node:port
 ```
 
 ## Troubleshooting
