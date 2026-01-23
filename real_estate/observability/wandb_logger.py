@@ -15,7 +15,6 @@ from .models import (
 
 if TYPE_CHECKING:
     import wandb
-
     from real_estate.data.models import ValidationDataset
     from real_estate.orchestration.models import ValidationResult
 
@@ -205,10 +204,18 @@ class WandbLogger:
 
         # Get winner metrics
         winner_result = next(
-            (r for r in result.eval_batch.results if r.hotkey == result.winner.winner_hotkey),
+            (
+                r
+                for r in result.eval_batch.results
+                if r.hotkey == result.winner.winner_hotkey
+            ),
             None,
         )
-        winner_mape = winner_result.metrics.mape if winner_result and winner_result.metrics else None
+        winner_mape = (
+            winner_result.metrics.mape
+            if winner_result and winner_result.metrics
+            else None
+        )
 
         # Build miner results
         miner_results = []
@@ -336,7 +343,9 @@ class WandbLogger:
 
             for i, prop in enumerate(dataset.properties):
                 # Get property ID
-                prop_id = prop.get(property_id_field) or prop.get("address") or f"idx-{i}"
+                prop_id = (
+                    prop.get(property_id_field) or prop.get("address") or f"idx-{i}"
+                )
 
                 # Get prediction for this property
                 if i < len(miner.predictions):
