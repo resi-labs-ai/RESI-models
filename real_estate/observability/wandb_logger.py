@@ -366,7 +366,7 @@ class WandbLogger:
 
 
 def create_wandb_logger(
-    project: str = "resi-subnet",
+    project: str = "subnet-46-evaluations",
     entity: str | None = None,
     api_key: str | None = None,
     validator_hotkey: str = "",

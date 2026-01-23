@@ -164,7 +164,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="wandb_project",
         type=str,
         help="WandB project name.",
-        default=os.environ.get("WANDB_PROJECT", "real-estate-subnet"),
+        default=os.environ.get("WANDB_PROJECT", "subnet-46-evaluations"),
     )
 
     parser.add_argument(

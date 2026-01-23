@@ -180,7 +180,7 @@ class WandbConfig:
     """Configuration for WandB logging."""
 
     # Project settings
-    project: str = "resi-subnet"
+    project: str = "subnet-46-evaluations"
     entity: str | None = None  # WandB team/user, None = default
 
     # Authentication
