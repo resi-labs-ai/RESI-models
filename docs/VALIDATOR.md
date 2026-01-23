@@ -3,8 +3,8 @@
 ## Table of Contents
 
 - [Overview](#overview)
-- [Prerequisites](#prerequisites)
 - [Hardware Requirements](#hardware-requirements)
+- [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Running the Validator](#running-the-validator)
 - [Managing the Validator](#managing-the-validator)
@@ -23,15 +23,6 @@ Download Models: Fetch miner ONNX models from HuggingFace
 Evaluate: Run inference against daily validation data
 Set Weights: Submit scores to the Bittensor blockchain
 
-## Prerequisites
-
-- **Docker** installed and running
-- **Python 3.11+**
-- **uv** package manager ([install guide](https://docs.astral.sh/uv/getting-started/installation/))
-- **PM2** process manager (`npm install -g pm2`)
-- **Bittensor wallet** with sufficient TAO for registration
-- Registered hotkey on subnet 46
-
 ## Hardware Requirements
 
 Suggested starting point - adjust based on your load and number of miners on the subnet.
@@ -40,6 +31,15 @@ Suggested starting point - adjust based on your load and number of miners on the
 - 16+ GB RAM
 - 50+ GB SSD (model cache for up to 256 miners)
 - Stable internet connection
+
+## Prerequisites
+
+- **Docker** installed and running
+- **Python 3.11+**
+- **uv** package manager ([install guide](https://docs.astral.sh/uv/getting-started/installation/))
+- **PM2** process manager (`npm install -g pm2`)
+- **Bittensor wallet** with sufficient TAO for registration
+- Registered hotkey on subnet 46
 
 ## Installation
 
@@ -124,13 +124,13 @@ The auto-update script checks for new versions every 5 minutes and automatically
 ```bash
 # Load environment and start
 set -a && source .env && set +a
-python scripts/start_validator.py
+uv run python scripts/start_validator.py
 ```
 
 Or pass arguments directly:
 
 ```bash
-python scripts/start_validator.py \
+uv run python scripts/start_validator.py \
     --wallet.name validator \
     --wallet.hotkey default \
     --netuid 46 \
@@ -147,12 +147,12 @@ The script will:
 **Option B: Manual Start (No Auto-Updates)**
 
 ```bash
-uv run python -m real_estate.validator.validator \
+pm2 start "uv run python -m real_estate.validator.validator \
     --wallet.name validator \
     --wallet.hotkey default \
     --netuid 46 \
     --pylon.token YOUR_PYLON_TOKEN \
-    --pylon.identity validator
+    --pylon.identity validator" --name resi_validator
 ```
 
 ### Verify Startup
