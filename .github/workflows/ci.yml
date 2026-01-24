@@ -62,6 +62,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
+      - name: Debug - Check ChainModelMetadata
+        run: |
+          uv run python -c "from real_estate.chain.models import ChainModelMetadata; print(ChainModelMetadata.__dataclass_fields__.keys())"
+
       - name: Run unit tests
         run: uv run pytest real_estate/tests/unit/ -v --tb=short
 
