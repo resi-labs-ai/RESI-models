@@ -35,8 +35,7 @@ class ChainModelMetadata:
         Expected format (compact JSON):
         {
             "h": "abc123...def456",  # model hash (64 chars SHA-256)
-            "r": "user/model",       # HF repo
-            "v": "1.0.0"             # version (optional)
+            "r": "user/model"        # HF repo
         }
         """
         return cls(
