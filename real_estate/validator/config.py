@@ -164,7 +164,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="wandb_project",
         type=str,
         help="WandB project name.",
-        default=os.environ.get("WANDB_PROJECT", "real-estate-subnet"),
+        default=os.environ.get("WANDB_PROJECT", "subnet-46-evaluations"),
     )
 
     parser.add_argument(
@@ -173,6 +173,22 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         type=str,
         help="WandB entity.",
         default=os.environ.get("WANDB_ENTITY", ""),
+    )
+
+    parser.add_argument(
+        "--wandb.api_key",
+        dest="wandb_api_key",
+        type=str,
+        help="WandB API key. Can also be set via WANDB_API_KEY env var.",
+        default=os.environ.get("WANDB_API_KEY", ""),
+    )
+
+    parser.add_argument(
+        "--wandb.offline",
+        dest="wandb_offline",
+        action="store_true",
+        help="Run WandB in offline mode (logs saved locally).",
+        default=os.environ.get("WANDB_OFFLINE", "false").lower() == "true",
     )
 
     # Model download settings
@@ -292,6 +308,8 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "wandb_off": config.wandb_off,
         "wandb_project": config.wandb_project,
         "wandb_entity": config.wandb_entity,
+        "wandb_api_key": "***" if config.wandb_api_key else "",
+        "wandb_offline": config.wandb_offline,
         "model_cache_path": str(config.model_cache_path),
         "model_max_size_mb": config.model_max_size_mb,
         "model_required_license": config.model_required_license,

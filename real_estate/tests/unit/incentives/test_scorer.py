@@ -50,7 +50,6 @@ def make_metadata(hotkey: str, block_number: int) -> ChainModelMetadata:
         hf_repo_id="test/model",
         model_hash="abc12345",
         block_number=block_number,
-        timestamp=1700000000,
     )
 
 

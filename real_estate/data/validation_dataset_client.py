@@ -114,7 +114,8 @@ class ValidationDatasetClient:
             "Nonce": nonce,
         }
 
-        headers_str = json.dumps(sign_headers, sort_keys=True)
+        # IMPORTANT: Use separators=(',', ':') to match JavaScript's JSON.stringify (no spaces!)
+        headers_str = json.dumps(sign_headers, sort_keys=True, separators=(",", ":"))
         data_to_sign = f"{method.upper()}{url}{headers_str}"
 
         signature = self._keypair.sign(data_to_sign.encode()).hex()
@@ -295,14 +296,19 @@ class ValidationDatasetClient:
                 try:
                     data = download_response.json()
 
-                    # Handle both list format and dict with 'properties' key
+                    # Handle multiple formats:
+                    # - Direct list of properties
+                    # - Dict with 'properties' key
+                    # - Dict with 'records' key (dashboard v1.0 format)
                     if isinstance(data, list):
                         properties = data
                     elif isinstance(data, dict) and "properties" in data:
                         properties = data["properties"]
+                    elif isinstance(data, dict) and "records" in data:
+                        properties = data["records"]
                     else:
                         raise ValidationDataRequestError(
-                            "Invalid validation set format: expected list or dict with 'properties' key"
+                            f"Invalid validation set format: expected list or dict with 'properties'/'records' key, got keys: {list(data.keys()) if isinstance(data, dict) else type(data)}"
                         )
 
                     logger.info(

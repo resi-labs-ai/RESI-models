@@ -124,7 +124,9 @@ def validate_model_interface(session: ort.InferenceSession) -> str:
                 "Expected (batch,) or (batch, 1) for price predictions."
             )
 
-    logger.debug(f"Model interface: input={list(input_shape)}, output={list(output_shape)}")
+    logger.debug(
+        f"Model interface: input={list(input_shape)}, output={list(output_shape)}"
+    )
     return input_info.name
 
 

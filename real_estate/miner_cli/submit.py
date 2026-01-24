@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from ..models.verifier import ModelVerifier
 from .chain import ExtrinsicInfo, scan_for_commitment_extrinsic
@@ -50,8 +51,8 @@ def build_commitment(model_hash: str, hf_repo_id: str) -> str:
 def submit_model(
     model_path: str | Path,
     hf_repo_id: str,
-    wallet: "bt.wallet",
-    subtensor: "bt.subtensor",
+    wallet: bt.wallet,
+    subtensor: bt.subtensor,
     netuid: int,
 ) -> SubmitResult:
     """
@@ -78,7 +79,6 @@ def submit_model(
         The same model file must be uploaded to the HF repo at model.onnx.
         Validators will download from HF and verify the hash matches.
     """
-    import bittensor as bt
 
     model_path = Path(model_path)
 
@@ -140,7 +140,7 @@ def submit_model(
 
 
 def find_commitment_extrinsic(
-    subtensor: "bt.subtensor",
+    subtensor: bt.subtensor,
     hotkey_ss58: str,
     start_block: int,
     max_blocks: int = 25,

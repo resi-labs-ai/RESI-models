@@ -835,7 +835,8 @@ class TestSignRequest:
         assert "Signature" in headers
 
         # Verify keypair.sign was called with correct message
-        expected_message = f'POST{url}{{"Hotkey": "5MockValidatorHotkey", "Nonce": "{nonce}"}}'
+        # Note: JSON uses no spaces (separators=(',', ':')) to match JavaScript's JSON.stringify
+        expected_message = f'POST{url}{{"Hotkey":"5MockValidatorHotkey","Nonce":"{nonce}"}}'
         client._keypair.sign.assert_called_once()
         call_args = client._keypair.sign.call_args[0][0]
         assert call_args.decode() == expected_message
