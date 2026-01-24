@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from .errors import ExtrinsicNotFoundError
 
@@ -40,7 +41,7 @@ class ExtrinsicInfo:
 
 
 def scan_for_commitment_extrinsic(
-    subtensor: "bt.subtensor",
+    subtensor: bt.subtensor,
     signer_hotkey: str,
     start_block: int,
     max_blocks: int = 25,
@@ -89,7 +90,7 @@ def scan_for_commitment_extrinsic(
 
 
 def _check_block_for_commitment(
-    subtensor: "bt.subtensor",
+    subtensor: bt.subtensor,
     block_num: int,
     signer_hotkey: str,
 ) -> ExtrinsicInfo | None:
