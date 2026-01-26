@@ -320,10 +320,10 @@ class Validator:
 
         # Get successful model paths, filtered to registered hotkeys only
         model_paths = {
-            hotkey: result.model_path
+            hotkey: result.path
             for hotkey, result in self.download_results.items()
             if result.success
-            and result.model_path is not None
+            and result.path is not None
             and hotkey in registered_hotkeys
         }
 
