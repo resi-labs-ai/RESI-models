@@ -474,16 +474,7 @@ class Validator:
         except Exception as e:
             logger.warning(f"Initial model download failed: {e}")
 
-        # Initial validation data fetch
-        logger.info("Performing initial validation data fetch...")
-        try:
-            validation_data, raw_data = await self.validation_client.fetch_with_retry(
-                download_validation=True,
-                download_raw=self.config.validation_data_download_raw,
-            )
-            self._on_validation_data_fetched(validation_data, raw_data)
-        except Exception as e:
-            logger.warning(f"Initial validation data fetch failed: {e}")
+        logger.info("Waiting for scheduled evaluation time...")
 
 
 async def main() -> None:
