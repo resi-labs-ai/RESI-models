@@ -432,8 +432,8 @@ class Validator:
                     self._evaluation_loop(),
                     self._weight_setting_loop(),
                 )
-            except KeyboardInterrupt:
-                logger.info("Validator stopped by keyboard interrupt")
+            except asyncio.CancelledError:
+                logger.info("Validator stopped")
             finally:
                 validation_scheduler.shutdown()
 

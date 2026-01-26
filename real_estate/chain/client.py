@@ -297,6 +297,7 @@ class ChainClient:
             dividends=float(pylon_neuron.dividends),
             emission=float(pylon_neuron.emission),
             is_active=pylon_neuron.active,
+            validator_permit=pylon_neuron.validator_permit,
         )
 
     async def get_all_miners(self) -> list[str]:
