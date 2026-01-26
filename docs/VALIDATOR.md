@@ -217,6 +217,9 @@ docker compose down
 # Validator logs
 pm2 logs resi_validator
 
+# Auto-updater logs (if using auto-updates)
+pm2 logs resi_autoupdater
+
 # Pylon logs
 docker logs -f resi_pylon
 ```
