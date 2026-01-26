@@ -134,8 +134,9 @@ class ModelDownloader:
 
         await self._verifier.check_license(hf_repo_id)
 
-        size = await self._verifier.check_size(
-            hf_repo_id, self._config.max_model_size_bytes
+        onnx_filename, size = await self._verifier.find_onnx_file(hf_repo_id)
+        self._verifier.check_model_size(
+            size, self._config.max_model_size_bytes, onnx_filename
         )
 
         disk_buffer = 100_000_000  # 100MB safety margin
@@ -154,7 +155,7 @@ class ModelDownloader:
         )
 
         # 7. Download with retry
-        temp_path = await self._download_with_retry(hf_repo_id)
+        temp_path = await self._download_with_retry(hf_repo_id, onnx_filename)
 
         try:
             # 8. Verify hash
@@ -183,12 +184,13 @@ class ModelDownloader:
                 temp_path.unlink()
             raise
 
-    async def _download_with_retry(self, hf_repo_id: str) -> Path:
+    async def _download_with_retry(self, hf_repo_id: str, filename: str) -> Path:
         """
-        Download model.onnx with exponential backoff retry.
+        Download ONNX model with exponential backoff retry.
 
         Args:
             hf_repo_id: HuggingFace repository ID
+            filename: Name of the ONNX file to download
 
         Returns:
             Path to downloaded file in temp directory
@@ -209,7 +211,7 @@ class ModelDownloader:
                     asyncio.to_thread(
                         hf_hub_download,
                         repo_id=hf_repo_id,
-                        filename="model.onnx",
+                        filename=filename,
                         local_dir=temp_dir,
                         local_dir_use_symlinks=False,
                     ),
@@ -226,7 +228,7 @@ class ModelDownloader:
             except EntryNotFoundError as e:
                 self._cleanup_temp_dir(temp_dir)
                 # Don't record failure - this is a permanent config error, not transient
-                raise ModelDownloadError(f"model.onnx not found in {hf_repo_id}") from e
+                raise ModelDownloadError(f"{filename} not found in {hf_repo_id}") from e
 
             except asyncio.TimeoutError as e:
                 self._cleanup_temp_dir(temp_dir)

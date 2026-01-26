@@ -174,9 +174,7 @@ class TestPut:
         assert metadata["hash"] == "abc12345"
         assert metadata["size_bytes"] == 18
 
-    def test_atomic_move_from_temp(
-        self, cache: ModelCache, tmp_path: Path
-    ) -> None:
+    def test_atomic_move_from_temp(self, cache: ModelCache, tmp_path: Path) -> None:
         """Verifies temp file is moved (not copied)."""
         hotkey = "test_hotkey"
 
@@ -309,9 +307,7 @@ class TestCleanupCorrupted:
         assert hotkey in removed
         assert not hotkey_dir.exists()
 
-    def test_keeps_valid_entries(
-        self, cache: ModelCache, temp_cache_dir: Path
-    ) -> None:
+    def test_keeps_valid_entries(self, cache: ModelCache, temp_cache_dir: Path) -> None:
         """Keeps valid cache entries."""
         hotkey = "valid_hotkey"
         hotkey_dir = temp_cache_dir / hotkey

@@ -367,7 +367,9 @@ class TestRunCatchUp:
         """Downloads commitments that weren't known before."""
         scheduler_config.min_delay_between_downloads_seconds = 0
         mock_downloader = MagicMock()
-        mock_downloader.download_model = AsyncMock(return_value=Path("/cache/model.onnx"))
+        mock_downloader.download_model = AsyncMock(
+            return_value=Path("/cache/model.onnx")
+        )
 
         # New commitment not in known_commitments
         new_commitment = MagicMock()
@@ -376,9 +378,7 @@ class TestRunCatchUp:
         new_commitment.block_number = 1000
 
         mock_chain_client.get_all_commitments = AsyncMock(return_value=[new_commitment])
-        mock_chain_client.get_metagraph = AsyncMock(
-            return_value=MagicMock(block=10000)
-        )
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
 
         scheduler = ModelDownloadScheduler(
             scheduler_config, mock_downloader, mock_chain_client
@@ -401,7 +401,9 @@ class TestRunCatchUp:
         """Downloads commitments where hash has changed."""
         scheduler_config.min_delay_between_downloads_seconds = 0
         mock_downloader = MagicMock()
-        mock_downloader.download_model = AsyncMock(return_value=Path("/cache/model.onnx"))
+        mock_downloader.download_model = AsyncMock(
+            return_value=Path("/cache/model.onnx")
+        )
 
         # Commitment with changed hash
         changed_commitment = MagicMock()
@@ -412,9 +414,7 @@ class TestRunCatchUp:
         mock_chain_client.get_all_commitments = AsyncMock(
             return_value=[changed_commitment]
         )
-        mock_chain_client.get_metagraph = AsyncMock(
-            return_value=MagicMock(block=10000)
-        )
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
 
         scheduler = ModelDownloadScheduler(
             scheduler_config, mock_downloader, mock_chain_client
@@ -449,9 +449,7 @@ class TestRunCatchUp:
         mock_chain_client.get_all_commitments = AsyncMock(
             return_value=[recent_commitment]
         )
-        mock_chain_client.get_metagraph = AsyncMock(
-            return_value=MagicMock(block=10000)
-        )
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
 
         scheduler = ModelDownloadScheduler(
             scheduler_config, mock_downloader, mock_chain_client
@@ -472,7 +470,9 @@ class TestRunCatchUp:
         """Updates known_commitments after catch-up."""
         scheduler_config.min_delay_between_downloads_seconds = 0
         mock_downloader = MagicMock()
-        mock_downloader.download_model = AsyncMock(return_value=Path("/cache/model.onnx"))
+        mock_downloader.download_model = AsyncMock(
+            return_value=Path("/cache/model.onnx")
+        )
 
         commitment = MagicMock()
         commitment.hotkey = "5Hotkey"
@@ -480,9 +480,7 @@ class TestRunCatchUp:
         commitment.block_number = 1000
 
         mock_chain_client.get_all_commitments = AsyncMock(return_value=[commitment])
-        mock_chain_client.get_metagraph = AsyncMock(
-            return_value=MagicMock(block=10000)
-        )
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
 
         scheduler = ModelDownloadScheduler(
             scheduler_config, mock_downloader, mock_chain_client
@@ -509,9 +507,7 @@ class TestRunCatchUp:
         commitment.block_number = 1000
 
         mock_chain_client.get_all_commitments = AsyncMock(return_value=[commitment])
-        mock_chain_client.get_metagraph = AsyncMock(
-            return_value=MagicMock(block=10000)
-        )
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
 
         scheduler = ModelDownloadScheduler(
             scheduler_config, mock_downloader, mock_chain_client

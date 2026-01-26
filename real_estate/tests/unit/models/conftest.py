@@ -74,7 +74,8 @@ def mock_verifier() -> MagicMock:
     """Mock ModelVerifier."""
     verifier = MagicMock(spec=ModelVerifier)
     verifier.check_license = AsyncMock()
-    verifier.check_size = AsyncMock(return_value=1000)
+    verifier.find_onnx_file = AsyncMock(return_value=("model.onnx", 1000))
+    verifier.check_model_size = MagicMock()
     verifier.verify_extrinsic_record = AsyncMock()
     verifier.verify_hash = MagicMock()
     return verifier
