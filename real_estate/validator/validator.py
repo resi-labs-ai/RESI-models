@@ -98,6 +98,7 @@ class Validator:
                 schedule_hour=self.config.validation_data_schedule_hour,
                 schedule_minute=self.config.validation_data_schedule_minute,
                 download_raw=self.config.validation_data_download_raw,
+                test_data_path=self.config.test_data_path,
             ),
             self.wallet.hotkey,
         )

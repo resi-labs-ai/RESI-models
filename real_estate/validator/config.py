@@ -249,6 +249,23 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=int(os.environ.get("DOCKER_MAX_CONCURRENT", "4")),
     )
 
+    # Test mode settings
+    parser.add_argument(
+        "--test-data-path",
+        dest="test_data_path",
+        type=str,
+        help="Path to local JSON file with test validation data. Bypasses API fetch.",
+        default=os.environ.get("TEST_DATA_PATH", ""),
+    )
+
+    parser.add_argument(
+        "--test-mode",
+        dest="test_mode",
+        action="store_true",
+        help="Enable test mode: skip scheduling, run evaluation immediately.",
+        default=os.environ.get("TEST_MODE", "false").lower() == "true",
+    )
+
 
 def get_config() -> argparse.Namespace:
     """Parse arguments and return configuration."""
@@ -317,6 +334,8 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "docker_cpu": config.docker_cpu,
         "docker_timeout": config.docker_timeout,
         "docker_max_concurrent": config.docker_max_concurrent,
+        "test_data_path": config.test_data_path,
+        "test_mode": config.test_mode,
     }
 
 
