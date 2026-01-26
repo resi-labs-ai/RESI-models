@@ -19,9 +19,9 @@
 
 The main responsibilities of a RESI validator are:
 
-Download Models: Fetch miner ONNX models from HuggingFace
-Evaluate: Run inference against daily validation data
-Set Weights: Submit scores to the Bittensor blockchain
+- Download Models: Fetch miner ONNX models from HuggingFace
+- Evaluate: Run inference against daily validation data
+- Set Weights: Submit scores to the Bittensor blockchain
 
 ## Hardware Requirements
 
@@ -111,7 +111,7 @@ docker ps
 # Check logs
 docker logs resi_pylon
 
-# Test API is responding (NETUID: mainnet=46, testnet=428 , local=ws://your-node:port)
+# Test API is responding (NETUID: mainnet=46, testnet=428 , local=<localnet_netuid>)
 curl http://localhost:8000/api/v1/identity/validator/subnet/<NETUID>/block/latest/neurons
 ```
 
@@ -124,25 +124,23 @@ The auto-update script checks for new versions every 5 minutes and automatically
 ```bash
 # Load environment and start
 set -a && source .env && set +a
-uv run python scripts/start_validator.py
+pm2 start "uv run python scripts/start_validator.py" --name resi_autoupdater
 ```
 
 Or pass arguments directly:
 
 ```bash
-uv run python scripts/start_validator.py \
+pm2 start "uv run python scripts/start_validator.py \
     --wallet.name validator \
     --wallet.hotkey default \
     --netuid 46 \
     --pylon.token YOUR_PYLON_TOKEN \
-    --pylon.identity validator
+    --pylon.identity validator" --name resi_autoupdater
 ```
+This creates two PM2 processes:
 
-The script will:
-1. Generate PM2 ecosystem config
-2. Start the validator process
-3. Monitor git for updates every 5 minutes
-4. Auto-restart on new versions
+- resi_autoupdater - monitors for updates and manages the validator
+- resi_validator - the actual validator process
 
 **Option B: Manual Start (No Auto-Updates)**
 
@@ -163,6 +161,7 @@ pm2 start "uv run python -m real_estate.validator.validator \
 ```bash
 pm2 status
 pm2 logs resi_validator --lines 50
+pm2 logs resi_autoupdater --lines 50
 ```
 
 #### Check Pylon Logs
@@ -184,12 +183,24 @@ INFO | Pre-download phase: ...
 
 ### Stop Validator
 
+**If using auto-updates:**
+```bash
+pm2 stop resi_autoupdater resi_validator
+```
+
+**If running manually (no auto-updates):**
 ```bash
 pm2 stop resi_validator
 ```
 
 ### Restart Validator
 
+**If using auto-updates:**
+```bash
+pm2 restart resi_autoupdater
+```
+
+**If running manually:**
 ```bash
 pm2 restart resi_validator
 ```
@@ -212,12 +223,27 @@ docker logs -f resi_pylon
 
 ### Full Restart
 
+**If using auto-updates:**
+```bash
+pm2 delete resi_autoupdater resi_validator
+docker compose down
+docker compose up -d
+set -a && source .env && set +a
+pm2 start "uv run python scripts/start_validator.py" --name resi_autoupdater
+```
+
+**If running manually:**
 ```bash
 pm2 delete resi_validator
 docker compose down
 docker compose up -d
 set -a && source .env && set +a
-python scripts/start_validator.py
+pm2 start "uv run python -m real_estate.validator.validator \
+    --wallet.name validator \
+    --wallet.hotkey default \
+    --netuid 46 \
+    --pylon.token YOUR_PYLON_TOKEN \
+    --pylon.identity validator" --name resi_validator
 ```
 
 ## Configuration Reference
