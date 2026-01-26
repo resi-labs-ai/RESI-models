@@ -11,7 +11,7 @@ from real_estate.chain.models import Metagraph, Neuron
 from real_estate.validator import Validator
 
 
-def create_mock_neuron(uid: int, hotkey: str) -> Neuron:
+def create_mock_neuron(uid: int, hotkey: str, validator_permit: bool = True) -> Neuron:
     """Create a mock Neuron for testing."""
     return Neuron(
         uid=uid,
@@ -24,6 +24,7 @@ def create_mock_neuron(uid: int, hotkey: str) -> Neuron:
         dividends=0.1,
         emission=0.1,
         is_active=True,
+        validator_permit=validator_permit,
     )
 
 
@@ -210,8 +211,9 @@ class TestSetWeights:
         self, validator: Validator
     ) -> None:
         """Test normalization math and hotkey-to-weight mapping."""
-        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2", "hotkey_3"]
-        validator.scores = np.array([1.0, 0.0, 3.0, 0.0], dtype=np.float32)
+        # Include validator's own hotkey in the metagraph for validator_permit check
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2", "hotkey_3", "our_hotkey"]
+        validator.scores = np.array([1.0, 0.0, 3.0, 0.0, 0.0], dtype=np.float32)
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
 
         # Set up mock chain client
