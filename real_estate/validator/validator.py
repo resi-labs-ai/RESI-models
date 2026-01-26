@@ -224,6 +224,14 @@ class Validator:
             logger.error("Cannot set weights - metagraph not synced")
             return
 
+        # Check validator permit before attempting to set weights
+        if not self.metagraph.has_validator_permit(self.hotkey):
+            logger.error(
+                f"Cannot set weights - validator {self.hotkey} does not have "
+                f"validator_permit. Ensure sufficient stake on subnet {self.config.netuid}"
+            )
+            return
+
         # Handle NaN values
         if np.isnan(self.scores).any():
             logger.warning("Scores contain NaN, replacing with 0")
@@ -441,6 +449,13 @@ class Validator:
             raise SystemExit(
                 f"Hotkey {self.hotkey} is not registered on subnet {self.config.netuid}. "
                 f"Please register with `btcli subnets register`"
+            )
+
+        # Check validator permit early
+        if self.metagraph and not self.metagraph.has_validator_permit(self.hotkey):
+            logger.warning(
+                f"Validator {self.hotkey} does NOT have validator_permit. "
+                f"Weight setting will fail until sufficient stake is added on subnet {self.config.netuid}."
             )
 
         self._last_weight_set_block = self.block
