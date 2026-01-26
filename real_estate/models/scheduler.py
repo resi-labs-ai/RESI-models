@@ -152,6 +152,19 @@ class ModelDownloadScheduler:
             result = await self._download_single(commitment)
             results[commitment.hotkey] = result
 
+        # Include already-cached models in results
+        eligible = [c for c in commitments if c.block_number <= cutoff_block]
+        for commitment in eligible:
+            if commitment.hotkey not in results:
+                # Model was already cached - add to results
+                cached = self._downloader._cache.get(commitment.hotkey)
+                if cached and cached.metadata.hash == commitment.model_hash:
+                    results[commitment.hotkey] = DownloadResult(
+                        hotkey=commitment.hotkey,
+                        success=True,
+                        path=cached.path,
+                    )
+
         logger.info(
             f"Pre-download complete: {sum(1 for r in results.values() if r.success)} "
             f"success, {sum(1 for r in results.values() if not r.success)} failed"
