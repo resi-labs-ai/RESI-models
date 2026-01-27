@@ -16,6 +16,7 @@ services:
       - PYLON_ID_VALIDATOR_WALLET_NAME=${WALLET_NAME:-validator}
       - PYLON_ID_VALIDATOR_HOTKEY_NAME=${WALLET_HOTKEY:-default}
       - PYLON_ID_VALIDATOR_TOKEN=${PYLON_TOKEN}
+      - PYLON_TEMPO=${PYLON_TEMPO:-360}
     volumes:
       - ${BITTENSOR_WALLET_PATH:-~/.bittensor/wallets}:/root/.bittensor/wallets:ro
     restart: unless-stopped

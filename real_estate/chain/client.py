@@ -334,7 +334,7 @@ class ChainClient:
 
         try:
             await client.identity.put_weights(pylon_weights)
-            logger.info(f"Weights set successfully for {len(weights)} miners")
+            logger.info(f"Weights submitted to Pylon for {len(weights)} miners")
 
         except PylonUnauthorized as e:
             raise AuthenticationError(f"Invalid Pylon credentials: {e}") from e

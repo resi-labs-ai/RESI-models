@@ -97,10 +97,16 @@ class ModelDownloadScheduler:
         deadline = eval_time - timedelta(minutes=self._config.catch_up_minutes)
         time_available = (deadline - now).total_seconds()
 
-        logger.info(
-            f"Pre-download phase: eval at {eval_time}, "
-            f"deadline {deadline}, {time_available:.0f}s available"
-        )
+        if time_available > 0:
+            logger.info(
+                f"Pre-download phase: eval at {eval_time}, "
+                f"deadline {deadline}, {time_available:.0f}s available"
+            )
+        else:
+            logger.info(
+                f"Pre-download phase: eval at {eval_time}, "
+                f"deadline {deadline} (already passed by {-time_available:.0f}s)"
+            )
 
         # Fetch all commitments and current block
         commitments = await self._chain.get_all_commitments()

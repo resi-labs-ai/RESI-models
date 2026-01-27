@@ -261,10 +261,10 @@ class Validator:
 
         try:
             await self._ensure_chain().set_weights(weights)
-            logger.info("set_weights on chain successfully!")
+            logger.info("Weights submitted to Pylon")
             self._last_weight_set_block = self.block
         except Exception as e:
-            logger.error(f"set_weights failed: {e}")
+            logger.error(f"Failed to submit weights to Pylon: {e}")
 
     def should_set_weights(self) -> bool:
         """
