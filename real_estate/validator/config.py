@@ -10,6 +10,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+import coloredlogs
+
 
 def add_args(parser: argparse.ArgumentParser) -> None:
     """
@@ -146,7 +148,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--log_level",
         type=str,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        choices=["TRACE", "DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level.",
         default=os.environ.get("LOG_LEVEL", "INFO"),
     )
@@ -340,8 +342,39 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
 
 
 def setup_logging(level: str) -> None:
-    """Configure logging."""
-    logging.basicConfig(
-        level=getattr(logging, level),
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    )
+    """
+    Configure logging with colored output.
+
+    Levels:
+    - TRACE: Everything including third-party debug (websockets, httpcore, etc.)
+    - DEBUG: Only real_estate.* debug logs, third-party at WARNING
+    - INFO/WARNING/ERROR: Standard behavior
+    """
+    # Add custom TRACE level (below DEBUG)
+    TRACE = 5
+    logging.addLevelName(TRACE, "TRACE")
+
+    if level.upper() == "TRACE":
+        # TRACE = show everything
+        coloredlogs.install(
+            level=TRACE,
+            fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        )
+    else:
+        coloredlogs.install(
+            level=getattr(logging, level),
+            fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        )
+
+        # At DEBUG level, quiet noisy third-party loggers
+        if level.upper() == "DEBUG":
+            noisy_loggers = [
+                "websockets",
+                "httpcore",
+                "httpx",
+                "docker",
+                "urllib3",
+                "asyncio",
+            ]
+            for name in noisy_loggers:
+                logging.getLogger(name).setLevel(logging.WARNING)

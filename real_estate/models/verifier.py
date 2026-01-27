@@ -83,10 +83,7 @@ class ModelVerifier:
                 content = response.text.strip()
 
                 if content != self._required_license:
-                    raise LicenseError(
-                        f"Invalid license in {hf_repo_id}. "
-                        f"Expected '{self._required_license}', got '{content[:50]}...'"
-                    )
+                    raise LicenseError(f"Invalid license in {hf_repo_id}")
 
                 logger.debug(f"License verified for {hf_repo_id}")
 

@@ -105,6 +105,11 @@ class IncentiveDistributor:
             f"cheaters={len(cheaters)} (0%)"
         )
 
+        # Log detailed weight distribution
+        logger.debug("Weight distribution (all miners):")
+        for hotkey, weight in sorted(weights.items(), key=lambda x: -x[1]):
+            logger.debug(f"  {hotkey}: {weight:.6f}")
+
         return IncentiveWeights(
             weights=weights,
             winner_hotkey=winner_hotkey,
