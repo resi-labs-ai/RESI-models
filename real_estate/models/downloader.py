@@ -44,6 +44,14 @@ class DownloadConfig:
     download_timeout_seconds: int = 300
 
 
+@dataclass(frozen=True)
+class ModelDownloadResult:
+    """Result of a successful model download."""
+
+    path: Path
+    commit_block: int  # Block number from Pylon chain query (trusted source)
+
+
 @dataclass
 class _CircuitBreakerState:
     """Internal state for circuit breaker."""
@@ -86,7 +94,9 @@ class ModelDownloader:
         self._verifier = verifier
         self._circuit_breaker = _CircuitBreakerState()
 
-    async def download_model(self, commitment: ChainModelMetadata) -> Path:
+    async def download_model(
+        self, commitment: ChainModelMetadata
+    ) -> ModelDownloadResult:
         """
         Download and cache a model.
 
@@ -95,7 +105,7 @@ class ModelDownloader:
         2. Check cache (skip if hash matches)
         3. Check license via HF API
         4. Check size via HF API
-        5. Verify extrinsic_record.json
+        5. Verify extrinsic_record.json (get commit block from Pylon)
         6. Download to temp file
         7. Verify hash matches commitment
         8. Atomic move to cache
@@ -104,7 +114,7 @@ class ModelDownloader:
             commitment: Chain commitment with hotkey, hf_repo_id, model_hash
 
         Returns:
-            Path to cached model
+            ModelDownloadResult with path and commit block (from Pylon)
 
         Raises:
             CircuitBreakerOpenError: If circuit breaker is open
@@ -128,7 +138,9 @@ class ModelDownloader:
             cached = self._cache.get(hotkey)
             if cached:
                 logger.info(f"Using cached model for {hotkey}")
-                return cached.path
+                return ModelDownloadResult(
+                    path=cached.path, commit_block=cached.metadata.commit_block
+                )
 
         logger.info(f"Downloading model for {hotkey} from {hf_repo_id}")
 
@@ -147,8 +159,8 @@ class ModelDownloader:
                 f"need {size + disk_buffer} bytes ({size} + {disk_buffer} buffer)"
             )
 
-        # 6. Verify extrinsic record
-        await self._verifier.verify_extrinsic_record(
+        # 6. Verify extrinsic record and get commit block from Pylon
+        commit_block = await self._verifier.verify_extrinsic_record(
             hotkey=hotkey,
             hf_repo_id=hf_repo_id,
             expected_hash=expected_hash,
@@ -169,6 +181,7 @@ class ModelDownloader:
                 temp_model_path=temp_path,
                 model_hash=expected_hash,
                 size_bytes=actual_size,
+                commit_block=commit_block,
             )
 
             # 10. Clean up temp directory (file was moved, dir may have HF cache files)
@@ -176,7 +189,7 @@ class ModelDownloader:
 
             self._record_success()
             logger.info(f"Successfully downloaded and cached model for {hotkey}")
-            return cached_path
+            return ModelDownloadResult(path=cached_path, commit_block=commit_block)
 
         except Exception:
             # Clean up temp file on any verification failure

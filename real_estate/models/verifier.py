@@ -171,7 +171,7 @@ class ModelVerifier:
         hotkey: str,
         hf_repo_id: str,
         expected_hash: str,
-    ) -> None:
+    ) -> int:
         """
         Verify extrinsic_record.json before download.
 
@@ -186,6 +186,9 @@ class ModelVerifier:
             hotkey: Expected miner hotkey
             hf_repo_id: HuggingFace repository ID
             expected_hash: Hash from chain commitment
+
+        Returns:
+            Commit block number (from Pylon chain query, not miner-provided)
 
         Raises:
             ExtrinsicVerificationError: If any check fails
@@ -266,6 +269,9 @@ class ModelVerifier:
             )
 
         logger.debug(f"Extrinsic record verified for {hotkey}")
+
+        # Return commit block from Pylon (trusted source), not from miner's record
+        return extrinsic_data.block_number
 
     @staticmethod
     def _extract_hash_from_call_args(call_args: list[dict]) -> str | None:

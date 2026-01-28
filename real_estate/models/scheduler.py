@@ -8,13 +8,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from ..chain.models import ChainModelMetadata
 from .downloader import ModelDownloader
 from .errors import ModelError
 from .models import DownloadResult
 
 if TYPE_CHECKING:
     from ..chain.client import ChainClient
-    from ..chain.models import ChainModelMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,21 @@ class ModelDownloadScheduler:
     def known_commitments(self) -> dict[str, ChainModelMetadata]:
         """Cached commitments from last download run."""
         return self._known_commitments
+
+    def _update_commitment_block(
+        self,
+        commitment: ChainModelMetadata,
+        commit_block: int,
+        target: dict[str, ChainModelMetadata] | None = None,
+    ) -> None:
+        """Update commitment metadata with correct block from Pylon."""
+        target = target if target is not None else self._known_commitments
+        target[commitment.hotkey] = ChainModelMetadata(
+            hotkey=commitment.hotkey,
+            hf_repo_id=commitment.hf_repo_id,
+            model_hash=commitment.model_hash,
+            block_number=commit_block,
+        )
 
     async def run_pre_download(
         self,
@@ -155,25 +170,49 @@ class ModelDownloadScheduler:
                 await asyncio.sleep(wait_time)
 
             # Download
-            result = await self._download_single(commitment)
+            result, commit_block = await self._download_single(commitment)
             results[commitment.hotkey] = result
 
-        # Include already-cached models in results
-        eligible = [c for c in commitments if c.block_number <= cutoff_block]
-        for commitment in eligible:
+            # Update metadata with correct commit block from Pylon
+            if result.success and commit_block is not None:
+                self._update_commitment_block(commitment, commit_block)
+
+        # Include already-cached models
+        for commitment in commitments:
             if commitment.hotkey not in results:
-                # Model was already cached - add to results
                 cached = self._downloader._cache.get(commitment.hotkey)
                 if cached and cached.metadata.hash == commitment.model_hash:
-                    results[commitment.hotkey] = DownloadResult(
-                        hotkey=commitment.hotkey,
-                        success=True,
-                        path=cached.path,
+                    result, commit_block = await self._download_single(commitment)
+                    results[commitment.hotkey] = result
+                    if result.success and commit_block is not None:
+                        self._update_commitment_block(commitment, commit_block)
+
+        # Filter out models that are too new based on real commit_block from Pylon
+        # (We couldn't do this earlier because get_commitments doesn't return commit block)
+        too_new_hotkeys = []
+        for hotkey, result in results.items():
+            if result.success:
+                real_block = self._known_commitments[hotkey].block_number
+                if real_block > cutoff_block:
+                    too_new_hotkeys.append(hotkey)
+                    logger.info(
+                        f"Excluding {hotkey}: committed at block {real_block}, "
+                        f"cutoff is {cutoff_block}"
                     )
+
+        for hotkey in too_new_hotkeys:
+            results[hotkey] = DownloadResult(
+                hotkey=hotkey,
+                success=False,
+                error=ModelError(
+                    f"Commitment too recent (block {self._known_commitments[hotkey].block_number} > {cutoff_block})"
+                ),
+            )
 
         logger.info(
             f"Pre-download complete: {sum(1 for r in results.values() if r.success)} "
             f"success, {sum(1 for r in results.values() if not r.success)} failed"
+            f"{f', {len(too_new_hotkeys)} excluded (too recent)' if too_new_hotkeys else ''}"
         )
 
         return results
@@ -199,11 +238,11 @@ class ModelDownloadScheduler:
 
         current_map = {c.hotkey: c for c in current_commitments}
 
-        # Find new or changed commitments that are old enough
+        # Find new or changed commitments
+        # Note: We can't filter by block here because get_commitments returns block=0.
+        # We'll filter after downloading once we have real blocks from get_extrinsic.
         new_commitments = []
         for hotkey, commitment in current_map.items():
-            if commitment.block_number > cutoff_block:
-                continue  # Too recent
             known = self._known_commitments.get(hotkey)
             if known is None or known.model_hash != commitment.model_hash:
                 new_commitments.append(commitment)
@@ -216,16 +255,43 @@ class ModelDownloadScheduler:
         # Download with minimal delays
         results: dict[str, DownloadResult] = {}
         for commitment in new_commitments:
-            result = await self._download_single(commitment)
+            result, commit_block = await self._download_single(commitment)
             results[commitment.hotkey] = result
+
+            # Update metadata with correct commit block from Pylon
+            if result.success and commit_block is not None:
+                self._update_commitment_block(commitment, commit_block, current_map)
+
             await asyncio.sleep(self._config.min_delay_between_downloads_seconds)
 
-        # Update known commitments
+        # Update known commitments (with corrected block numbers)
         self._known_commitments = current_map
+
+        # Filter out models that are too new based on real commit_block from Pylon
+        too_new_hotkeys = []
+        for hotkey, result in results.items():
+            if result.success:
+                real_block = self._known_commitments[hotkey].block_number
+                if real_block > cutoff_block:
+                    too_new_hotkeys.append(hotkey)
+                    logger.info(
+                        f"Excluding {hotkey}: committed at block {real_block}, "
+                        f"cutoff is {cutoff_block}"
+                    )
+
+        for hotkey in too_new_hotkeys:
+            results[hotkey] = DownloadResult(
+                hotkey=hotkey,
+                success=False,
+                error=ModelError(
+                    f"Commitment too recent (block {self._known_commitments[hotkey].block_number} > {cutoff_block})"
+                ),
+            )
 
         logger.info(
             f"Catch-up complete: {sum(1 for r in results.values() if r.success)} "
             f"success, {sum(1 for r in results.values() if not r.success)} failed"
+            f"{f', {len(too_new_hotkeys)} excluded (too recent)' if too_new_hotkeys else ''}"
         )
 
         return results
@@ -233,28 +299,42 @@ class ModelDownloadScheduler:
     async def _download_single(
         self,
         commitment: ChainModelMetadata,
-    ) -> DownloadResult:
-        """Download a single model and return result."""
+    ) -> tuple[DownloadResult, int | None]:
+        """
+        Download a single model and return result with commit block.
+
+        Returns:
+            Tuple of (DownloadResult, commit_block from Pylon or None if failed)
+        """
         try:
-            path = await self._downloader.download_model(commitment)
-            return DownloadResult(
-                hotkey=commitment.hotkey,
-                success=True,
-                path=path,
+            result = await self._downloader.download_model(commitment)
+            return (
+                DownloadResult(
+                    hotkey=commitment.hotkey,
+                    success=True,
+                    path=result.path,
+                ),
+                result.commit_block,
             )
         except ModelError as e:
             logger.warning(f"Download failed for {commitment.hotkey}: {e}")
-            return DownloadResult(
-                hotkey=commitment.hotkey,
-                success=False,
-                error=e,
+            return (
+                DownloadResult(
+                    hotkey=commitment.hotkey,
+                    success=False,
+                    error=e,
+                ),
+                None,
             )
         except Exception as e:
             logger.error(f"Unexpected error downloading {commitment.hotkey}: {e}")
-            return DownloadResult(
-                hotkey=commitment.hotkey,
-                success=False,
-                error=e,
+            return (
+                DownloadResult(
+                    hotkey=commitment.hotkey,
+                    success=False,
+                    error=e,
+                ),
+                None,
             )
 
     def _filter_needs_download(

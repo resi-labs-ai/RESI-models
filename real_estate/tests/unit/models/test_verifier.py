@@ -327,6 +327,7 @@ class TestVerifyExtrinsicRecord:
         # Mock chain client response
         mock_extrinsic = MagicMock()
         mock_extrinsic.address = "5TestHotkey"
+        mock_extrinsic.block_number = 12345  # Block from Pylon
         mock_extrinsic.is_commitment_extrinsic.return_value = True
         mock_extrinsic.call.call_args = []  # No call args to parse
         mock_chain_client.get_extrinsic = AsyncMock(return_value=mock_extrinsic)
@@ -335,11 +336,14 @@ class TestVerifyExtrinsicRecord:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )
-            await verifier.verify_extrinsic_record(
+            commit_block = await verifier.verify_extrinsic_record(
                 hotkey="5TestHotkey",
                 hf_repo_id="user/repo",
                 expected_hash="abc12345",
             )
+
+        # Returns commit block from Pylon (trusted source)
+        assert commit_block == 12345
 
     @pytest.mark.asyncio
     async def test_raises_error_when_record_not_found(

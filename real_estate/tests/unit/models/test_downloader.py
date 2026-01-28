@@ -454,6 +454,7 @@ class TestDownloadModel:
         cached_path = tmp_path / "cached" / "model.onnx"
         cached_model = MagicMock()
         cached_model.path = cached_path
+        cached_model.metadata.commit_block = 1000  # Set commit_block for cache hit
 
         mock_cache.is_valid.return_value = True
         mock_cache.get.return_value = cached_model
@@ -461,7 +462,10 @@ class TestDownloadModel:
         downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
         result = await downloader.download_model(sample_commitment)
 
-        assert result == cached_path
+        assert result.path == cached_path
+        assert result.commit_block == 1000
+        # No network calls needed - commit_block is in cache
+        mock_verifier.verify_extrinsic_record.assert_not_called()
         mock_verifier.check_license.assert_not_called()
 
     @pytest.mark.asyncio
@@ -499,7 +503,41 @@ class TestDownloadModel:
         mock_verifier.verify_extrinsic_record.assert_called_once()
         mock_verifier.verify_hash.assert_called_once()
         mock_cache.put.assert_called_once()
-        assert result == cached_path
+        assert result.path == cached_path
+        assert result.commit_block == 1000
+
+    @pytest.mark.asyncio
+    async def test_passes_commit_block_to_cache_put(
+        self,
+        download_config: DownloadConfig,
+        mock_cache: MagicMock,
+        mock_verifier: MagicMock,
+        sample_commitment: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Passes commit_block from Pylon to cache.put() for new downloads."""
+        mock_cache.is_valid.return_value = False
+        mock_verifier.find_onnx_file = AsyncMock(return_value=("model.onnx", 1000))
+        mock_verifier.verify_extrinsic_record = AsyncMock(return_value=7500)
+
+        downloaded_file = tmp_path / "model.onnx"
+        downloaded_file.write_bytes(b"model content")
+
+        cached_path = tmp_path / "cached" / "model.onnx"
+        mock_cache.put.return_value = cached_path
+
+        downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
+
+        with patch(
+            "real_estate.models.downloader.hf_hub_download",
+            return_value=str(downloaded_file),
+        ):
+            result = await downloader.download_model(sample_commitment)
+
+        # Verify commit_block from Pylon is passed to cache.put()
+        put_call_kwargs = mock_cache.put.call_args[1]
+        assert put_call_kwargs["commit_block"] == 7500
+        assert result.commit_block == 7500
 
     @pytest.mark.asyncio
     async def test_cleans_up_temp_file_on_hash_failure(

@@ -31,7 +31,7 @@ class TestGet:
 
         # Create metadata
         metadata_path = hotkey_dir / "metadata.json"
-        metadata = {"hash": "abc12345", "size_bytes": 13}
+        metadata = {"hash": "abc12345", "size_bytes": 13, "commit_block": 1000}
         metadata_path.write_text(json.dumps(metadata))
 
         result = cache.get(hotkey)
@@ -40,6 +40,7 @@ class TestGet:
         assert result.path == model_path
         assert result.metadata.hash == "abc12345"
         assert result.metadata.size_bytes == 13
+        assert result.metadata.commit_block == 1000
 
     def test_returns_none_when_metadata_corrupted(
         self, cache: ModelCache, temp_cache_dir: Path
@@ -70,7 +71,7 @@ class TestGet:
 
         # Only create metadata, no model file
         metadata_path = hotkey_dir / "metadata.json"
-        metadata = {"hash": "abc12345", "size_bytes": 13}
+        metadata = {"hash": "abc12345", "size_bytes": 13, "commit_block": 1000}
         metadata_path.write_text(json.dumps(metadata))
 
         result = cache.get(hotkey)
@@ -117,7 +118,7 @@ class TestIsValid:
         model_path.write_bytes(b"model content")
 
         metadata_path = hotkey_dir / "metadata.json"
-        metadata = {"hash": "abc12345", "size_bytes": 13}
+        metadata = {"hash": "abc12345", "size_bytes": 13, "commit_block": 1000}
         metadata_path.write_text(json.dumps(metadata))
 
         result = cache.is_valid(hotkey, "abc12345")
@@ -135,7 +136,7 @@ class TestIsValid:
         model_path.write_bytes(b"model content")
 
         metadata_path = hotkey_dir / "metadata.json"
-        metadata = {"hash": "abc12345", "size_bytes": 13}
+        metadata = {"hash": "abc12345", "size_bytes": 13, "commit_block": 1000}
         metadata_path.write_text(json.dumps(metadata))
 
         result = cache.is_valid(hotkey, "different_hash")
@@ -160,6 +161,7 @@ class TestPut:
             temp_model_path=temp_model,
             model_hash="abc12345",
             size_bytes=18,
+            commit_block=1000,
         )
 
         # Verify model was stored
@@ -173,6 +175,7 @@ class TestPut:
         metadata = json.loads(metadata_path.read_text())
         assert metadata["hash"] == "abc12345"
         assert metadata["size_bytes"] == 18
+        assert metadata["commit_block"] == 1000
 
     def test_atomic_move_from_temp(self, cache: ModelCache, tmp_path: Path) -> None:
         """Verifies temp file is moved (not copied)."""
@@ -186,6 +189,7 @@ class TestPut:
             temp_model_path=temp_model,
             model_hash="abc12345",
             size_bytes=13,
+            commit_block=1000,
         )
 
         # Temp file should no longer exist
@@ -212,6 +216,7 @@ class TestPut:
             temp_model_path=temp_model,
             model_hash="new_hash",
             size_bytes=11,
+            commit_block=2000,
         )
 
         # Verify new content
@@ -221,6 +226,7 @@ class TestPut:
         metadata_path = hotkey_dir / "metadata.json"
         metadata = json.loads(metadata_path.read_text())
         assert metadata["hash"] == "new_hash"
+        assert metadata["commit_block"] == 2000
 
 
 class TestRemove:
@@ -238,7 +244,7 @@ class TestRemove:
         model_path.write_bytes(b"model content")
 
         metadata_path = hotkey_dir / "metadata.json"
-        metadata_path.write_text('{"hash": "abc", "size_bytes": 13}')
+        metadata_path.write_text('{"hash": "abc", "size_bytes": 13, "commit_block": 1000}')
 
         result = cache.remove(hotkey)
 
@@ -264,7 +270,7 @@ class TestCleanupCorrupted:
 
         # Only create metadata, no model
         metadata_path = hotkey_dir / "metadata.json"
-        metadata_path.write_text('{"hash": "abc", "size_bytes": 13}')
+        metadata_path.write_text('{"hash": "abc", "size_bytes": 13, "commit_block": 1000}')
 
         removed = cache.cleanup_corrupted()
 
@@ -317,7 +323,7 @@ class TestCleanupCorrupted:
         model_path.write_bytes(b"model content")
 
         metadata_path = hotkey_dir / "metadata.json"
-        metadata_path.write_text('{"hash": "abc12345", "size_bytes": 13}')
+        metadata_path.write_text('{"hash": "abc12345", "size_bytes": 13, "commit_block": 1000}')
 
         removed = cache.cleanup_corrupted()
 

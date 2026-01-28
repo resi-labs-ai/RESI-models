@@ -121,6 +121,11 @@ class ChainClient:
 
         Returns:
             List of ChainModelMetadata for all miners with commitments
+
+        Note:
+            block_number is set to 0 because Pylon doesn't yet include the actual
+            commit block. We get the real block from get_extrinsic() during verification
+            and update it via scheduler._update_commitment_block().
         """
         client = self._ensure_client()
 
@@ -130,10 +135,13 @@ class ChainClient:
             result = []
             for hotkey, hex_data in response.commitments.items():
                 try:
+                    # TODO(pylon): Set to actual commit block once Pylon includes it
+                    # in get_commitments response. For now, we get it from get_extrinsic()
+                    # during verification and update via scheduler._update_commitment_block().
                     commitment = Commitment(
                         hotkey=hotkey,
                         data=hex_data,
-                        block=response.block.number,
+                        block=0,
                     )
                     metadata = commitment.to_metadata()
                     result.append(metadata)

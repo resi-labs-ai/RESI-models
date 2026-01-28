@@ -375,6 +375,7 @@ def setup_logging(level: str) -> None:
                 "docker",
                 "urllib3",
                 "asyncio",
+                "filelock",
             ]
             for name in noisy_loggers:
                 logging.getLogger(name).setLevel(logging.WARNING)

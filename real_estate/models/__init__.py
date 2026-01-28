@@ -1,7 +1,7 @@
 """Model management module for downloading, verifying, and caching ONNX models."""
 
 from .cache import ModelCache
-from .downloader import DownloadConfig, ModelDownloader
+from .downloader import DownloadConfig, ModelDownloader, ModelDownloadResult
 from .errors import (
     CircuitBreakerOpenError,
     ExtrinsicVerificationError,
@@ -39,6 +39,7 @@ __all__ = [
     "CachedModel",
     "ExtrinsicRecord",
     "DownloadResult",
+    "ModelDownloadResult",
     # Config
     "DownloadConfig",
     "SchedulerConfig",
