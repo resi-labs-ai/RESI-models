@@ -174,3 +174,6 @@ config/ecosystem.config.js
 # Wandb artifacts
 /Wandb
 wandb*
+
+# Development scratchpads
+scratchpads/
