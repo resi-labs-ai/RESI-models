@@ -8,6 +8,7 @@
 - [Installation](#installation)
 - [Running the Validator](#running-the-validator)
 - [Managing the Validator](#managing-the-validator)
+- [Log Management](#log-management)
 - [Configuration Reference](#configuration-reference)
 - [Network Configuration](#network-configuration)
 - [Troubleshooting](#troubleshooting)
@@ -247,6 +248,61 @@ pm2 start "uv run python -m real_estate.validator.validator \
     --netuid 46 \
     --pylon.token YOUR_PYLON_TOKEN \
     --pylon.identity validator" --name resi_validator
+```
+
+## Log Management
+
+By default, PM2 stores validator logs in `~/.pm2/logs/`. These logs grow continuously and can be difficult to search through. The optional log organization script creates daily log files with separate error logs for easier debugging.
+
+### Setup (Optional)
+
+```bash
+cd RESI-models/scripts
+cp logging.conf.example logging.conf
+```
+
+Edit `logging.conf` if you need to customize paths (defaults work for most setups).
+
+### Manual Run
+
+```bash
+./scripts/organize_validator_logs.sh
+```
+
+Output:
+```
+logs/validator/logs/validator_logs_27_01_2026      # All logs from that day
+logs/validator/errors/validator_errors_27_01_2026  # ERROR/CRITICAL only
+```
+
+### Automated Daily Logs (Cron)
+
+Add a cron job to run at midnight:
+
+```bash
+(crontab -l 2>/dev/null; echo "0 0 * * * /path/to/RESI-models/scripts/organize_validator_logs.sh") | crontab -
+```
+
+Verify cron is set:
+
+```bash
+crontab -l
+```
+
+### View Organized Logs
+
+```bash
+# List available log files
+ls logs/validator/logs/
+
+# View a specific day's logs
+cat logs/validator/logs/validator_logs_27_01_2026
+
+# View only errors from a specific day
+cat logs/validator/errors/validator_errors_27_01_2026
+
+# Search across all organized logs
+grep "some error" logs/validator/logs/*
 ```
 
 ## Configuration Reference
