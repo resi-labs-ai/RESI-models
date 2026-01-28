@@ -195,7 +195,7 @@ class ModelDownloadScheduler:
                 real_block = self._known_commitments[hotkey].block_number
                 if real_block > cutoff_block:
                     too_new_hotkeys.append(hotkey)
-                    logger.info(
+                    logger.warning(
                         f"Excluding {hotkey}: committed at block {real_block}, "
                         f"cutoff is {cutoff_block}"
                     )
@@ -274,7 +274,7 @@ class ModelDownloadScheduler:
                 real_block = self._known_commitments[hotkey].block_number
                 if real_block > cutoff_block:
                     too_new_hotkeys.append(hotkey)
-                    logger.info(
+                    logger.warning(
                         f"Excluding {hotkey}: committed at block {real_block}, "
                         f"cutoff is {cutoff_block}"
                     )

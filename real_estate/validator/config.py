@@ -218,6 +218,14 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=os.environ.get("MODEL_REQUIRED_LICENSE", "Lorem Ipsum"),
     )
 
+    parser.add_argument(
+        "--model.min_commitment_age_blocks",
+        dest="model_min_commitment_age_blocks",
+        type=int,
+        help="Minimum age in blocks for commitments to be eligible (~24h = 7200 blocks at 12s/block).",
+        default=int(os.environ.get("MODEL_MIN_COMMITMENT_AGE_BLOCKS", "7200")),
+    )
+
     # Docker execution settings
     parser.add_argument(
         "--docker.memory",
@@ -332,6 +340,7 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "model_cache_path": str(config.model_cache_path),
         "model_max_size_mb": config.model_max_size_mb,
         "model_required_license": config.model_required_license,
+        "model_min_commitment_age_blocks": config.model_min_commitment_age_blocks,
         "docker_memory": config.docker_memory,
         "docker_cpu": config.docker_cpu,
         "docker_timeout": config.docker_timeout,

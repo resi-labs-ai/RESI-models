@@ -109,6 +109,10 @@ class Validator:
         # Validation orchestrator
         self._orchestrator = ValidationOrchestrator.create(
             score_threshold=self.config.score_threshold,
+            docker_timeout=self.config.docker_timeout,
+            docker_memory=self.config.docker_memory,
+            docker_cpu=self.config.docker_cpu,
+            docker_max_concurrent=self.config.docker_max_concurrent,
         )
 
         # State
@@ -415,7 +419,7 @@ class Validator:
                     max_model_size_bytes=self.config.model_max_size_mb * 1024 * 1024,
                 ),
                 scheduler_config=SchedulerConfig(
-                    min_commitment_age_blocks=0,  # TODO For testing - accept all commitments
+                    min_commitment_age_blocks=self.config.model_min_commitment_age_blocks,
                 ),
                 required_license=self.config.model_required_license,
             )
