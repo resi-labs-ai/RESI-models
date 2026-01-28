@@ -12,7 +12,9 @@ This Model Contributor Agreement ("Agreement") governs your submission of AI mod
 
 **⚠️ Important:** By submitting materials to Subnet 46, you agree to be bound by this Agreement. Please read it carefully.
 
-**Legal Review Notice:** This is a draft agreement. RESI recommends that contributors consult with their own legal counsel before submitting materials.
+**⚠️ EXCLUSIVE LICENSE:** By submitting materials to Subnet 46, you grant RESI exclusive commercial rights. Please read Section 2 carefully.
+
+**Legal Review Notice:** RESI recommends that contributors consult with their own legal counsel before submitting materials.
 
 ---
 
@@ -22,15 +24,16 @@ This Model Contributor Agreement ("Agreement") governs your submission of AI mod
 2. [License Grant to RESI](#2-license-grant-to-resi)
 3. [Representations and Warranties](#3-representations-and-warranties)
 4. [Base Model and License Disclosure](#4-base-model-and-license-disclosure)
-5. [Indemnification](#5-indemnification)
-6. [Rewards and Compensation](#6-rewards-and-compensation)
-7. [Intellectual Property Rights](#7-intellectual-property-rights)
-8. [Disclaimers](#8-disclaimers)
-9. [Removal and Takedown](#9-removal-and-takedown)
-10. [Confidentiality](#10-confidentiality)
-11. [Term and Termination](#11-term-and-termination)
-12. [Dispute Resolution](#12-dispute-resolution)
-13. [General Provisions](#13-general-provisions)
+5. [Required License for Submitted Models](#5-required-license-for-submitted-models) ⭐ NEW
+6. [Indemnification](#6-indemnification)
+7. [Rewards and Compensation](#7-rewards-and-compensation)
+8. [Intellectual Property Rights](#8-intellectual-property-rights)
+9. [Disclaimers](#9-disclaimers)
+10. [Removal and Takedown](#10-removal-and-takedown)
+11. [Confidentiality](#11-confidentiality)
+12. [Term and Termination](#12-term-and-termination)
+13. [Dispute Resolution](#13-dispute-resolution)
+14. [General Provisions](#14-general-provisions)
 
 ---
 
@@ -54,7 +57,7 @@ This Model Contributor Agreement ("Agreement") governs your submission of AI mod
 
 ### 2.1 Rights Granted
 
-By submitting materials to Subnet 46, You hereby grant RESI a **worldwide, royalty-free, non-exclusive, perpetual, irrevocable, sublicensable, and transferable license** to:
+By submitting materials to Subnet 46, You hereby grant RESI a **worldwide, royalty-free, EXCLUSIVE, perpetual, irrevocable, sublicensable, and transferable license** to:
 
 a) **Use and Reproduce:** Use, run, execute, copy, and reproduce Your Submitted Materials in any manner;
 
@@ -79,16 +82,37 @@ g) **Research and Development:** Use Your Submitted Materials for internal resea
 - This license applies to the Submitted Materials as originally submitted and any modifications made by RESI
 - This license survives termination of Your account or participation in Subnet 46
 
-### 2.3 Your Retained Rights
+### 2.3 Exclusive Rights and Restrictions
 
-You retain all ownership rights in Your Submitted Materials. Unless You opt into an exclusivity arrangement (see Section 7.3), You may:
+⚠️ **IMPORTANT:** This is an EXCLUSIVE license. You retain ownership, but grant RESI exclusive commercial rights.
 
-- Continue to use Your Submitted Materials for any purpose
-- Submit Your Submitted Materials to other platforms or competitions
-- License Your Submitted Materials to third parties
-- Modify and improve Your Submitted Materials independently
+**RESI's Exclusive Rights:**
 
-The license granted to RESI does not diminish Your rights; it runs in parallel.
+By granting RESI an exclusive license, only RESI may:
+- Use the Submitted Materials for commercial purposes
+- License or sublicense the Submitted Materials to third parties
+- Monetize or commercialize the Submitted Materials
+- Distribute the Submitted Materials for commercial use
+
+**Your Restrictions:**
+
+After submission, You may NOT:
+- Submit the same Submitted Materials to competing platforms, subnets, or competitions
+- License, sell, or distribute the Submitted Materials to third parties for commercial use
+- Offer commercial services (APIs, SaaS, hosting) using the Submitted Materials
+- Use the Submitted Materials commercially outside of Subnet 46 participation
+- Create competing services using the Submitted Materials
+
+**Your Permitted Uses:**
+
+You MAY still:
+- Use the Submitted Materials for personal, non-commercial research and development
+- Reference Your participation and contributions in Your portfolio or resume
+- Be credited as the original creator (RESI will provide attribution)
+- Continue learning from and improving upon the techniques used (but not the specific implementation)
+- Create entirely new, substantially different models using Your own work
+
+**Violation:** Violating this exclusivity is a material breach of this Agreement and may result in immediate termination, forfeiture of Rewards, and legal action.
 
 ---
 
@@ -213,7 +237,99 @@ Base model and license information must be provided:
 
 ---
 
-## 5. Indemnification
+## 5. Required License for Submitted Models
+
+### 5.1 RESI Subnet 46 Exclusive License Requirement
+
+All models submitted to Subnet 46 MUST be licensed under the **RESI Subnet 46 Exclusive License** provided by RESI. You may NOT use any other license (MIT, Apache, GPL, Creative Commons, etc.) for models submitted to Subnet 46.
+
+### 5.2 License File Requirement
+
+When hosting Your Submitted Materials on public platforms (Hugging Face, GitHub, etc.), You MUST:
+
+a) **Include the RESI License:** Place the RESI Subnet 46 Exclusive License template in a LICENSE or LICENSE.md file in Your repository root;
+
+b) **Add README Notice:** Include this notice prominently in Your README.md:
+```markdown
+## ⚖️ Exclusive License - Bittensor Subnet 46
+
+**This model is exclusively licensed to RESI for Bittensor Subnet 46.**
+
+- ✅ **Subnet 46 Use:** Authorized for mining/validation through Subnet 46
+- ✅ **Non-Commercial Research:** Permitted for academic research and evaluation  
+- ❌ **Commercial Use:** All commercial rights reserved by RESI
+- ❌ **Redistribution:** Not permitted without RESI's explicit permission
+
+📧 **Commercial Licensing:** legal@resilabs.ai  
+🔗 **License Details:** https://www.resilabs.ai/legal/model-license
+```
+
+c) **Hugging Face Metadata:** Use this YAML front matter in Your README.md:
+```yaml
+---
+license: other
+license_name: resi-subnet-46-exclusive
+license_link: https://www.resilabs.ai/legal/model-license
+tags:
+  - bittensor
+  - subnet-46
+  - resi-exclusive
+---
+```
+
+### 5.3 License Template Provided by RESI
+
+RESI provides the official license template at:
+- **Template File:** [MODEL_LICENSE_TEMPLATE.md](https://github.com/resi-labs-ai/RESI-models/blob/main/MODEL_LICENSE_TEMPLATE.md)
+- **Web Version:** https://www.resilabs.ai/legal/model-license
+
+This license:
+- States the model is exclusive to RESI for commercial purposes
+- Grants the public limited rights for non-commercial viewing and research
+- Prohibits redistribution and commercial use
+- Reserves all commercial rights to RESI
+
+**You must use this exact template** - do not modify the license terms.
+
+### 5.4 Filling Out the Template
+
+When using the template, fill in these fields:
+- `[YEAR]` - Current year
+- `[MODEL AUTHOR NAME]` - Your name or entity name
+- `[Model Name]` - The name of Your model
+- `[Date]` - Date of submission to Subnet 46
+
+### 5.5 Compliance Verification
+
+RESI reserves the right to:
+- Verify that Your public repositories contain the correct license
+- Request You update or correct licensing information within 7 days
+- Remove Your models from Subnet 46 if licensing is incorrect, missing, or misleading
+- Terminate Your account for repeated licensing violations
+
+### 5.6 Pre-Existing Licenses
+
+If Your model was previously published under a different license:
+
+**Option A: Remove from Public Access**
+- Remove the model from all public repositories before submission
+- RESI's exclusive rights apply upon submission
+
+**Option B: Change the License**
+- Replace the existing license with the RESI Exclusive License
+- Ensure no third parties have conflicting rights under the previous license
+- You warrant that You have the right to change the license
+
+**You Cannot:**
+- Keep a more permissive license (MIT, Apache, etc.) alongside the RESI license
+- Grandfather previous downloads under a different license
+- Claim dual-licensing
+
+**Once submitted under the RESI Exclusive License, You cannot revert to a more permissive license.**
+
+---
+
+## 6. Indemnification
 
 ### 5.1 Your Indemnification Obligation
 
@@ -256,7 +372,7 @@ Your indemnification obligation does not apply to claims arising solely from:
 
 ---
 
-## 6. Rewards and Compensation
+## 7. Rewards and Compensation
 
 ### 6.1 Reward Structure
 
@@ -346,13 +462,32 @@ RESI reserves the right to:
 
 ---
 
-## 7. Intellectual Property Rights
+## 8. Intellectual Property Rights
 
-### 7.1 Ownership
+### 8.1 Ownership
 
 **You retain ownership** of Your Submitted Materials. This Agreement is a license grant, not a transfer of ownership.
 
-### 7.2 RESI's Intellectual Property
+### 8.2 RESI's Exclusive Rights in Submitted Materials
+
+Upon submission, RESI acquires exclusive rights including:
+
+a) **Exclusive Commercial Rights:** Sole rights to commercialize, monetize, distribute, sublicense, and otherwise commercially exploit Your Submitted Materials;
+
+b) **Platform Control:** Sole discretion over how, when, and where Submitted Materials are used, displayed, evaluated, and integrated within Subnet 46 and RESI's services;
+
+c) **Derivative Works:** Exclusive rights to modify, improve, enhance, and create derivative works from Your Submitted Materials without further permission or compensation;
+
+d) **Enforcement Rights:** Right to enforce the license and take legal action against third parties who misuse the Submitted Materials;
+
+e) **Branding and Marketing:** Right to use Your name, likeness, and the Submitted Materials' name in connection with Subnet 46 marketing, promotion, and publicity.
+
+**You retain:**
+- Attribution rights (RESI will credit You as the original creator)
+- Non-commercial research rights as specified in Section 2.3
+- Right to reference Your participation in portfolio/resume
+
+### 8.3 RESI's Platform Intellectual Property
 
 All RESI intellectual property remains the exclusive property of RESI, including:
 
@@ -362,7 +497,9 @@ All RESI intellectual property remains the exclusive property of RESI, including
 - RESI trademarks, branding, and trade dress
 - Improvements to Submitted Materials made solely by RESI
 
-### 7.3 Feedback and Suggestions
+### 8.4 Feedback and Suggestions
+
+### 8.3 Feedback and Suggestions
 
 If You provide RESI with suggestions, feedback, or ideas about Subnet 46 or the platform ("Feedback"):
 
@@ -372,7 +509,7 @@ If You provide RESI with suggestions, feedback, or ideas about Subnet 46 or the 
 
 ---
 
-## 8. Disclaimers
+## 9. Disclaimers
 
 ### 8.1 No Warranty on Submitted Materials
 
@@ -424,7 +561,7 @@ RESI MAKES NO REPRESENTATIONS ABOUT THE VALUE OR FUTURE VALUE OF TAO TOKENS.
 
 ---
 
-## 9. Removal and Takedown
+## 10. Removal and Takedown
 
 ### 9.1 RESI's Right to Remove
 
@@ -478,7 +615,7 @@ RESI maintains a policy of terminating accounts of Contributors who are repeat i
 
 ---
 
-## 10. Confidentiality
+## 11. Confidentiality
 
 ### 10.1 RESI's Confidential Information
 
@@ -539,7 +676,7 @@ Confidentiality obligations survive for **three (3) years** after the date of di
 
 ---
 
-## 11. Term and Termination
+## 12. Term and Termination
 
 ### 11.1 Term
 
@@ -605,7 +742,7 @@ RESI may suspend (rather than terminate) Your access during investigations of al
 
 ---
 
-## 12. Dispute Resolution
+## 13. Dispute Resolution
 
 ### 12.1 Informal Resolution Requirement
 
@@ -706,7 +843,7 @@ Nothing in this Agreement prevents RESI from seeking equitable relief (injunctio
 
 ---
 
-## 13. General Provisions
+## 14. General Provisions
 
 ### 13.1 Entire Agreement
 
@@ -919,4 +1056,3 @@ For privacy-related inquiries:
 ---
 
 **END OF CONTRIBUTOR AGREEMENT**
-

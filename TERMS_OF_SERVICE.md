@@ -46,7 +46,7 @@ Thank you for participating in RESI's Subnet 46, a decentralized AI model evalua
 By accessing, browsing, or using Subnet 46 or any RESI services (collectively, the "Services"), you agree to be bound by:
 
 - These Terms of Service
-- Our [Privacy Policy](PRIVACY_POLICY.md)
+- Our [Privacy Policy](https://www.resilabs.ai/privacy) *(create this page)*
 - Our [Model Contributor Agreement](CONTRIBUTOR_AGREEMENT.md) (if submitting models)
 - Any additional guidelines, rules, or policies we may publish
 
@@ -513,7 +513,9 @@ RESI reserves the right to:
 
 ### 10.1 Privacy Policy
 
-Our collection, use, and disclosure of your personal information is governed by our [Privacy Policy](PRIVACY_POLICY.md), which is incorporated into these Terms by reference.
+Our collection, use, and disclosure of your personal information is governed by our [Privacy Policy](https://www.resilabs.ai/privacy), which is incorporated into these Terms by reference.
+
+**Note:** You must create a Privacy Policy and host it at this URL before launch.
 
 By using the Services, you consent to our Privacy Policy.
 
@@ -1042,7 +1044,7 @@ Nothing in these Terms prevents RESI from seeking equitable relief (injunctions,
 
 These Terms, together with:
 - The [Model Contributor Agreement](CONTRIBUTOR_AGREEMENT.md)
-- The [Privacy Policy](PRIVACY_POLICY.md)
+- The [Privacy Policy](https://www.resilabs.ai/privacy)
 - Any additional policies or guidelines we publish
 
 ...constitute the **entire agreement** between you and RESI regarding the Services and supersede all prior agreements, understandings, and communications, whether written or oral.
@@ -1261,4 +1263,3 @@ United States
 ---
 
 **END OF TERMS OF SERVICE**
-
