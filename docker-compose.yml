@@ -18,6 +18,12 @@ services:
       - PYLON_ID_VALIDATOR_TOKEN=${PYLON_TOKEN}
     volumes:
       - ${BITTENSOR_WALLET_PATH:-~/.bittensor/wallets}:/root/.bittensor/wallets:ro
+      - ~/.pylon/logs:/var/log/pylon
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "10"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.connect(('localhost', 8000)); s.close()\""]
