@@ -201,6 +201,14 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=os.environ.get("WANDB_OFFLINE", "false").lower() == "true",
     )
 
+    parser.add_argument(
+        "--wandb.log_predictions",
+        dest="wandb_log_predictions",
+        action="store_true",
+        help="Enable logging per-property predictions table to WandB (disabled by default).",
+        default=os.environ.get("WANDB_LOG_PREDICTIONS", "false").lower() == "true",
+    )
+
     # Model download settings
     parser.add_argument(
         "--model.cache_path",
@@ -363,6 +371,7 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "wandb_entity": config.wandb_entity,
         "wandb_api_key": "***" if config.wandb_api_key else "",
         "wandb_offline": config.wandb_offline,
+        "wandb_log_predictions": config.wandb_log_predictions,
         "model_cache_path": str(config.model_cache_path),
         "model_max_size_mb": config.model_max_size_mb,
         "model_required_license": config.model_required_license,

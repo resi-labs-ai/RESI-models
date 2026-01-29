@@ -100,10 +100,13 @@ class EvaluationResult:
 
     @property
     def error_message(self) -> str | None:
-        """Get error message if evaluation failed."""
+        """Get error message if evaluation failed (truncated to 50 chars)."""
         if self.error is None:
             return None
-        return f"{type(self.error).__name__}: {self.error}"
+        msg = f"{type(self.error).__name__}: {self.error}"
+        if len(msg) > 50:
+            return msg[:47] + "..."
+        return msg
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization (excludes predictions array)."""

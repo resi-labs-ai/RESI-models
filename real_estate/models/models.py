@@ -101,7 +101,10 @@ class DownloadResult:
 
     @property
     def error_message(self) -> str | None:
-        """Get error message if failed."""
+        """Get error message if failed (truncated to 50 chars)."""
         if self.error:
-            return f"{type(self.error).__name__}: {self.error}"
+            msg = f"{type(self.error).__name__}: {self.error}"
+            if len(msg) > 50:
+                return msg[:47] + "..."
+            return msg
         return None

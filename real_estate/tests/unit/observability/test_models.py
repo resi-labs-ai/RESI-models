@@ -90,7 +90,7 @@ class TestMinerResultLog:
             mae=25000.0,
             rmse=35000.0,
             r2=0.85,
-            accuracy_10pct=0.75,
+            accuracy=0.75,
             model_hash="abc123",
             inference_time_ms=1500.0,
             is_winner=True,
@@ -103,7 +103,7 @@ class TestMinerResultLog:
         assert result["mae"] == 25000.0
         assert result["rmse"] == 35000.0
         assert result["r2"] == 0.85
-        assert result["accuracy_10pct"] == 0.75
+        assert result["accuracy"] == 0.75
         assert result["is_winner"] is True
         assert result["is_copier"] is False
 

@@ -216,8 +216,14 @@ class DockerRunner:
                 if exit_code != 0:
                     # Exit code 6 = output validation failed (NaN/Inf)
                     if exit_code == 6:
+                        # Extract just the error line from container logs
+                        error_detail = "NaN or Inf detected"
+                        for line in logs.splitlines():
+                            if "[ERROR]" in line:
+                                error_detail = line.replace("[ERROR]", "").strip()
+                                break
                         raise InvalidPredictionError(
-                            f"Model produced invalid predictions (NaN or Inf). Container logs:\n{logs}"
+                            f"Model produced invalid predictions: {error_detail}"
                         )
                     raise DockerExecutionError(
                         f"Container exited with code {exit_code}",

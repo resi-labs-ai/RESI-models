@@ -41,6 +41,7 @@ from real_estate.models import (
     SchedulerConfig,
     create_model_scheduler,
 )
+from real_estate.observability import WandbLogger, create_wandb_logger
 from real_estate.orchestration import ValidationOrchestrator
 from real_estate.utils.misc import ttl_get_block
 
@@ -122,6 +123,18 @@ class Validator:
             docker_memory=self.config.docker_memory,
             docker_cpu=self.config.docker_cpu,
             docker_max_concurrent=self.config.docker_max_concurrent,
+        )
+
+        # WandB logger for evaluation metrics
+        self._wandb_logger: WandbLogger = create_wandb_logger(
+            project=self.config.wandb_project,
+            entity=self.config.wandb_entity or None,
+            api_key=self.config.wandb_api_key or None,
+            validator_hotkey=self.hotkey,
+            netuid=self.config.netuid,
+            enabled=not self.config.wandb_off,
+            offline=self.config.wandb_offline,
+            log_predictions_table=self.config.wandb_log_predictions,
         )
 
         # State
@@ -427,6 +440,9 @@ class Validator:
 
         logger.info(f"Running evaluation with {len(model_paths)} models")
 
+        # Start WandB run to measure evaluation time
+        self._wandb_logger.start_run()
+
         try:
             result = await self._orchestrator.run(dataset, model_paths, chain_metadata)
 
@@ -444,8 +460,22 @@ class Validator:
                 f"score={result.winner.winner_score:.4f}"
             )
 
+            # Collect download failures for WandB logging
+            download_failures: dict[str, str] = {}
+            for hotkey, dl_result in self.download_results.items():
+                if not dl_result.success and hotkey not in model_paths:
+                    download_failures[hotkey] = dl_result.error_message or "Download failed"
+
+            # Log evaluation results to WandB
+            self._wandb_logger.log_evaluation(
+                result, dataset, download_failures=download_failures
+            )
+
         except NoValidModelsError as e:
             logger.warning(f"Evaluation skipped: {e}")
+        finally:
+            # Always finish WandB run
+            self._wandb_logger.finish()
 
     async def _evaluation_loop(self) -> None:
         """Loop that waits for evaluation events and runs evaluation."""
