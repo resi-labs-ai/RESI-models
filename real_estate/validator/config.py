@@ -44,6 +44,14 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
+        "--wallet.path",
+        dest="wallet_path",
+        type=str,
+        help="Path to wallet directory.",
+        default=os.environ.get("BITTENSOR_WALLET_PATH", "~/.bittensor/wallets"),
+    )
+
+    parser.add_argument(
         "--subtensor.network",
         dest="subtensor_network",
         type=str,
@@ -259,6 +267,23 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=int(os.environ.get("DOCKER_MAX_CONCURRENT", "4")),
     )
 
+    # Scheduler settings
+    parser.add_argument(
+        "--scheduler.pre_download_hours",
+        dest="scheduler_pre_download_hours",
+        type=float,
+        help="Hours before eval to start downloading (default: 3.0).",
+        default=float(os.environ.get("SCHEDULER_PRE_DOWNLOAD_HOURS", "3.0")),
+    )
+
+    parser.add_argument(
+        "--scheduler.catch_up_minutes",
+        dest="scheduler_catch_up_minutes",
+        type=float,
+        help="Minutes before eval reserved for catch-up phase (default: 30.0).",
+        default=float(os.environ.get("SCHEDULER_CATCH_UP_MINUTES", "30.0")),
+    )
+
     # Test mode settings
     parser.add_argument(
         "--test-data-path",
@@ -318,6 +343,7 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "netuid": config.netuid,
         "wallet_name": config.wallet_name,
         "wallet_hotkey": config.wallet_hotkey,
+        "wallet_path": config.wallet_path,
         "subtensor_network": config.subtensor_network,
         "pylon_url": config.pylon_url,
         "pylon_token": "***" if config.pylon_token else "",
@@ -345,6 +371,8 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "docker_cpu": config.docker_cpu,
         "docker_timeout": config.docker_timeout,
         "docker_max_concurrent": config.docker_max_concurrent,
+        "scheduler_pre_download_hours": config.scheduler_pre_download_hours,
+        "scheduler_catch_up_minutes": config.scheduler_catch_up_minutes,
         "test_data_path": config.test_data_path,
         "test_mode": config.test_mode,
     }

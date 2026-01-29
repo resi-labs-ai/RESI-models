@@ -155,7 +155,10 @@ class ChainClient:
         except PylonUnauthorized as e:
             raise AuthenticationError(f"Invalid Pylon credentials: {e}") from e
         except PylonRequestException as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            cause = str(e.__cause__) if e.__cause__ else str(e)
+            raise ChainConnectionError(
+                f"Connection error: {cause or 'Pylon unreachable'}"
+            ) from e
         except PylonResponseException as e:
             raise ChainConnectionError(f"Failed to fetch commitments: {e}") from e
 
@@ -187,7 +190,10 @@ class ChainClient:
         except PylonUnauthorized as e:
             raise AuthenticationError(f"Invalid Pylon credentials: {e}") from e
         except PylonRequestException as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            cause = str(e.__cause__) if e.__cause__ else str(e)
+            raise ChainConnectionError(
+                f"Connection error: {cause or 'Pylon unreachable'}"
+            ) from e
         except PylonResponseException as e:
             # 404 means no commitment exists - check via __cause__ (Pylon doesn't expose status code)
             if e.__cause__ and "404" in str(e.__cause__):
@@ -250,7 +256,10 @@ class ChainClient:
         except PylonForbidden as e:
             raise CommitmentError(f"Permission denied: {e}") from e
         except PylonRequestException as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            cause = str(e.__cause__) if e.__cause__ else str(e)
+            raise ChainConnectionError(
+                f"Connection error: {cause or 'Pylon unreachable'}"
+            ) from e
         except PylonResponseException as e:
             raise CommitmentError(f"Failed to set commitment: {e}") from e
 
@@ -287,7 +296,10 @@ class ChainClient:
         except PylonUnauthorized as e:
             raise AuthenticationError(f"Invalid Pylon credentials: {e}") from e
         except PylonRequestException as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            cause = str(e.__cause__) if e.__cause__ else str(e)
+            raise ChainConnectionError(
+                f"Connection error: {cause or 'Pylon unreachable'}"
+            ) from e
         except PylonResponseException as e:
             raise ChainConnectionError(f"Failed to fetch metagraph: {e}") from e
 
@@ -351,7 +363,10 @@ class ChainClient:
                 f"Permission denied - validator may not be registered or have stake: {e}"
             ) from e
         except PylonRequestException as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            cause = str(e.__cause__) if e.__cause__ else str(e)
+            raise ChainConnectionError(
+                f"Connection error: {cause or 'Pylon unreachable'}"
+            ) from e
         except PylonResponseException as e:
             raise WeightSettingError(f"Failed to set weights: {e}") from e
 
@@ -393,7 +408,10 @@ class ChainClient:
         except PylonUnauthorized as e:
             raise AuthenticationError(f"Invalid Pylon credentials: {e}") from e
         except PylonRequestException as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            cause = str(e.__cause__) if e.__cause__ else str(e)
+            raise ChainConnectionError(
+                f"Connection error: {cause or 'Pylon unreachable'}"
+            ) from e
         except PylonResponseException:
             # Could be 404 if extrinsic not found
             logger.debug(

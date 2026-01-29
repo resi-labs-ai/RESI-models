@@ -6,6 +6,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..chain.models import ChainModelMetadata
@@ -63,11 +64,37 @@ class ModelDownloadScheduler:
         self._downloader = downloader
         self._chain = chain_client
         self._known_commitments: dict[str, ChainModelMetadata] = {}
+        self._pre_download_ran = False
 
     @property
     def known_commitments(self) -> dict[str, ChainModelMetadata]:
         """Cached commitments from last download run."""
         return self._known_commitments
+
+    def get_available_models(self, registered_hotkeys: set[str]) -> dict[str, Path]:
+        """
+        Get all models ready for evaluation.
+
+        Returns cached models that:
+        1. Are registered on chain (in registered_hotkeys)
+        2. Have a known commitment
+        3. Are in cache with matching hash
+
+        Args:
+            registered_hotkeys: Set of hotkeys currently registered on metagraph
+
+        Returns:
+            Dict mapping hotkey to model path
+        """
+        result: dict[str, Path] = {}
+        for hotkey in registered_hotkeys:
+            if hotkey not in self._known_commitments:
+                continue
+            commitment = self._known_commitments[hotkey]
+            cached = self._downloader._cache.get(hotkey)
+            if cached and cached.metadata.hash == commitment.model_hash:
+                result[hotkey] = cached.path
+        return result
 
     def _update_commitment_block(
         self,
@@ -108,6 +135,9 @@ class ModelDownloadScheduler:
         Returns:
             Dict mapping hotkey to DownloadResult
         """
+        # Reset flag at start of new cycle
+        self._pre_download_ran = False
+
         now = datetime.now(UTC)
         deadline = eval_time - timedelta(minutes=self._config.catch_up_minutes)
         time_available = (deadline - now).total_seconds()
@@ -131,6 +161,7 @@ class ModelDownloadScheduler:
 
         # Update known commitments
         self._known_commitments = {c.hotkey: c for c in commitments}
+        self._pre_download_ran = True
 
         # Cleanup cache for hotkeys no longer on chain
         active_hotkeys = {c.hotkey for c in commitments}
@@ -217,16 +248,22 @@ class ModelDownloadScheduler:
 
         return results
 
-    async def run_catch_up(self) -> dict[str, DownloadResult]:
+    async def run_catch_up(
+        self, failed_hotkeys: set[str] | None = None
+    ) -> dict[str, DownloadResult]:
         """
-        Run catch-up phase for new commitments.
+        Run catch-up phase to retry failed downloads.
 
-        Downloads any commitments that appeared since pre-download started,
-        but only if they meet the age requirement.
-        Called in the last 30 minutes before evaluation.
+        Retries downloads that failed during pre-download phase.
+        This handles cases where HuggingFace was temporarily unavailable.
+        Called in the last N minutes before evaluation.
+
+        Args:
+            failed_hotkeys: Set of hotkeys that failed during pre-download.
+                           If None, determines failed from known_commitments vs cache.
 
         Returns:
-            Dict mapping hotkey to DownloadResult for new downloads
+            Dict mapping hotkey to DownloadResult for retried downloads
         """
         logger.info("Starting catch-up phase")
 
@@ -238,23 +275,44 @@ class ModelDownloadScheduler:
 
         current_map = {c.hotkey: c for c in current_commitments}
 
-        # Find new or changed commitments
-        # Note: We can't filter by block here because get_commitments returns block=0.
-        # We'll filter after downloading once we have real blocks from get_extrinsic.
-        new_commitments = []
-        for hotkey, commitment in current_map.items():
-            known = self._known_commitments.get(hotkey)
-            if known is None or known.model_hash != commitment.model_hash:
-                new_commitments.append(commitment)
-                logger.info(f"New/changed commitment for {hotkey}")
+        # Find commitments to retry:
+        # 1. Failed during pre-download (if provided)
+        # 2. Known but not cached (fallback detection)
+        # 3. All uncached if pre-download never ran (crashed before fetching commitments)
+        pre_download_never_ran = not self._pre_download_ran and not failed_hotkeys
+        if pre_download_never_ran:
+            logger.info(
+                "Pre-download never completed, will download all uncached models"
+            )
 
-        if not new_commitments:
-            logger.info("No eligible new commitments in catch-up phase")
+        to_retry = []
+        for hotkey, commitment in current_map.items():
+            # Skip if already cached successfully
+            if self._downloader.is_cached(hotkey, commitment.model_hash):
+                continue
+
+            # Retry if explicitly marked as failed
+            if failed_hotkeys and hotkey in failed_hotkeys:
+                to_retry.append(commitment)
+                logger.info(f"Retrying failed download for {hotkey}")
+            # Or if it's a known commitment that's not cached
+            elif hotkey in self._known_commitments:
+                to_retry.append(commitment)
+                logger.info(f"Retrying uncached commitment for {hotkey}")
+            # Or if pre-download never ran, download everything uncached
+            elif pre_download_never_ran:
+                to_retry.append(commitment)
+                logger.info(f"Downloading uncached commitment for {hotkey}")
+
+        if not to_retry:
+            logger.info("No failed downloads to retry in catch-up phase")
             return {}
+
+        logger.info(f"Retrying {len(to_retry)} failed downloads")
 
         # Download with minimal delays
         results: dict[str, DownloadResult] = {}
-        for commitment in new_commitments:
+        for commitment in to_retry:
             result, commit_block = await self._download_single(commitment)
             results[commitment.hotkey] = result
 
