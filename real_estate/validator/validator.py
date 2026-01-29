@@ -464,7 +464,9 @@ class Validator:
             download_failures: dict[str, str] = {}
             for hotkey, dl_result in self.download_results.items():
                 if not dl_result.success and hotkey not in model_paths:
-                    download_failures[hotkey] = dl_result.error_message or "Download failed"
+                    download_failures[hotkey] = (
+                        dl_result.error_message or "Download failed"
+                    )
 
             # Log evaluation results to WandB
             self._wandb_logger.log_evaluation(
@@ -646,6 +648,7 @@ class Validator:
         self._last_weight_set_block = self.block
 
         logger.info(f"Validator ready - UID {self.uid}, {len(self.hotkeys)} miners")
+
         logger.info(
             f"Next evaluation at {self._get_next_eval_time()}, "
             f"pre-download loop will handle model downloads"

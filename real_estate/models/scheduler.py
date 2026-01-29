@@ -385,7 +385,9 @@ class ModelDownloadScheduler:
                 None,
             )
         except Exception as e:
-            logger.error(f"Unexpected error downloading {commitment.hotkey}: {e}", exc_info=True)
+            logger.error(
+                f"Unexpected error downloading {commitment.hotkey}: {e}", exc_info=True
+            )
             return (
                 DownloadResult(
                     hotkey=commitment.hotkey,

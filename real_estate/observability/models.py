@@ -46,9 +46,7 @@ class MinerResultLog:
             "rmse": round(self.rmse, 2) if self.rmse is not None else None,
             "r2": round(self.r2, 4) if self.r2 is not None else None,
             "accuracy": (
-                round(self.accuracy, 4)
-                if self.accuracy is not None
-                else None
+                round(self.accuracy, 4) if self.accuracy is not None else None
             ),
             "model_hash": self.model_hash,
             "inference_time_ms": (
@@ -196,7 +194,9 @@ class WandbConfig:
 
     # What to log
     log_miner_table: bool = True  # Log per-miner results table
-    log_predictions_table: bool = False  # Log per-property predictions (disabled by default)
+    log_predictions_table: bool = (
+        False  # Log per-property predictions (disabled by default)
+    )
 
     # Prediction logging settings
     # Only log predictions for top N miners (to limit data volume)
