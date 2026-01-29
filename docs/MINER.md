@@ -23,14 +23,7 @@ Your model must accept exactly **73 features** in the order defined in `real_est
 
 ## Competition Rules & Features
 
-<!-- TODO: Colleague to fill in this section with:
-- Competition rules and incentive mechanism
-- Feature descriptions and data sources
-- Scoring criteria
-- Any other competition-specific details
--->
-
-*Section to be completed.*
+See the main [README](../README.md) for competition rules and feature details.
 
 ## Prerequisites
 
@@ -78,7 +71,7 @@ Check that metrics meet targets (MAPE < 15%, Score > 0.85).
 
 1. Go to [huggingface.co](https://huggingface.co)
 2. Create a new model repository
-3. Upload your `model.onnx` to the repository root
+3. Upload your onnx model to the repository root
 
 > **Note:** Your repository must be public when validators attempt to download your model.
 
@@ -132,7 +125,6 @@ miner-cli evaluate --model.path PATH [--max-size-mb MB]
 3. Correct input shape (batch, 73)
 4. Correct output shape
 5. No NaN or Inf in predictions
-6. Calculates performance metrics
 
 **Example output:**
 ```
