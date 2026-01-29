@@ -293,6 +293,21 @@ cat ~/.pm2/logs/resi_validator-out__2026-01-28.log
 grep -E "\| ERROR \||\| CRITICAL \|" ~/.pm2/logs/resi_validator-out*.log
 ```
 
+### Pylon Logs
+
+Pylon logs persist to `~/.pylon/logs/pylon.log` and survive container restarts and `docker compose down`.
+
+```bash
+# View live pylon logs
+tail -f ~/.pylon/logs/pylon.log
+
+# Or via docker (lost on container removal)
+docker logs -f resi_pylon
+
+# Search pylon logs for errors
+grep -i error ~/.pylon/logs/pylon.log
+```
+
 ## Configuration Reference
 
 ### Required Environment Variables

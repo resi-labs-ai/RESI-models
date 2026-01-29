@@ -6,6 +6,9 @@ services:
   pylon:
     image: backenddevelopersltd/bittensor-pylon:1.0.0
     container_name: resi_pylon
+    command: >
+      sh -c "pylon_service/.venv/bin/python -m uvicorn pylon_service.main:app
+      --host 0.0.0.0 --port 8000 2>&1 | tee -a /var/log/pylon/pylon.log"
     ports:
       - "127.0.0.1:8000:8000"
     environment:
