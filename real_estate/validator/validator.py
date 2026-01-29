@@ -290,7 +290,7 @@ class Validator:
             logger.info("Weights submitted to Pylon")
             self._last_weight_set_block = self.block
         except Exception as e:
-            logger.error(f"Failed to submit weights to Pylon: {e}")
+            logger.error(f"Failed to submit weights to Pylon: {e}", exc_info=True)
 
     def should_set_weights(self) -> bool:
         """
@@ -395,7 +395,7 @@ class Validator:
         except ChainConnectionError as e:
             logger.warning(f"Catch-up failed after retries: {e}")
         except Exception as e:
-            logger.warning(f"Catch-up phase failed: {e}")
+            logger.warning(f"Catch-up phase failed: {e}", exc_info=True)
 
     def _on_validation_data_fetched(
         self,
@@ -505,7 +505,7 @@ class Validator:
             except ChainConnectionError as e:
                 logger.error(f"Evaluation failed after 3 attempts: {e}")
             except Exception as e:
-                logger.error(f"Evaluation failed: {e}")
+                logger.error(f"Evaluation failed: {e}", exc_info=True)
 
     async def _weight_setting_loop(self) -> None:
         """Loop that periodically checks and sets weights."""
@@ -627,7 +627,7 @@ class Validator:
         try:
             await self.update_metagraph()
         except Exception as e:
-            logger.error(f"Failed to fetch initial metagraph: {e}")
+            logger.error(f"Failed to fetch initial metagraph: {e}", exc_info=True)
             raise SystemExit(1) from e
 
         if not self.is_registered():

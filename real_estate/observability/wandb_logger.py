@@ -198,7 +198,7 @@ class WandbLogger:
             )
 
         except Exception as e:
-            logger.error(f"Failed to log evaluation to WandB: {e}")
+            logger.error(f"Failed to log evaluation to WandB: {e}", exc_info=True)
             # Don't raise - logging failures shouldn't break validation
 
     def _build_evaluation_log(

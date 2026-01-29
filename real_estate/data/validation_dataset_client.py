@@ -514,6 +514,15 @@ class ValidationDatasetClient:
             # Raw data not supported in test data mode
             return validation_data, None
 
+        def _log_retry(retry_state):
+            """Log retry attempts with clear context."""
+            exc = retry_state.outcome.exception()
+            wait_time = retry_state.next_action.sleep
+            logger.warning(
+                f"Validation data fetch failed: {exc}. "
+                f"Retrying in {wait_time:.0f}s (attempt {retry_state.attempt_number}/{self._config.max_retries})"
+            )
+
         async for attempt in AsyncRetrying(
             wait=wait_fixed(self._config.retry_delay_seconds),
             stop=stop_after_attempt(self._config.max_retries),
@@ -524,6 +533,7 @@ class ValidationDatasetClient:
                     ValidationDataProcessingError,
                 )
             ),
+            before_sleep=_log_retry,
             reraise=True,
         ):
             with attempt:
