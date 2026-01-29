@@ -170,3 +170,9 @@ test_model_cache/
 
 # PM2 config (generated with machine-specific paths)
 config/ecosystem.config.js
+
+# Organized logs (from organize_logs.sh)
+logs/
+
+# Logging config (operator-specific, created from logging.conf.example)
+scripts/logging.conf
