@@ -6,6 +6,9 @@ services:
   pylon:
     image: backenddevelopersltd/bittensor-pylon:1.0.0
     container_name: resi_pylon
+    command: >
+      pylon_service/.venv/bin/python -m uvicorn pylon_service.main:app
+      --host 0.0.0.0 --port 8000
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -18,6 +21,11 @@ services:
       - PYLON_ID_VALIDATOR_TOKEN=${PYLON_TOKEN}
     volumes:
       - ${BITTENSOR_WALLET_PATH:-~/.bittensor/wallets}:/root/.bittensor/wallets:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "10"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.connect(('localhost', 8000)); s.close()\""]
