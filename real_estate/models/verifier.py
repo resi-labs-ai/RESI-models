@@ -24,9 +24,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# TODO (Seby) refer to an actual, existing license
-REQUIRED_LICENSE = "Lorem Ipsum"
 HF_RAW_URL = "https://huggingface.co/{repo_id}/resolve/main/{filename}"
+HF_API_URL = "https://huggingface.co/api/models/{repo_id}"
 
 
 class ModelVerifier:
@@ -43,7 +42,6 @@ class ModelVerifier:
     def __init__(
         self,
         chain_client: ChainClient,
-        required_license: str = REQUIRED_LICENSE,
         http_timeout: float = 30.0,
     ):
         """
@@ -51,24 +49,25 @@ class ModelVerifier:
 
         Args:
             chain_client: Client for chain queries
-            required_license: Required license text
             http_timeout: Timeout for HF API requests
         """
         self._chain = chain_client
-        self._required_license = required_license
         self._http_timeout = http_timeout
 
     async def check_license(self, hf_repo_id: str) -> None:
         """
-        Check LICENSE file matches required license.
+        Check HuggingFace repo has MIT license in metadata.
+
+        Uses HF API to check model card metadata for MIT license.
+        This is a case-insensitive check for "mit" in the license field.
 
         Args:
             hf_repo_id: HuggingFace repository ID (user/repo)
 
         Raises:
-            LicenseError: If license missing or doesn't match
+            LicenseError: If license missing, not MIT, or API error
         """
-        url = HF_RAW_URL.format(repo_id=hf_repo_id, filename="LICENSE")
+        url = HF_API_URL.format(repo_id=hf_repo_id)
 
         async with httpx.AsyncClient(
             timeout=self._http_timeout, follow_redirects=True
@@ -77,19 +76,26 @@ class ModelVerifier:
                 response = await client.get(url)
 
                 if response.status_code == 404:
-                    raise LicenseError(f"LICENSE file not found in {hf_repo_id}")
+                    raise LicenseError(f"Repository {hf_repo_id} not found")
 
                 response.raise_for_status()
-                content = response.text.strip()
+                model_info = response.json()
 
-                if content != self._required_license:
-                    raise LicenseError(f"Invalid license in {hf_repo_id}")
+                # Check license in model card metadata
+                card_data = model_info.get("cardData") or {}
+                license_value = card_data.get("license") or ""
 
-                logger.debug(f"License verified for {hf_repo_id}")
+                if "mit" in license_value.lower():
+                    logger.debug(f"MIT license verified for {hf_repo_id}")
+                    return
+
+                raise LicenseError(
+                    f"MIT license required for {hf_repo_id}, found: {license_value or 'none'}"
+                )
 
             except httpx.HTTPError as e:
                 raise LicenseError(
-                    f"Failed to fetch LICENSE from {hf_repo_id}: {e}"
+                    f"Failed to check license for {hf_repo_id}: {e}"
                 ) from e
 
     async def find_onnx_file(self, hf_repo_id: str) -> tuple[str, int]:

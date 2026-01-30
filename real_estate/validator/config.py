@@ -313,7 +313,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--burn_uid",
         type=int,
         help="UID of subnet owner to receive burn allocation (protocol burns this emission).",
-        default=int(os.environ.get("BURN_UID", "-1")),
+        default=int(os.environ.get("BURN_UID", "238")),
     )
 
 
