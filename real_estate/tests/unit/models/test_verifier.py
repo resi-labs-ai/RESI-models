@@ -22,15 +22,16 @@ class TestCheckLicense:
     """Tests for ModelVerifier.check_license method."""
 
     @pytest.mark.asyncio
-    async def test_passes_when_license_matches(
+    async def test_passes_when_mit_license(
         self, mock_chain_client: MagicMock
     ) -> None:
-        """Passes when LICENSE file content matches required license."""
-        verifier = ModelVerifier(mock_chain_client, required_license="Test License")
+        """Passes when HF model metadata has MIT license."""
+        verifier = ModelVerifier(mock_chain_client)
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.text = "Test License"
+        mock_response.json.return_value = {"cardData": {"license": "mit"}}
+        mock_response.raise_for_status = MagicMock()
 
         with patch("httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
@@ -39,11 +40,30 @@ class TestCheckLicense:
             await verifier.check_license("user/repo")
 
     @pytest.mark.asyncio
-    async def test_raises_error_when_license_missing(
+    async def test_passes_with_mit_license_variations(
         self, mock_chain_client: MagicMock
     ) -> None:
-        """Raises LicenseError when LICENSE file is not found."""
-        verifier = ModelVerifier(mock_chain_client, required_license="Test License")
+        """Passes with various MIT license formats (case-insensitive)."""
+        verifier = ModelVerifier(mock_chain_client)
+
+        for license_value in ["MIT", "MIT License", "The MIT License (MIT)", "mit"]:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"cardData": {"license": license_value}}
+            mock_response.raise_for_status = MagicMock()
+
+            with patch("httpx.AsyncClient") as mock_client:
+                mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+                    return_value=mock_response
+                )
+                await verifier.check_license("user/repo")
+
+    @pytest.mark.asyncio
+    async def test_raises_error_when_repo_not_found(
+        self, mock_chain_client: MagicMock
+    ) -> None:
+        """Raises LicenseError when repository is not found."""
+        verifier = ModelVerifier(mock_chain_client)
 
         mock_response = MagicMock()
         mock_response.status_code = 404
@@ -52,26 +72,45 @@ class TestCheckLicense:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )
-            with pytest.raises(LicenseError, match="LICENSE file not found"):
+            with pytest.raises(LicenseError, match="not found"):
                 await verifier.check_license("user/repo")
 
     @pytest.mark.asyncio
-    async def test_raises_error_when_license_differs(
+    async def test_raises_error_when_not_mit_license(
         self, mock_chain_client: MagicMock
     ) -> None:
-        """Raises LicenseError when LICENSE content doesn't match."""
-        verifier = ModelVerifier(mock_chain_client, required_license="Expected License")
+        """Raises LicenseError when license is not MIT."""
+        verifier = ModelVerifier(mock_chain_client)
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.text = "Different License Content"
+        mock_response.json.return_value = {"cardData": {"license": "apache-2.0"}}
         mock_response.raise_for_status = MagicMock()
 
         with patch("httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )
-            with pytest.raises(LicenseError, match="Invalid license"):
+            with pytest.raises(LicenseError, match="MIT license required"):
+                await verifier.check_license("user/repo")
+
+    @pytest.mark.asyncio
+    async def test_raises_error_when_no_license(
+        self, mock_chain_client: MagicMock
+    ) -> None:
+        """Raises LicenseError when no license in metadata."""
+        verifier = ModelVerifier(mock_chain_client)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"cardData": {}}
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+                return_value=mock_response
+            )
+            with pytest.raises(LicenseError, match="MIT license required"):
                 await verifier.check_license("user/repo")
 
     @pytest.mark.asyncio
@@ -79,13 +118,13 @@ class TestCheckLicense:
         self, mock_chain_client: MagicMock
     ) -> None:
         """Raises LicenseError on HTTP failure."""
-        verifier = ModelVerifier(mock_chain_client, required_license="Test License")
+        verifier = ModelVerifier(mock_chain_client)
 
         with patch("httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 side_effect=httpx.HTTPError("Connection failed")
             )
-            with pytest.raises(LicenseError, match="Failed to fetch LICENSE"):
+            with pytest.raises(LicenseError, match="Failed to check license"):
                 await verifier.check_license("user/repo")
 
 
