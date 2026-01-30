@@ -32,7 +32,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="wallet_name",
         type=str,
         help="Name of the wallet to use.",
-        default=os.environ.get("WALLET_NAME", "default"),
+        default=os.environ.get("WALLET_NAME", "validator"),
     )
 
     parser.add_argument(
@@ -80,7 +80,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="validation_data_schedule_hour",
         type=int,
         help="Hour (UTC) for daily validation data fetch (0-23).",
-        default=int(os.environ.get("VALIDATION_DATA_SCHEDULE_HOUR", "2")),
+        default=int(os.environ.get("VALIDATION_DATA_SCHEDULE_HOUR", "18")),
     )
 
     parser.add_argument(
@@ -96,7 +96,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="validation_data_max_retries",
         type=int,
         help="Max retry attempts for failed validation data fetches.",
-        default=int(os.environ.get("VALIDATION_DATA_MAX_RETRIES", "3")),
+        default=int(os.environ.get("VALIDATION_DATA_MAX_RETRIES", "24")),
     )
 
     parser.add_argument(
@@ -136,14 +136,14 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--epoch_length",
         type=int,
         help="Number of blocks between metagraph syncs and weight setting.",
-        default=int(os.environ.get("EPOCH_LENGTH", "360")),
+        default=int(os.environ.get("EPOCH_LENGTH", "361")),
     )
 
     parser.add_argument(
         "--score_threshold",
         type=float,
         help="Score threshold for winner set. Models within this of best are equivalent.",
-        default=float(os.environ.get("SCORE_THRESHOLD", "0.005")),
+        default=float(os.environ.get("SCORE_THRESHOLD", "0.002")),
     )
 
     parser.add_argument(
@@ -158,7 +158,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         type=str,
         choices=["TRACE", "DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level.",
-        default=os.environ.get("LOG_LEVEL", "INFO"),
+        default=os.environ.get("LOG_LEVEL", "DEBUG"),
     )
 
     parser.add_argument(
@@ -174,7 +174,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="wandb_project",
         type=str,
         help="WandB project name.",
-        default=os.environ.get("WANDB_PROJECT", "subnet-46-evaluations"),
+        default=os.environ.get("WANDB_PROJECT", "subnet-46-evaluations-mainnet"),
     )
 
     parser.add_argument(
@@ -182,7 +182,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="wandb_entity",
         type=str,
         help="WandB entity.",
-        default=os.environ.get("WANDB_ENTITY", ""),
+        default=os.environ.get("WANDB_ENTITY", "resi-labs-org"),
     )
 
     parser.add_argument(
@@ -230,8 +230,8 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--model.min_commitment_age_blocks",
         dest="model_min_commitment_age_blocks",
         type=int,
-        help="Minimum age in blocks for commitments to be eligible (~24h = 7200 blocks at 12s/block).",
-        default=int(os.environ.get("MODEL_MIN_COMMITMENT_AGE_BLOCKS", "7200")),
+        help="Minimum age in blocks for commitments to be eligible (~28h = 8400 blocks at 12s/block).",
+        default=int(os.environ.get("MODEL_MIN_COMMITMENT_AGE_BLOCKS", "8400")),
     )
 
     # Docker execution settings

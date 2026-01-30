@@ -81,6 +81,7 @@ BITTENSOR_WALLET_PATH=~/.bittensor/wallets
 # =============================================================================
 PYLON_TOKEN=<your_generated_token_here>
 PYLON_IDENTITY=validator
+PYLON_IDENTITIES='["validator"]'
 PYLON_URL=http://localhost:8000
 
 # =============================================================================
@@ -88,7 +89,23 @@ PYLON_URL=http://localhost:8000
 # =============================================================================
 SUBTENSOR_NETWORK=finney
 NETUID=46
+
+# =============================================================================
+# WandB Logging (Recommended)
+# =============================================================================
+WANDB_API_KEY=your_wandb_api_key_here
+WANDB_PROJECT=subnet-46-evaluations-mainnet
+WANDB_ENTITY=resi-labs-org
 ```
+
+### WandB Setup (Recommended)
+
+Track evaluation metrics and model performance on [Weights & Biases](https://wandb.ai). Validators receive a shared API key from subnet owners to log to the team project.
+
+1. Request a WandB API key from subnet owners on Discord
+2. Add `WANDB_API_KEY` to your `.env` file
+
+To disable WandB logging, set `WANDB_OFF=true`.
 
 ## Running the Validator
 
@@ -324,19 +341,52 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | `WALLET_HOTKEY` | Hotkey name |
 | `BITTENSOR_WALLET_PATH` | Path to wallets directory |
 | `PYLON_TOKEN` | Authentication token for Pylon |
-| `PYLON_IDENTITY` | Identity name (must match docker-compose) |
+| `PYLON_IDENTITY` | Identity name (must be in PYLON_IDENTITIES) |
+| `PYLON_IDENTITIES` | JSON array of allowed identities, e.g. `'["validator"]'` |
 
 ### Optional Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| **Network** | | |
 | `SUBTENSOR_NETWORK` | `finney` | Network name or `ws://` endpoint |
 | `NETUID` | `46` | Subnet UID |
 | `PYLON_URL` | `http://localhost:8000` | Pylon service URL |
-| `EPOCH_LENGTH` | `360` | Blocks between weight setting |
-| `SCORE_THRESHOLD` | `0.005` | Score threshold for winner selection |
-| `LOG_LEVEL` | `INFO` | Logging level |
+| `ARCHIVE_NETWORK` | `finney` | Archive network for Pylon historical block lookups |
+| `ARCHIVE_BLOCKS_CUTOFF` | `256` | Blocks older than this use archive node |
+| **Validation Schedule** | | |
+| `VALIDATION_DATA_URL` | `https://dashboard.resilabs.ai` | Validation data API URL |
+| `VALIDATION_DATA_SCHEDULE_HOUR` | `18` | Hour (UTC) for daily evaluation |
+| `VALIDATION_DATA_SCHEDULE_MINUTE` | `0` | Minute for daily evaluation |
+| `VALIDATION_DATA_MAX_RETRIES` | `24` | Retry attempts if data not ready (~2 hours) |
+| `VALIDATION_DATA_RETRY_DELAY` | `300` | Seconds between retries |
+| **Burn Configuration** | | |
+| `BURN_AMOUNT` | `1.0` | Fraction of emissions to burn (0.0-1.0) |
+| `BURN_UID` | `238` | UID receiving burn allocation (subnet owner) |
+| **Model Settings** | | |
+| `MODEL_CACHE_PATH` | `./model_cache` | Path to cache downloaded models |
+| `MODEL_MAX_SIZE_MB` | `200` | Maximum model size in MB |
+| `MODEL_MIN_COMMITMENT_AGE_BLOCKS` | `8400` | Min blocks before model eligible (~28 hours) |
+| **Scheduler** | | |
+| `SCHEDULER_PRE_DOWNLOAD_HOURS` | `3.0` | Hours before eval to start downloads |
+| `SCHEDULER_CATCH_UP_MINUTES` | `30.0` | Minutes reserved for catch-up downloads |
+| **Weight Setting** | | |
+| `EPOCH_LENGTH` | `361` | Blocks between weight setting |
+| `SCORE_THRESHOLD` | `0.002` | Score threshold for winner selection |
 | `DISABLE_SET_WEIGHTS` | `false` | Disable weight setting (for testing) |
+| **Docker Execution** | | |
+| `DOCKER_MEMORY` | `2g` | Container memory limit |
+| `DOCKER_CPU` | `1.0` | Container CPU limit (cores) |
+| `DOCKER_TIMEOUT` | `300` | Inference timeout (seconds) |
+| `DOCKER_MAX_CONCURRENT` | `4` | Max concurrent evaluations |
+| **Logging** | | |
+| `LOG_LEVEL` | `DEBUG` | Logging level (DEBUG, INFO, WARNING, ERROR) |
+| **WandB** | | |
+| `WANDB_API_KEY` | | WandB API key (request from subnet owners on Discord) |
+| `WANDB_PROJECT` | `subnet-46-evaluations-mainnet` | WandB project name |
+| `WANDB_ENTITY` | `resi-labs-org` | WandB team/entity |
+| `WANDB_OFF` | `false` | Disable WandB logging |
+| `WANDB_OFFLINE` | `false` | Run WandB in offline mode (logs saved locally) |
 
 ## Network Configuration
 
