@@ -252,57 +252,60 @@ pm2 start "uv run python -m real_estate.validator.validator \
 
 ## Log Management
 
-By default, PM2 stores validator logs in `~/.pm2/logs/`. These logs grow continuously and can be difficult to search through. The optional log organization script creates daily log files with separate error logs for easier debugging.
+By default, PM2 stores validator logs in `~/.pm2/logs/`. These logs grow indefinitely and can consume significant disk space. We recommend using `pm2-logrotate` to automatically rotate logs daily.
 
 ### Setup (Optional)
 
-```bash
-cd RESI-models/scripts
-cp logging.conf.example logging.conf
-```
-
-Edit `logging.conf` if you need to customize paths (defaults work for most setups).
-
-### Manual Run
+Install the pm2-logrotate module:
 
 ```bash
-./scripts/organize_validator_logs.sh
+pm2 install pm2-logrotate
 ```
 
-Output:
-```
-logs/validator/logs/validator_logs_27_01_2026      # All logs from that day
-logs/validator/errors/validator_errors_27_01_2026  # ERROR/CRITICAL only
-```
-
-### Automated Daily Logs (Cron)
-
-Add a cron job to run at midnight:
+Configure for daily rotation:
 
 ```bash
-(crontab -l 2>/dev/null; echo "0 0 * * * /path/to/RESI-models/scripts/organize_validator_logs.sh") | crontab -
+pm2 set pm2-logrotate:max_size 100M
+pm2 set pm2-logrotate:retain 30
+pm2 set pm2-logrotate:compress false
+pm2 set pm2-logrotate:dateFormat YYYY-MM-DD
+pm2 set pm2-logrotate:rotateInterval '0 0 * * *'
 ```
 
-Verify cron is set:
+This will:
+- Rotate logs daily at midnight (or when they exceed 100MB)
+- Keep 30 days of logs
+- Name files with sortable dates (e.g., `resi_validator-out__2026-01-28.log`)
+
+### View Logs
 
 ```bash
-crontab -l
-```
+# Current logs
+pm2 logs resi_validator
 
-### View Organized Logs
-
-```bash
-# List available log files
-ls logs/validator/logs/
+# List rotated log files
+ls ~/.pm2/logs/
 
 # View a specific day's logs
-cat logs/validator/logs/validator_logs_27_01_2026
+cat ~/.pm2/logs/resi_validator-out__2026-01-28.log
 
-# View only errors from a specific day
-cat logs/validator/errors/validator_errors_27_01_2026
+# Search for errors across all logs
+grep -E "\| ERROR \||\| CRITICAL \|" ~/.pm2/logs/resi_validator-out*.log
+```
 
-# Search across all organized logs
-grep "some error" logs/validator/logs/*
+### Pylon Logs
+
+Pylon logs persist to `~/.pylon/logs/pylon.log` and survive container restarts and `docker compose down`.
+
+```bash
+# View live pylon logs
+tail -f ~/.pylon/logs/pylon.log
+
+# Or via docker (lost on container removal)
+docker logs -f resi_pylon
+
+# Search pylon logs for errors
+grep -i error ~/.pylon/logs/pylon.log
 ```
 
 ## Configuration Reference
