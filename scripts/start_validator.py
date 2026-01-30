@@ -154,6 +154,11 @@ ARG_NAME_MAP = {
     "pylon_token": "pylon.token",
     "pylon_identity": "pylon.identity",
     "log_level": "log_level",
+    "wandb_api_key": "wandb.api_key",
+    "wandb_project": "wandb.project",
+    "wandb_entity": "wandb.entity",
+    "burn_amount": "burn_amount",
+    "burn_uid": "burn_uid",
 }
 
 
@@ -277,7 +282,34 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--log_level",
-        default=os.environ.get("LOG_LEVEL", "INFO"),
+        default=os.environ.get("LOG_LEVEL", "DEBUG"),
+    )
+    parser.add_argument(
+        "--wandb.api_key",
+        dest="wandb_api_key",
+        default=os.environ.get("WANDB_API_KEY", ""),
+    )
+    parser.add_argument(
+        "--wandb.project",
+        dest="wandb_project",
+        default=os.environ.get("WANDB_PROJECT", "subnet-46-evaluations-mainnet"),
+    )
+    parser.add_argument(
+        "--wandb.entity",
+        dest="wandb_entity",
+        default=os.environ.get("WANDB_ENTITY", "resi-labs-org"),
+    )
+    parser.add_argument(
+        "--burn_amount",
+        dest="burn_amount",
+        type=float,
+        default=float(os.environ.get("BURN_AMOUNT", "1.0")),
+    )
+    parser.add_argument(
+        "--burn_uid",
+        dest="burn_uid",
+        type=int,
+        default=int(os.environ.get("BURN_UID", "238")),
     )
 
     flags, extra_args = parser.parse_known_args()

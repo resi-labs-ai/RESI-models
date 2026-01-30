@@ -14,7 +14,7 @@ services:
     environment:
       - PYLON_BITTENSOR_NETWORK=${SUBTENSOR_NETWORK:-finney}
       - PYLON_BITTENSOR_WALLET_PATH=/root/.bittensor/wallets
-      - PYLON_IDENTITIES=["validator"]
+      - PYLON_IDENTITIES=${PYLON_IDENTITIES:-["validator"]}
       - PYLON_ID_VALIDATOR_NETUID=${NETUID:-46}
       - PYLON_ID_VALIDATOR_WALLET_NAME=${WALLET_NAME:-validator}
       - PYLON_ID_VALIDATOR_HOTKEY_NAME=${WALLET_HOTKEY:-default}
