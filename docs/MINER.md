@@ -21,10 +21,6 @@ The miner CLI (`miner-cli`) helps you:
 
 Your model must accept exactly **73 features** in the order defined in `real_estate/data/mappings/feature_config.yaml`.
 
-## Competition Rules & Features
-
-See the main [README](../README.md) for competition rules and feature details.
-
 ## Prerequisites
 
 - Python 3.11+
@@ -89,7 +85,7 @@ miner-cli submit \
 
 After submitting, add these files to your HuggingFace repo:
 
-1. **LICENSE** - Required for validator download
+1. **LICENSE** - Must use an MIT license (required for validator download)
 2. **extrinsic_record.json** - Use values from submit output:
 
 ```json
@@ -212,7 +208,7 @@ Scanning for extrinsic (up to 25 blocks)...
 
 Next steps:
   1. Ensure model.onnx is uploaded to your HuggingFace repo
-  2. Add LICENSE file to your repo
+  2. Add a LICENSE file to your repo
   3. Add extrinsic_record.json to your repo with this content:
 
 {
