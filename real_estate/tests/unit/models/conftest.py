@@ -33,7 +33,7 @@ def cache(temp_cache_dir: Path) -> ModelCache:
 @pytest.fixture
 def sample_metadata() -> CachedModelMetadata:
     """Sample cached model metadata."""
-    return CachedModelMetadata(hash="abc12345", size_bytes=1000)
+    return CachedModelMetadata(hash="abc12345", size_bytes=1000, commit_block=1000)
 
 
 @pytest.fixture
@@ -74,8 +74,10 @@ def mock_verifier() -> MagicMock:
     """Mock ModelVerifier."""
     verifier = MagicMock(spec=ModelVerifier)
     verifier.check_license = AsyncMock()
-    verifier.check_size = AsyncMock(return_value=1000)
-    verifier.verify_extrinsic_record = AsyncMock()
+    verifier.find_onnx_file = AsyncMock(return_value=("model.onnx", 1000))
+    verifier.check_model_size = MagicMock()
+    # verify_extrinsic_record returns commit block from Pylon
+    verifier.verify_extrinsic_record = AsyncMock(return_value=1000)
     verifier.verify_hash = MagicMock()
     return verifier
 

@@ -14,6 +14,7 @@ from .errors import (
     ExtrinsicVerificationError,
     HashMismatchError,
     LicenseError,
+    ModelDownloadError,
     ModelTooLargeError,
 )
 from .models import ExtrinsicRecord
@@ -23,9 +24,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# TODO (Seby) refer to an actual, existing license
-REQUIRED_LICENSE = "Lorem Ipsum"
 HF_RAW_URL = "https://huggingface.co/{repo_id}/resolve/main/{filename}"
+HF_API_URL = "https://huggingface.co/api/models/{repo_id}"
 
 
 class ModelVerifier:
@@ -42,7 +42,6 @@ class ModelVerifier:
     def __init__(
         self,
         chain_client: ChainClient,
-        required_license: str = REQUIRED_LICENSE,
         http_timeout: float = 30.0,
     ):
         """
@@ -50,24 +49,25 @@ class ModelVerifier:
 
         Args:
             chain_client: Client for chain queries
-            required_license: Required license text
             http_timeout: Timeout for HF API requests
         """
         self._chain = chain_client
-        self._required_license = required_license
         self._http_timeout = http_timeout
 
     async def check_license(self, hf_repo_id: str) -> None:
         """
-        Check LICENSE file matches required license.
+        Check HuggingFace repo has MIT license in metadata.
+
+        Uses HF API to check model card metadata for MIT license.
+        This is a case-insensitive check for "mit" in the license field.
 
         Args:
             hf_repo_id: HuggingFace repository ID (user/repo)
 
         Raises:
-            LicenseError: If license missing or doesn't match
+            LicenseError: If license missing, not MIT, or API error
         """
-        url = HF_RAW_URL.format(repo_id=hf_repo_id, filename="LICENSE")
+        url = HF_API_URL.format(repo_id=hf_repo_id)
 
         async with httpx.AsyncClient(
             timeout=self._http_timeout, follow_redirects=True
@@ -76,39 +76,43 @@ class ModelVerifier:
                 response = await client.get(url)
 
                 if response.status_code == 404:
-                    raise LicenseError(f"LICENSE file not found in {hf_repo_id}")
+                    raise LicenseError(f"Repository {hf_repo_id} not found")
 
                 response.raise_for_status()
-                content = response.text.strip()
+                model_info = response.json()
 
-                if content != self._required_license:
-                    raise LicenseError(
-                        f"Invalid license in {hf_repo_id}. "
-                        f"Expected '{self._required_license}', got '{content[:50]}...'"
-                    )
+                # Check license in model card metadata
+                card_data = model_info.get("cardData") or {}
+                license_value = card_data.get("license") or ""
 
-                logger.debug(f"License verified for {hf_repo_id}")
+                if "mit" in license_value.lower():
+                    logger.debug(f"MIT license verified for {hf_repo_id}")
+                    return
+
+                raise LicenseError(
+                    f"MIT license required for {hf_repo_id}, found: {license_value or 'none'}"
+                )
 
             except httpx.HTTPError as e:
                 raise LicenseError(
-                    f"Failed to fetch LICENSE from {hf_repo_id}: {e}"
+                    f"Failed to check license for {hf_repo_id}: {e}"
                 ) from e
 
-    async def check_size(self, hf_repo_id: str, max_size_bytes: int) -> int:
+    async def find_onnx_file(self, hf_repo_id: str) -> tuple[str, int]:
         """
-        Check model size via HF API (no download).
+        Find the ONNX model file in a HuggingFace repository.
+
+        Scans the repository root for exactly one .onnx file.
 
         Args:
-            hf_repo_id: HuggingFace repository ID
-            max_size_bytes: Maximum allowed size
+            hf_repo_id: HuggingFace repository ID (user/repo)
 
         Returns:
-            Actual size in bytes
+            Tuple of (filename, size in bytes)
 
         Raises:
-            ModelTooLargeError: If exceeds limit
+            ModelDownloadError: If no .onnx file found, multiple found, or API error
         """
-        # Use tree endpoint which includes file sizes
         api_url = f"https://huggingface.co/api/models/{hf_repo_id}/tree/main"
 
         async with httpx.AsyncClient(
@@ -119,30 +123,61 @@ class ModelVerifier:
                 response.raise_for_status()
                 files = response.json()
 
-                # Find model.onnx in file tree
-                for file_info in files:
-                    if file_info.get("path") == "model.onnx":
-                        size = file_info.get("size", 0)
-                        if size > max_size_bytes:
-                            raise ModelTooLargeError(
-                                f"Model size {size} bytes exceeds limit {max_size_bytes} bytes"
-                            )
-                        logger.debug(f"Model size check passed: {size} bytes")
-                        return size
+                # Find .onnx files in root only (not subdirectories)
+                onnx_files = [
+                    f
+                    for f in files
+                    if f.get("path", "").endswith(".onnx")
+                    and "/" not in f.get("path", "")
+                ]
 
-                logger.warning(f"model.onnx not found in {hf_repo_id} tree")
-                return 0
+                if not onnx_files:
+                    raise ModelDownloadError(
+                        f"No .onnx file found in {hf_repo_id} repository root"
+                    )
+
+                if len(onnx_files) > 1:
+                    names = [f.get("path") for f in onnx_files]
+                    raise ModelDownloadError(
+                        f"Multiple .onnx files found in {hf_repo_id}: {names}. "
+                        f"Repository must contain exactly one .onnx file in root."
+                    )
+
+                onnx_file = onnx_files[0]
+                filename = onnx_file.get("path", "")
+                size = onnx_file.get("size", 0)
+
+                logger.debug(f"Found {filename}: {size} bytes")
+                return filename, size
 
             except httpx.HTTPError as e:
-                logger.warning(f"Could not check size for {hf_repo_id}: {e}")
-                return 0
+                raise ModelDownloadError(
+                    f"Failed to fetch file list from {hf_repo_id}: {e}"
+                ) from e
+
+    def check_model_size(self, size: int, max_size_bytes: int, filename: str) -> None:
+        """
+        Validate model size against limit.
+
+        Args:
+            size: Model size in bytes
+            max_size_bytes: Maximum allowed size
+            filename: Model filename (for error message)
+
+        Raises:
+            ModelTooLargeError: If size exceeds limit
+        """
+        if size > max_size_bytes:
+            raise ModelTooLargeError(
+                f"Model {filename} size {size} bytes exceeds limit {max_size_bytes} bytes"
+            )
 
     async def verify_extrinsic_record(
         self,
         hotkey: str,
         hf_repo_id: str,
         expected_hash: str,
-    ) -> None:
+    ) -> int:
         """
         Verify extrinsic_record.json before download.
 
@@ -157,6 +192,9 @@ class ModelVerifier:
             hotkey: Expected miner hotkey
             hf_repo_id: HuggingFace repository ID
             expected_hash: Hash from chain commitment
+
+        Returns:
+            Commit block number (from Pylon chain query, not miner-provided)
 
         Raises:
             ExtrinsicVerificationError: If any check fails
@@ -237,6 +275,9 @@ class ModelVerifier:
             )
 
         logger.debug(f"Extrinsic record verified for {hotkey}")
+
+        # Return commit block from Pylon (trusted source), not from miner's record
+        return extrinsic_data.block_number
 
     @staticmethod
     def _extract_hash_from_call_args(call_args: list[dict]) -> str | None:

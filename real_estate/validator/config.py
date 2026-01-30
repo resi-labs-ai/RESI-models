@@ -10,6 +10,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+import coloredlogs
+
 
 def add_args(parser: argparse.ArgumentParser) -> None:
     """
@@ -39,6 +41,14 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         type=str,
         help="Name of the hotkey to use.",
         default=os.environ.get("WALLET_HOTKEY", "default"),
+    )
+
+    parser.add_argument(
+        "--wallet.path",
+        dest="wallet_path",
+        type=str,
+        help="Path to wallet directory.",
+        default=os.environ.get("BITTENSOR_WALLET_PATH", "~/.bittensor/wallets"),
     )
 
     parser.add_argument(
@@ -146,7 +156,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--log_level",
         type=str,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        choices=["TRACE", "DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level.",
         default=os.environ.get("LOG_LEVEL", "INFO"),
     )
@@ -164,7 +174,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="wandb_project",
         type=str,
         help="WandB project name.",
-        default=os.environ.get("WANDB_PROJECT", "real-estate-subnet"),
+        default=os.environ.get("WANDB_PROJECT", "subnet-46-evaluations"),
     )
 
     parser.add_argument(
@@ -173,6 +183,30 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         type=str,
         help="WandB entity.",
         default=os.environ.get("WANDB_ENTITY", ""),
+    )
+
+    parser.add_argument(
+        "--wandb.api_key",
+        dest="wandb_api_key",
+        type=str,
+        help="WandB API key. Can also be set via WANDB_API_KEY env var.",
+        default=os.environ.get("WANDB_API_KEY", ""),
+    )
+
+    parser.add_argument(
+        "--wandb.offline",
+        dest="wandb_offline",
+        action="store_true",
+        help="Run WandB in offline mode (logs saved locally).",
+        default=os.environ.get("WANDB_OFFLINE", "false").lower() == "true",
+    )
+
+    parser.add_argument(
+        "--wandb.log_predictions",
+        dest="wandb_log_predictions",
+        action="store_true",
+        help="Enable logging per-property predictions table to WandB (disabled by default).",
+        default=os.environ.get("WANDB_LOG_PREDICTIONS", "false").lower() == "true",
     )
 
     # Model download settings
@@ -193,11 +227,93 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--model.required_license",
-        dest="model_required_license",
+        "--model.min_commitment_age_blocks",
+        dest="model_min_commitment_age_blocks",
+        type=int,
+        help="Minimum age in blocks for commitments to be eligible (~24h = 7200 blocks at 12s/block).",
+        default=int(os.environ.get("MODEL_MIN_COMMITMENT_AGE_BLOCKS", "7200")),
+    )
+
+    # Docker execution settings
+    parser.add_argument(
+        "--docker.memory",
+        dest="docker_memory",
         type=str,
-        help="Required license text for models.",
-        default=os.environ.get("MODEL_REQUIRED_LICENSE", "Lorem Ipsum"),
+        help="Docker container memory limit (e.g., '2g', '4g').",
+        default=os.environ.get("DOCKER_MEMORY", "2g"),
+    )
+
+    parser.add_argument(
+        "--docker.cpu",
+        dest="docker_cpu",
+        type=float,
+        help="Docker container CPU limit (1.0 = 1 core).",
+        default=float(os.environ.get("DOCKER_CPU", "1.0")),
+    )
+
+    parser.add_argument(
+        "--docker.timeout",
+        dest="docker_timeout",
+        type=int,
+        help="Docker inference timeout in seconds.",
+        default=int(os.environ.get("DOCKER_TIMEOUT", "300")),
+    )
+
+    parser.add_argument(
+        "--docker.max_concurrent",
+        dest="docker_max_concurrent",
+        type=int,
+        help="Maximum concurrent Docker evaluations.",
+        default=int(os.environ.get("DOCKER_MAX_CONCURRENT", "4")),
+    )
+
+    # Scheduler settings
+    parser.add_argument(
+        "--scheduler.pre_download_hours",
+        dest="scheduler_pre_download_hours",
+        type=float,
+        help="Hours before eval to start downloading (default: 3.0).",
+        default=float(os.environ.get("SCHEDULER_PRE_DOWNLOAD_HOURS", "3.0")),
+    )
+
+    parser.add_argument(
+        "--scheduler.catch_up_minutes",
+        dest="scheduler_catch_up_minutes",
+        type=float,
+        help="Minutes before eval reserved for catch-up phase (default: 30.0).",
+        default=float(os.environ.get("SCHEDULER_CATCH_UP_MINUTES", "30.0")),
+    )
+
+    # Test mode settings
+    parser.add_argument(
+        "--test-data-path",
+        dest="test_data_path",
+        type=str,
+        help="Path to local JSON file with test validation data. Bypasses API fetch.",
+        default=os.environ.get("TEST_DATA_PATH", ""),
+    )
+
+    parser.add_argument(
+        "--test-mode",
+        dest="test_mode",
+        action="store_true",
+        help="Enable test mode: skip scheduling, run evaluation immediately.",
+        default=os.environ.get("TEST_MODE", "false").lower() == "true",
+    )
+
+    # Burn settings (emission burning via subnet owner UID)
+    parser.add_argument(
+        "--burn_amount",
+        type=float,
+        help="Fraction of emissions to burn (0.0-1.0). Allocated to burn_uid, rest distributed normally.",
+        default=float(os.environ.get("BURN_AMOUNT", "1.0")),
+    )
+
+    parser.add_argument(
+        "--burn_uid",
+        type=int,
+        help="UID of subnet owner to receive burn allocation (protocol burns this emission).",
+        default=int(os.environ.get("BURN_UID", "238")),
     )
 
 
@@ -235,6 +351,13 @@ def check_config(config: argparse.Namespace) -> None:
     if not config.pylon_identity:
         raise ValueError("--pylon.identity is required (or set PYLON_IDENTITY env var)")
 
+    # Validate burn settings
+    if config.burn_amount < 0.0 or config.burn_amount > 1.0:
+        raise ValueError("--burn_amount must be between 0.0 and 1.0")
+
+    if config.burn_amount > 0.0 and config.burn_uid < 0:
+        raise ValueError("--burn_uid is required when --burn_amount > 0")
+
 
 def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
     """Convert config to dictionary for logging."""
@@ -242,6 +365,7 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "netuid": config.netuid,
         "wallet_name": config.wallet_name,
         "wallet_hotkey": config.wallet_hotkey,
+        "wallet_path": config.wallet_path,
         "subtensor_network": config.subtensor_network,
         "pylon_url": config.pylon_url,
         "pylon_token": "***" if config.pylon_token else "",
@@ -259,15 +383,60 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "wandb_off": config.wandb_off,
         "wandb_project": config.wandb_project,
         "wandb_entity": config.wandb_entity,
+        "wandb_api_key": "***" if config.wandb_api_key else "",
+        "wandb_offline": config.wandb_offline,
+        "wandb_log_predictions": config.wandb_log_predictions,
         "model_cache_path": str(config.model_cache_path),
         "model_max_size_mb": config.model_max_size_mb,
-        "model_required_license": config.model_required_license,
+        "model_min_commitment_age_blocks": config.model_min_commitment_age_blocks,
+        "docker_memory": config.docker_memory,
+        "docker_cpu": config.docker_cpu,
+        "docker_timeout": config.docker_timeout,
+        "docker_max_concurrent": config.docker_max_concurrent,
+        "scheduler_pre_download_hours": config.scheduler_pre_download_hours,
+        "scheduler_catch_up_minutes": config.scheduler_catch_up_minutes,
+        "test_data_path": config.test_data_path,
+        "test_mode": config.test_mode,
+        "burn_amount": config.burn_amount,
+        "burn_uid": config.burn_uid,
     }
 
 
 def setup_logging(level: str) -> None:
-    """Configure logging."""
-    logging.basicConfig(
-        level=getattr(logging, level),
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    )
+    """
+    Configure logging with colored output.
+
+    Levels:
+    - TRACE: Everything including third-party debug (websockets, httpcore, etc.)
+    - DEBUG: Only real_estate.* debug logs, third-party at WARNING
+    - INFO/WARNING/ERROR: Standard behavior
+    """
+    # Add custom TRACE level (below DEBUG)
+    TRACE = 5
+    logging.addLevelName(TRACE, "TRACE")
+
+    if level.upper() == "TRACE":
+        # TRACE = show everything
+        coloredlogs.install(
+            level=TRACE,
+            fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        )
+    else:
+        coloredlogs.install(
+            level=getattr(logging, level),
+            fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        )
+
+        # At DEBUG level, quiet noisy third-party loggers
+        if level.upper() == "DEBUG":
+            noisy_loggers = [
+                "websockets",
+                "httpcore",
+                "httpx",
+                "docker",
+                "urllib3",
+                "asyncio",
+                "filelock",
+            ]
+            for name in noisy_loggers:
+                logging.getLogger(name).setLevel(logging.WARNING)

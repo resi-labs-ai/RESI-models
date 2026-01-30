@@ -11,18 +11,20 @@ class CachedModelMetadata:
     """
     Minimal metadata stored alongside cached model file.
 
-    Only stores what's needed for cache invalidation and disk tracking.
-    Full commitment data comes from chain via Pylon (already cached there).
+    Only stores what's needed for cache invalidation, disk tracking,
+    and tie-breaking (commit block).
     """
 
     hash: str  # SHA-256 hash (64 chars) - compared with chain commitment
     size_bytes: int  # For disk space tracking
+    commit_block: int  # Block number when committed (from Pylon, for tie-breaking)
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
         return {
             "hash": self.hash,
             "size_bytes": self.size_bytes,
+            "commit_block": self.commit_block,
         }
 
     @classmethod
@@ -31,6 +33,7 @@ class CachedModelMetadata:
         return cls(
             hash=data["hash"],
             size_bytes=data["size_bytes"],
+            commit_block=data["commit_block"],
         )
 
 
@@ -98,7 +101,10 @@ class DownloadResult:
 
     @property
     def error_message(self) -> str | None:
-        """Get error message if failed."""
+        """Get error message if failed (truncated to 50 chars)."""
         if self.error:
-            return f"{type(self.error).__name__}: {self.error}"
+            msg = f"{type(self.error).__name__}: {self.error}"
+            if len(msg) > 50:
+                return msg[:47] + "..."
+            return msg
         return None

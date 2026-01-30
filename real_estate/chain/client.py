@@ -121,6 +121,11 @@ class ChainClient:
 
         Returns:
             List of ChainModelMetadata for all miners with commitments
+
+        Note:
+            block_number is set to 0 because Pylon doesn't yet include the actual
+            commit block. We get the real block from get_extrinsic() during verification
+            and update it via scheduler._update_commitment_block().
         """
         client = self._ensure_client()
 
@@ -130,10 +135,13 @@ class ChainClient:
             result = []
             for hotkey, hex_data in response.commitments.items():
                 try:
+                    # TODO(pylon): Set to actual commit block once Pylon includes it
+                    # in get_commitments response. For now, we get it from get_extrinsic()
+                    # during verification and update via scheduler._update_commitment_block().
                     commitment = Commitment(
                         hotkey=hotkey,
                         data=hex_data,
-                        block=response.block.number,
+                        block=0,
                     )
                     metadata = commitment.to_metadata()
                     result.append(metadata)
@@ -147,7 +155,10 @@ class ChainClient:
         except PylonUnauthorized as e:
             raise AuthenticationError(f"Invalid Pylon credentials: {e}") from e
         except PylonRequestException as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            cause = str(e.__cause__) if e.__cause__ else str(e)
+            raise ChainConnectionError(
+                f"Connection error: {cause or 'Pylon unreachable'}"
+            ) from e
         except PylonResponseException as e:
             raise ChainConnectionError(f"Failed to fetch commitments: {e}") from e
 
@@ -179,7 +190,10 @@ class ChainClient:
         except PylonUnauthorized as e:
             raise AuthenticationError(f"Invalid Pylon credentials: {e}") from e
         except PylonRequestException as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            cause = str(e.__cause__) if e.__cause__ else str(e)
+            raise ChainConnectionError(
+                f"Connection error: {cause or 'Pylon unreachable'}"
+            ) from e
         except PylonResponseException as e:
             # 404 means no commitment exists - check via __cause__ (Pylon doesn't expose status code)
             if e.__cause__ and "404" in str(e.__cause__):
@@ -242,7 +256,10 @@ class ChainClient:
         except PylonForbidden as e:
             raise CommitmentError(f"Permission denied: {e}") from e
         except PylonRequestException as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            cause = str(e.__cause__) if e.__cause__ else str(e)
+            raise ChainConnectionError(
+                f"Connection error: {cause or 'Pylon unreachable'}"
+            ) from e
         except PylonResponseException as e:
             raise CommitmentError(f"Failed to set commitment: {e}") from e
 
@@ -279,7 +296,10 @@ class ChainClient:
         except PylonUnauthorized as e:
             raise AuthenticationError(f"Invalid Pylon credentials: {e}") from e
         except PylonRequestException as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            cause = str(e.__cause__) if e.__cause__ else str(e)
+            raise ChainConnectionError(
+                f"Connection error: {cause or 'Pylon unreachable'}"
+            ) from e
         except PylonResponseException as e:
             raise ChainConnectionError(f"Failed to fetch metagraph: {e}") from e
 
@@ -297,6 +317,7 @@ class ChainClient:
             dividends=float(pylon_neuron.dividends),
             emission=float(pylon_neuron.emission),
             is_active=pylon_neuron.active,
+            validator_permit=pylon_neuron.validator_permit,
         )
 
     async def get_all_miners(self) -> list[str]:
@@ -333,7 +354,7 @@ class ChainClient:
 
         try:
             await client.identity.put_weights(pylon_weights)
-            logger.info(f"Weights set successfully for {len(weights)} miners")
+            logger.info(f"Weights submitted to Pylon for {len(weights)} miners")
 
         except PylonUnauthorized as e:
             raise AuthenticationError(f"Invalid Pylon credentials: {e}") from e
@@ -342,7 +363,10 @@ class ChainClient:
                 f"Permission denied - validator may not be registered or have stake: {e}"
             ) from e
         except PylonRequestException as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            cause = str(e.__cause__) if e.__cause__ else str(e)
+            raise ChainConnectionError(
+                f"Connection error: {cause or 'Pylon unreachable'}"
+            ) from e
         except PylonResponseException as e:
             raise WeightSettingError(f"Failed to set weights: {e}") from e
 
@@ -384,7 +408,10 @@ class ChainClient:
         except PylonUnauthorized as e:
             raise AuthenticationError(f"Invalid Pylon credentials: {e}") from e
         except PylonRequestException as e:
-            raise ChainConnectionError(f"Connection error: {e}") from e
+            cause = str(e.__cause__) if e.__cause__ else str(e)
+            raise ChainConnectionError(
+                f"Connection error: {cause or 'Pylon unreachable'}"
+            ) from e
         except PylonResponseException:
             # Could be 404 if extrinsic not found
             logger.debug(

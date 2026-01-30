@@ -71,7 +71,6 @@ def create_chain_metadata(hotkey: str, block_number: int) -> ChainModelMetadata:
         hf_repo_id=f"test/{hotkey}",
         model_hash=f"hash_{hotkey}",
         block_number=block_number,
-        timestamp=1700000000 + block_number,
     )
 
 

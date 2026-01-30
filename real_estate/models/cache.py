@@ -89,6 +89,7 @@ class ModelCache:
         temp_model_path: Path,
         model_hash: str,
         size_bytes: int,
+        commit_block: int,
     ) -> Path:
         """
         Store model in cache (atomic move from temp).
@@ -98,6 +99,7 @@ class ModelCache:
             temp_model_path: Path to downloaded model in temp location
             model_hash: Verified hash of the model
             size_bytes: Size of model file
+            commit_block: Block number when committed (from Pylon)
 
         Returns:
             Path to cached model
@@ -115,6 +117,7 @@ class ModelCache:
         metadata = CachedModelMetadata(
             hash=model_hash,
             size_bytes=size_bytes,
+            commit_block=commit_block,
         )
         with open(metadata_path, "w") as f:
             json.dump(metadata.to_dict(), f)
