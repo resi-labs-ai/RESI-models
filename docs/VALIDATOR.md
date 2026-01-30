@@ -295,17 +295,23 @@ grep -E "\| ERROR \||\| CRITICAL \|" ~/.pm2/logs/resi_validator-out*.log
 
 ### Pylon Logs
 
-Pylon logs persist to `~/.pylon/logs/pylon.log` and survive container restarts and `docker compose down`.
+Pylon uses Docker's json-file logging driver with automatic rotation (50MB × 10 files = 500MB max). Logs persist across container restarts but are removed when the container is deleted.
 
 ```bash
 # View live pylon logs
-tail -f ~/.pylon/logs/pylon.log
-
-# Or via docker (lost on container removal)
 docker logs -f resi_pylon
 
+# View recent logs (last 100 lines)
+docker logs --tail 100 resi_pylon
+
+# View logs from last 24 hours
+docker logs --since 24h resi_pylon
+
 # Search pylon logs for errors
-grep -i error ~/.pylon/logs/pylon.log
+docker logs resi_pylon 2>&1 | grep -i error
+
+# Export logs for debugging with subnet teams
+docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 ```
 
 ## Configuration Reference
