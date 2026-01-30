@@ -1,5 +1,5 @@
 {
-  "description": "Test samples for miner CLI local evaluation. Features match feature_config.yaml order (79 features).",
+  "description": "Test samples for miner CLI local evaluation. Features match feature_config.yaml order (78 features).",
   "samples": [
     {
       "zpid": "2062240971",
@@ -13,7 +13,6 @@
         "longitude": -87.58999633789062,
         "year_built": 2022.0,
         "property_age": 3.0,
-        "days_on_zillow": 0.0,
         "stories": 1.0,
         "bathrooms_full": 2.0,
         "bathrooms_half": 1.0,
@@ -99,7 +98,6 @@
         "longitude": -86.63114929199219,
         "year_built": 1976.0,
         "property_age": 49.0,
-        "days_on_zillow": 0.0,
         "stories": 1.0,
         "bathrooms_full": 2.0,
         "bathrooms_half": 0.0,
