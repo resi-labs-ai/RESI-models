@@ -283,6 +283,9 @@ class Validator:
             logger.warning("No non-zero weights to set")
             return
 
+        # Apply burn if configured
+        weights = self._apply_burn(weights)
+
         logger.info(f"Setting weights for {len(weights)} hotkeys")
 
         try:
@@ -303,6 +306,57 @@ class Validator:
         elapsed = self.block - self._last_weight_set_block
         epoch_length: int = self.config.epoch_length
         return elapsed > epoch_length
+
+    def _apply_burn(self, weights: dict[str, float]) -> dict[str, float]:
+        """
+        Apply burn allocation to weights.
+
+        Burn mechanism allocates a fraction of emissions to the subnet owner UID,
+        which the protocol then burns. Remaining emissions are distributed
+        proportionally to other miners.
+
+        Example with 50% burn:
+          Before: {A: 0.6, B: 0.3, C: 0.1}
+          After:  {A: 0.3, B: 0.15, C: 0.05, burn_hotkey: 0.5}
+
+        Args:
+            weights: Original weight distribution (must sum to 1.0)
+
+        Returns:
+            Adjusted weights with burn allocation (sums to 1.0)
+        """
+        burn_amount: float = self.config.burn_amount
+        burn_uid: int = self.config.burn_uid
+
+        # No burn configured
+        if burn_amount <= 0.0 or burn_uid < 0:
+            return weights
+
+        # Get burn hotkey from UID
+        if burn_uid >= len(self.hotkeys):
+            logger.error(
+                f"burn_uid {burn_uid} out of range (max {len(self.hotkeys) - 1}), skipping burn"
+            )
+            return weights
+
+        burn_hotkey = self.hotkeys[burn_uid]
+
+        # Scale down all existing weights
+        remaining_share = 1.0 - burn_amount
+        adjusted_weights = {
+            hotkey: weight * remaining_share for hotkey, weight in weights.items()
+        }
+
+        # Add burn allocation (overwrite if burn_hotkey already has weight)
+        existing_burn_weight = adjusted_weights.get(burn_hotkey, 0.0)
+        adjusted_weights[burn_hotkey] = existing_burn_weight + burn_amount
+
+        logger.info(
+            f"Applied burn: {burn_amount:.1%} to UID {burn_uid} ({burn_hotkey[:8]}...), "
+            f"remaining {remaining_share:.1%} distributed to {len(weights)} miners"
+        )
+
+        return adjusted_weights
 
     def _get_next_eval_time(self) -> datetime:
         """Calculate next scheduled evaluation time based on config."""
@@ -602,7 +656,6 @@ class Validator:
                     pre_download_hours=self.config.scheduler_pre_download_hours,
                     catch_up_minutes=self.config.scheduler_catch_up_minutes,
                 ),
-                required_license=self.config.model_required_license,
             )
 
             await self._startup()
