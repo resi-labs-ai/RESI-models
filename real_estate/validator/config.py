@@ -143,7 +143,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--score_threshold",
         type=float,
         help="Score threshold for winner set. Models within this of best are equivalent.",
-        default=float(os.environ.get("SCORE_THRESHOLD", "0.005")),
+        default=float(os.environ.get("SCORE_THRESHOLD", "0.002")),
     )
 
     parser.add_argument(
