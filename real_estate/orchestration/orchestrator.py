@@ -77,16 +77,24 @@ class ValidationOrchestrator:
         similarity_threshold: float = 1e-6,
         score_threshold: float = 0.005,
         winner_share: float = 0.99,
+        docker_timeout: int = 300,
+        docker_memory: str = "2g",
+        docker_cpu: float = 1.0,
+        docker_max_concurrent: int = 4,
     ) -> ValidationOrchestrator:
         """
         Create orchestrator with default dependencies.
 
         Args:
             feature_config_path: Path to feature config YAML. If None, uses default.
-            evaluation_config: Configuration for model evaluation.
+            evaluation_config: Configuration for model evaluation (overrides docker_* params).
             similarity_threshold: Threshold for duplicate prediction detection.
             score_threshold: Score threshold for winner selection.
             winner_share: Share of emissions allocated to winner (default 99%).
+            docker_timeout: Docker inference timeout in seconds.
+            docker_memory: Docker memory limit (e.g., '2g').
+            docker_cpu: Docker CPU limit (1.0 = 1 core).
+            docker_max_concurrent: Maximum concurrent Docker evaluations.
 
         Returns:
             Configured ValidationOrchestrator ready to run evaluations.
@@ -99,7 +107,12 @@ class ValidationOrchestrator:
                 metrics_config=evaluation_config.metrics_config,
             )
         else:
-            evaluator = create_eval_orchestrator()
+            evaluator = create_eval_orchestrator(
+                max_concurrent=docker_max_concurrent,
+                docker_memory=docker_memory,
+                docker_cpu=docker_cpu,
+                docker_timeout=docker_timeout,
+            )
 
         return cls(
             encoder=FeatureEncoder(config_path=feature_config_path),

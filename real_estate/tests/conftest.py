@@ -20,7 +20,7 @@ def reset_clock_after_test():
         from datetime import UTC, datetime
         from real_estate.data import set_clock
 
-        def test_days_since_last_sale():
+        def test_property_age():
             # Set fixed time for deterministic test
             set_clock(lambda: datetime(2024, 6, 15, tzinfo=UTC))
 

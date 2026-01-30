@@ -24,7 +24,7 @@ class MinerResultLog:
     mae: float | None = None
     rmse: float | None = None
     r2: float | None = None
-    accuracy_10pct: float | None = None  # % within 10% of ground truth
+    accuracy: float | None = None  # % within 10% of ground truth
 
     # Metadata
     model_hash: str | None = None
@@ -45,10 +45,8 @@ class MinerResultLog:
             "mae": round(self.mae, 2) if self.mae is not None else None,
             "rmse": round(self.rmse, 2) if self.rmse is not None else None,
             "r2": round(self.r2, 4) if self.r2 is not None else None,
-            "accuracy_10pct": (
-                round(self.accuracy_10pct, 4)
-                if self.accuracy_10pct is not None
-                else None
+            "accuracy": (
+                round(self.accuracy, 4) if self.accuracy is not None else None
             ),
             "model_hash": self.model_hash,
             "inference_time_ms": (
@@ -196,7 +194,9 @@ class WandbConfig:
 
     # What to log
     log_miner_table: bool = True  # Log per-miner results table
-    log_predictions_table: bool = True  # Log per-property predictions
+    log_predictions_table: bool = (
+        False  # Log per-property predictions (disabled by default)
+    )
 
     # Prediction logging settings
     # Only log predictions for top N miners (to limit data volume)

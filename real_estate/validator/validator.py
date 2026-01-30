@@ -15,7 +15,15 @@ from typing import TYPE_CHECKING
 
 import bittensor as bt
 import numpy as np
+from tenacity import (
+    AsyncRetrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    stop_after_delay,
+    wait_fixed,
+)
 
+from real_estate.chain.errors import ChainConnectionError
 from real_estate.chain.models import Metagraph
 
 if TYPE_CHECKING:
@@ -33,6 +41,7 @@ from real_estate.models import (
     SchedulerConfig,
     create_model_scheduler,
 )
+from real_estate.observability import WandbLogger, create_wandb_logger
 from real_estate.orchestration import ValidationOrchestrator
 from real_estate.utils.misc import ttl_get_block
 
@@ -85,6 +94,7 @@ class Validator:
         self.wallet = bt.wallet(
             name=self.config.wallet_name,
             hotkey=self.config.wallet_hotkey,
+            path=self.config.wallet_path,
         )
         self.hotkey: str = self.wallet.hotkey.ss58_address
         logger.info(f"Loaded wallet: {self.wallet.name}/{self.wallet.hotkey_str}")
@@ -98,6 +108,7 @@ class Validator:
                 schedule_hour=self.config.validation_data_schedule_hour,
                 schedule_minute=self.config.validation_data_schedule_minute,
                 download_raw=self.config.validation_data_download_raw,
+                test_data_path=self.config.test_data_path,
             ),
             self.wallet.hotkey,
         )
@@ -108,6 +119,22 @@ class Validator:
         # Validation orchestrator
         self._orchestrator = ValidationOrchestrator.create(
             score_threshold=self.config.score_threshold,
+            docker_timeout=self.config.docker_timeout,
+            docker_memory=self.config.docker_memory,
+            docker_cpu=self.config.docker_cpu,
+            docker_max_concurrent=self.config.docker_max_concurrent,
+        )
+
+        # WandB logger for evaluation metrics
+        self._wandb_logger: WandbLogger = create_wandb_logger(
+            project=self.config.wandb_project,
+            entity=self.config.wandb_entity or None,
+            api_key=self.config.wandb_api_key or None,
+            validator_hotkey=self.hotkey,
+            netuid=self.config.netuid,
+            enabled=not self.config.wandb_off,
+            offline=self.config.wandb_offline,
+            log_predictions_table=self.config.wandb_log_predictions,
         )
 
         # State
@@ -224,6 +251,14 @@ class Validator:
             logger.error("Cannot set weights - metagraph not synced")
             return
 
+        # Check validator permit before attempting to set weights
+        if not self.metagraph.has_validator_permit(self.hotkey):
+            logger.error(
+                f"Cannot set weights - validator {self.hotkey} does not have "
+                f"validator_permit. Ensure sufficient stake on subnet {self.config.netuid}"
+            )
+            return
+
         # Handle NaN values
         if np.isnan(self.scores).any():
             logger.warning("Scores contain NaN, replacing with 0")
@@ -252,10 +287,10 @@ class Validator:
 
         try:
             await self._ensure_chain().set_weights(weights)
-            logger.info("set_weights on chain successfully!")
+            logger.info("Weights submitted to Pylon")
             self._last_weight_set_block = self.block
         except Exception as e:
-            logger.error(f"set_weights failed: {e}")
+            logger.error(f"Failed to submit weights to Pylon: {e}", exc_info=True)
 
     def should_set_weights(self) -> bool:
         """
@@ -281,6 +316,86 @@ class Validator:
         if next_eval <= now:
             next_eval += timedelta(days=1)
         return next_eval
+
+    async def _run_catch_up_if_time(self, eval_time: datetime) -> None:
+        """
+        Run catch-up phase if there's time before evaluation.
+
+        Catch-up retries downloads that failed during pre-download phase.
+        This handles cases where HuggingFace was temporarily unavailable.
+        It runs in the window between deadline and eval_time.
+
+        Timing rules:
+        - If now < deadline: wait until deadline, then run catch-up
+        - If deadline <= now < eval_time: run catch-up immediately
+        - If now >= eval_time: skip (no time)
+        """
+        now = datetime.now(UTC)
+        catch_up_minutes = self.config.scheduler_catch_up_minutes
+        deadline = eval_time - timedelta(minutes=catch_up_minutes)
+
+        # No time for catch-up
+        if now >= eval_time:
+            logger.info("Catch-up skipped: evaluation time already reached")
+            return
+
+        # Wait until deadline if pre-download finished early
+        if now < deadline:
+            wait_seconds = (deadline - now).total_seconds()
+            logger.info(
+                f"Waiting {wait_seconds:.0f}s until catch-up phase (deadline: {deadline})"
+            )
+            await asyncio.sleep(wait_seconds)
+
+        # Re-check after waiting
+        now = datetime.now(UTC)
+        if now >= eval_time:
+            logger.info("Catch-up skipped: evaluation time reached during wait")
+            return
+
+        # Run catch-up with retry on connection errors
+        time_remaining = (eval_time - now).total_seconds()
+        logger.info(f"Starting catch-up phase ({time_remaining:.0f}s until evaluation)")
+
+        # Extract failed hotkeys from pre-download results
+        failed_hotkeys = {
+            hotkey
+            for hotkey, result in self.download_results.items()
+            if not result.success
+        }
+        if failed_hotkeys:
+            logger.info(f"Catch-up will retry {len(failed_hotkeys)} failed downloads")
+
+        try:
+            # Retry catch-up on connection errors until eval_time
+            async for attempt in AsyncRetrying(
+                wait=wait_fixed(30),  # 30s between retries
+                stop=stop_after_delay(
+                    max(0, time_remaining - 10)
+                ),  # Stop 10s before eval
+                retry=retry_if_exception_type(ChainConnectionError),
+                reraise=True,
+            ):
+                with attempt:
+                    if attempt.retry_state.attempt_number > 1:
+                        logger.info(
+                            f"Retrying catch-up (attempt "
+                            f"{attempt.retry_state.attempt_number})"
+                        )
+                    catch_up_results = await self._model_scheduler.run_catch_up(
+                        failed_hotkeys=failed_hotkeys if failed_hotkeys else None
+                    )
+
+                    if catch_up_results:
+                        # Merge with existing results
+                        if self.download_results:
+                            self.download_results.update(catch_up_results)
+                        else:
+                            self.download_results = catch_up_results
+        except ChainConnectionError as e:
+            logger.warning(f"Catch-up failed after retries: {e}")
+        except Exception as e:
+            logger.warning(f"Catch-up phase failed: {e}", exc_info=True)
 
     def _on_validation_data_fetched(
         self,
@@ -309,14 +424,8 @@ class Validator:
         # Get current metagraph hotkeys
         registered_hotkeys = set(self.hotkeys)
 
-        # Get successful model paths, filtered to registered hotkeys only
-        model_paths = {
-            hotkey: result.model_path
-            for hotkey, result in self.download_results.items()
-            if result.success
-            and result.model_path is not None
-            and hotkey in registered_hotkeys
-        }
+        # Get all available models from cache (handles pre-download failures gracefully)
+        model_paths = self._model_scheduler.get_available_models(registered_hotkeys)
 
         if not model_paths:
             logger.warning("No models available for evaluation")
@@ -330,6 +439,9 @@ class Validator:
         }
 
         logger.info(f"Running evaluation with {len(model_paths)} models")
+
+        # Start WandB run to measure evaluation time
+        self._wandb_logger.start_run()
 
         try:
             result = await self._orchestrator.run(dataset, model_paths, chain_metadata)
@@ -348,8 +460,24 @@ class Validator:
                 f"score={result.winner.winner_score:.4f}"
             )
 
+            # Collect download failures for WandB logging
+            download_failures: dict[str, str] = {}
+            for hotkey, dl_result in self.download_results.items():
+                if not dl_result.success and hotkey not in model_paths:
+                    download_failures[hotkey] = (
+                        dl_result.error_message or "Download failed"
+                    )
+
+            # Log evaluation results to WandB
+            self._wandb_logger.log_evaluation(
+                result, dataset, download_failures=download_failures
+            )
+
         except NoValidModelsError as e:
             logger.warning(f"Evaluation skipped: {e}")
+        finally:
+            # Always finish WandB run
+            self._wandb_logger.finish()
 
     async def _evaluation_loop(self) -> None:
         """Loop that waits for evaluation events and runs evaluation."""
@@ -362,10 +490,24 @@ class Validator:
                 continue
 
             try:
-                await self.update_metagraph()
-                await self._run_evaluation(self.validation_data)
+                async for attempt in AsyncRetrying(
+                    wait=wait_fixed(60),
+                    stop=stop_after_attempt(3),
+                    retry=retry_if_exception_type(ChainConnectionError),
+                    reraise=True,
+                ):
+                    with attempt:
+                        if attempt.retry_state.attempt_number > 1:
+                            logger.info(
+                                f"Retrying evaluation (attempt "
+                                f"{attempt.retry_state.attempt_number}/3)"
+                            )
+                        await self.update_metagraph()
+                        await self._run_evaluation(self.validation_data)
+            except ChainConnectionError as e:
+                logger.error(f"Evaluation failed after 3 attempts: {e}")
             except Exception as e:
-                logger.error(f"Evaluation failed: {e}")
+                logger.error(f"Evaluation failed: {e}", exc_info=True)
 
     async def _weight_setting_loop(self) -> None:
         """Loop that periodically checks and sets weights."""
@@ -384,6 +526,56 @@ class Validator:
                     logger.warning(f"Weight setting failed: {e}")
 
             await asyncio.sleep(60)
+
+    async def _pre_download_loop(self) -> None:
+        """
+        Loop that runs pre-download before each scheduled evaluation.
+
+        Timeline (for 22:30 UTC eval with 3h pre-download, 30min catch-up):
+        - 19:30: Pre-download starts (downloads spread over 2.5h)
+        - 22:00: Catch-up phase (retry failed downloads)
+        - 22:30: Evaluation runs (models already downloaded)
+
+        This loop handles ongoing pre-download scheduling after startup.
+        Startup handles the first round, this loop handles subsequent rounds.
+        """
+        while True:
+            # Calculate next evaluation time and when to start pre-download
+            next_eval = self._get_next_eval_time()
+            pre_download_start = next_eval - timedelta(
+                hours=self.config.scheduler_pre_download_hours
+            )
+
+            # Wait until pre-download should start
+            now = datetime.now(UTC)
+            if now < pre_download_start:
+                wait_seconds = (pre_download_start - now).total_seconds()
+                if wait_seconds >= 3600:
+                    wait_str = f"{wait_seconds / 3600:.1f}h"
+                else:
+                    wait_str = f"{wait_seconds / 60:.0f}m"
+                logger.info(
+                    f"Next pre-download at {pre_download_start} (waiting {wait_str})"
+                )
+                await asyncio.sleep(wait_seconds)
+
+            # Run pre-download phase
+            logger.info(f"Starting pre-download for evaluation at {next_eval}")
+            try:
+                self.download_results = await self._model_scheduler.run_pre_download(
+                    eval_time=next_eval
+                )
+            except Exception as e:
+                logger.warning(f"Pre-download failed: {e}")
+
+            # Run catch-up phase
+            await self._run_catch_up_if_time(next_eval)
+
+            # Wait until after evaluation time before calculating next round
+            now = datetime.now(UTC)
+            if now < next_eval:
+                wait_seconds = (next_eval - now).total_seconds() + 60  # +1min buffer
+                await asyncio.sleep(wait_seconds)
 
     async def run(self) -> None:
         """
@@ -406,7 +598,9 @@ class Validator:
                     max_model_size_bytes=self.config.model_max_size_mb * 1024 * 1024,
                 ),
                 scheduler_config=SchedulerConfig(
-                    min_commitment_age_blocks=0,  # TODO For testing - accept all commitments
+                    min_commitment_age_blocks=self.config.model_min_commitment_age_blocks,
+                    pre_download_hours=self.config.scheduler_pre_download_hours,
+                    catch_up_minutes=self.config.scheduler_catch_up_minutes,
                 ),
                 required_license=self.config.model_required_license,
             )
@@ -422,9 +616,10 @@ class Validator:
                 await asyncio.gather(
                     self._evaluation_loop(),
                     self._weight_setting_loop(),
+                    self._pre_download_loop(),
                 )
-            except KeyboardInterrupt:
-                logger.info("Validator stopped by keyboard interrupt")
+            except asyncio.CancelledError:
+                logger.info("Validator stopped")
             finally:
                 validation_scheduler.shutdown()
 
@@ -434,7 +629,7 @@ class Validator:
         try:
             await self.update_metagraph()
         except Exception as e:
-            logger.error(f"Failed to fetch initial metagraph: {e}")
+            logger.error(f"Failed to fetch initial metagraph: {e}", exc_info=True)
             raise SystemExit(1) from e
 
         if not self.is_registered():
@@ -443,31 +638,21 @@ class Validator:
                 f"Please register with `btcli subnets register`"
             )
 
+        # Check validator permit early
+        if self.metagraph and not self.metagraph.has_validator_permit(self.hotkey):
+            logger.warning(
+                f"Validator {self.hotkey} does NOT have validator_permit. "
+                f"Weight setting will fail until sufficient stake is added on subnet {self.config.netuid}."
+            )
+
         self._last_weight_set_block = self.block
 
         logger.info(f"Validator ready - UID {self.uid}, {len(self.hotkeys)} miners")
 
-        # Initial model download - spread until next scheduled eval time
-        logger.info("Downloading miner models...")
-        try:
-            next_eval = self._get_next_eval_time()
-            logger.info(f"Next evaluation scheduled at {next_eval}")
-            self.download_results = await self._model_scheduler.run_pre_download(
-                eval_time=next_eval
-            )
-        except Exception as e:
-            logger.warning(f"Initial model download failed: {e}")
-
-        # Initial validation data fetch
-        logger.info("Performing initial validation data fetch...")
-        try:
-            validation_data, raw_data = await self.validation_client.fetch_with_retry(
-                download_validation=True,
-                download_raw=self.config.validation_data_download_raw,
-            )
-            self._on_validation_data_fetched(validation_data, raw_data)
-        except Exception as e:
-            logger.warning(f"Initial validation data fetch failed: {e}")
+        logger.info(
+            f"Next evaluation at {self._get_next_eval_time()}, "
+            f"pre-download loop will handle model downloads"
+        )
 
 
 async def main() -> None:

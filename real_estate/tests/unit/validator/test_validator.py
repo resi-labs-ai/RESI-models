@@ -1,17 +1,18 @@
 """Tests for Validator class."""
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
 
 from real_estate.chain.models import Metagraph, Neuron
+from real_estate.models import DownloadResult
 from real_estate.validator import Validator
 
 
-def create_mock_neuron(uid: int, hotkey: str) -> Neuron:
+def create_mock_neuron(uid: int, hotkey: str, validator_permit: bool = True) -> Neuron:
     """Create a mock Neuron for testing."""
     return Neuron(
         uid=uid,
@@ -24,6 +25,7 @@ def create_mock_neuron(uid: int, hotkey: str) -> Neuron:
         dividends=0.1,
         emission=0.1,
         is_active=True,
+        validator_permit=validator_permit,
     )
 
 
@@ -55,6 +57,8 @@ def mock_config() -> MagicMock:
     config.validation_data_schedule_hour = 2
     config.validation_data_schedule_minute = 0
     config.validation_data_download_raw = False
+    config.scheduler_pre_download_hours = 3.0
+    config.scheduler_catch_up_minutes = 30.0
     return config
 
 
@@ -69,7 +73,9 @@ def validator(mock_config: MagicMock) -> Validator:
         patch("real_estate.validator.validator.ValidationOrchestrator"),
     ):
         mock_subtensor.return_value = MagicMock(chain_endpoint="mock_endpoint")
-        mock_wallet.return_value = MagicMock(hotkey=MagicMock(ss58_address="our_hotkey"))
+        mock_wallet.return_value = MagicMock(
+            hotkey=MagicMock(ss58_address="our_hotkey")
+        )
         return Validator(mock_config)
 
 
@@ -119,7 +125,13 @@ class TestOnMetagraphUpdated:
         validator.scores = np.array([0.5, 0.8, 0.3, 0.9, 0.7], dtype=np.float32)
 
         # Replace hotkeys at UIDs 0, 2, and 4
-        new_hotkeys = ["new_hotkey_0", "hotkey_1", "new_hotkey_2", "hotkey_3", "new_hotkey_4"]
+        new_hotkeys = [
+            "new_hotkey_0",
+            "hotkey_1",
+            "new_hotkey_2",
+            "hotkey_3",
+            "new_hotkey_4",
+        ]
         validator.metagraph = create_mock_metagraph(new_hotkeys)
 
         validator._on_metagraph_updated()
@@ -210,8 +222,15 @@ class TestSetWeights:
         self, validator: Validator
     ) -> None:
         """Test normalization math and hotkey-to-weight mapping."""
-        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2", "hotkey_3"]
-        validator.scores = np.array([1.0, 0.0, 3.0, 0.0], dtype=np.float32)
+        # Include validator's own hotkey in the metagraph for validator_permit check
+        validator.hotkeys = [
+            "hotkey_0",
+            "hotkey_1",
+            "hotkey_2",
+            "hotkey_3",
+            "our_hotkey",
+        ]
+        validator.scores = np.array([1.0, 0.0, 3.0, 0.0, 0.0], dtype=np.float32)
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
 
         # Set up mock chain client
@@ -222,10 +241,9 @@ class TestSetWeights:
         await validator.set_weights()
 
         # [1, 0, 3, 0] / 4 = [0.25, 0, 0.75, 0] -> only non-zero in dict
-        mock_chain.set_weights.assert_called_once_with({
-            "hotkey_0": 0.25,
-            "hotkey_2": 0.75
-        })
+        mock_chain.set_weights.assert_called_once_with(
+            {"hotkey_0": 0.25, "hotkey_2": 0.75}
+        )
 
 
 class TestRunEvaluationScores:
@@ -238,7 +256,9 @@ class TestRunEvaluationScores:
         """Miners not in evaluation results get 0, not stale scores."""
         # Setup: 4 hotkeys, hotkey_1 had old score
         validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2", "hotkey_3"]
-        validator.scores = np.array([0.0, 0.5, 0.0, 0.0], dtype=np.float32)  # hotkey_1 has old score
+        validator.scores = np.array(
+            [0.0, 0.5, 0.0, 0.0], dtype=np.float32
+        )  # hotkey_1 has old score
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
 
         # Mock download results - only hotkey_0 and hotkey_2 have models
@@ -256,7 +276,10 @@ class TestRunEvaluationScores:
 
         # Mock orchestrator - returns weights only for evaluated miners
         mock_weights = MagicMock()
-        mock_weights.weights = {"hotkey_0": 0.99, "hotkey_2": 0.01}  # hotkey_1 NOT included
+        mock_weights.weights = {
+            "hotkey_0": 0.99,
+            "hotkey_2": 0.01,
+        }  # hotkey_1 NOT included
         mock_winner = MagicMock()
         mock_winner.winner_hotkey = "hotkey_0"
         mock_winner.winner_score = 0.95
@@ -274,9 +297,9 @@ class TestRunEvaluationScores:
 
         # Verify: hotkey_1's old score (0.5) should be zeroed, not preserved
         assert validator.scores[0] == 0.99  # hotkey_0 - from weights
-        assert validator.scores[1] == 0.0   # hotkey_1 - zeroed (was 0.5)
+        assert validator.scores[1] == 0.0  # hotkey_1 - zeroed (was 0.5)
         assert validator.scores[2] == 0.01  # hotkey_2 - from weights
-        assert validator.scores[3] == 0.0   # hotkey_3 - zeroed
+        assert validator.scores[3] == 0.0  # hotkey_3 - zeroed
 
     @pytest.mark.asyncio
     async def test_all_scores_come_from_current_evaluation(
@@ -284,7 +307,9 @@ class TestRunEvaluationScores:
     ) -> None:
         """After evaluation, scores exactly match weights from orchestrator."""
         validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
-        validator.scores = np.array([0.3, 0.4, 0.3], dtype=np.float32)  # All have old scores
+        validator.scores = np.array(
+            [0.3, 0.4, 0.3], dtype=np.float32
+        )  # All have old scores
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
 
         validator.download_results = {
@@ -313,17 +338,14 @@ class TestRunEvaluationScores:
 
         # All old scores replaced
         np.testing.assert_array_equal(
-            validator.scores,
-            np.array([1.0, 0.0, 0.0], dtype=np.float32)
+            validator.scores, np.array([1.0, 0.0, 0.0], dtype=np.float32)
         )
 
 
 class TestGetNextEvalTime:
     """Tests for _get_next_eval_time method."""
 
-    def test_returns_today_if_before_scheduled_time(
-        self, validator: Validator
-    ) -> None:
+    def test_returns_today_if_before_scheduled_time(self, validator: Validator) -> None:
         """If current time is before scheduled time, returns today."""
         # Schedule at 14:00 UTC
         validator.config.validation_data_schedule_hour = 14
@@ -381,9 +403,7 @@ class TestGetNextEvalTime:
         expected = datetime(2025, 1, 16, 14, 0, 0, tzinfo=UTC)
         assert result == expected
 
-    def test_respects_minute_configuration(
-        self, validator: Validator
-    ) -> None:
+    def test_respects_minute_configuration(self, validator: Validator) -> None:
         """Scheduled minute is respected."""
         # Schedule at 02:30 UTC
         validator.config.validation_data_schedule_hour = 2
@@ -400,3 +420,441 @@ class TestGetNextEvalTime:
         # Should be today at 02:30
         expected = datetime(2025, 1, 15, 2, 30, 0, tzinfo=UTC)
         assert result == expected
+
+
+class TestRunCatchUpIfTime:
+    """Tests for _run_catch_up_if_time method."""
+
+    @pytest.mark.asyncio
+    async def test_skips_if_past_eval_time(self, validator: Validator) -> None:
+        """Skips catch-up if evaluation time has already passed."""
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.run_catch_up = AsyncMock()
+        validator.download_results = {}
+
+        # Eval time is in the past
+        past_eval = datetime.now(UTC) - timedelta(minutes=5)
+
+        await validator._run_catch_up_if_time(past_eval)
+
+        # Should not call run_catch_up
+        validator._model_scheduler.run_catch_up.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_extracts_failed_hotkeys_from_download_results(
+        self, validator: Validator
+    ) -> None:
+        """Extracts failed hotkeys from download_results and passes to catch-up."""
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.run_catch_up = AsyncMock(return_value={})
+
+        # Setup download results with some failures
+        validator.download_results = {
+            "hotkey_success": DownloadResult(hotkey="hotkey_success", success=True),
+            "hotkey_fail_1": DownloadResult(hotkey="hotkey_fail_1", success=False),
+            "hotkey_fail_2": DownloadResult(hotkey="hotkey_fail_2", success=False),
+        }
+
+        # Mock time so we're past deadline but before eval
+        mock_now = datetime(2025, 1, 15, 14, 0, 0, tzinfo=UTC)
+        eval_time = datetime(2025, 1, 15, 14, 5, 0, tzinfo=UTC)  # 5 min in future
+        # With 30 min catch_up_minutes, deadline = 13:35, we're past it
+
+        with (
+            patch("real_estate.validator.validator.datetime") as mock_datetime,
+            patch(
+                "real_estate.validator.validator.asyncio.sleep", new_callable=AsyncMock
+            ),
+        ):
+            mock_datetime.now.return_value = mock_now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            await validator._run_catch_up_if_time(eval_time)
+
+        # Should call run_catch_up with failed hotkeys
+        validator._model_scheduler.run_catch_up.assert_called_once()
+        call_kwargs = validator._model_scheduler.run_catch_up.call_args.kwargs
+        assert call_kwargs["failed_hotkeys"] == {"hotkey_fail_1", "hotkey_fail_2"}
+
+    @pytest.mark.asyncio
+    async def test_merges_catch_up_results_with_download_results(
+        self, validator: Validator
+    ) -> None:
+        """Catch-up results are merged into download_results."""
+        # Catch-up returns a recovered download
+        recovered_result = DownloadResult(hotkey="hotkey_fail", success=True)
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.run_catch_up = AsyncMock(
+            return_value={"hotkey_fail": recovered_result}
+        )
+
+        validator.download_results = {
+            "hotkey_fail": DownloadResult(hotkey="hotkey_fail", success=False),
+        }
+
+        mock_now = datetime(2025, 1, 15, 14, 0, 0, tzinfo=UTC)
+        eval_time = datetime(2025, 1, 15, 14, 5, 0, tzinfo=UTC)
+
+        with (
+            patch("real_estate.validator.validator.datetime") as mock_datetime,
+            patch(
+                "real_estate.validator.validator.asyncio.sleep", new_callable=AsyncMock
+            ),
+        ):
+            mock_datetime.now.return_value = mock_now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            await validator._run_catch_up_if_time(eval_time)
+
+        # download_results should be updated with recovered result
+        assert validator.download_results["hotkey_fail"].success is True
+
+    @pytest.mark.asyncio
+    async def test_handles_empty_download_results(self, validator: Validator) -> None:
+        """Handles case when download_results is empty."""
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.run_catch_up = AsyncMock(return_value={})
+        validator.download_results = {}
+
+        mock_now = datetime(2025, 1, 15, 14, 0, 0, tzinfo=UTC)
+        eval_time = datetime(2025, 1, 15, 14, 5, 0, tzinfo=UTC)
+
+        with (
+            patch("real_estate.validator.validator.datetime") as mock_datetime,
+            patch(
+                "real_estate.validator.validator.asyncio.sleep", new_callable=AsyncMock
+            ),
+        ):
+            mock_datetime.now.return_value = mock_now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            await validator._run_catch_up_if_time(eval_time)
+
+        # Should call with None (no failed hotkeys)
+        validator._model_scheduler.run_catch_up.assert_called_once()
+        call_kwargs = validator._model_scheduler.run_catch_up.call_args.kwargs
+        assert call_kwargs["failed_hotkeys"] is None
+
+
+class TestPreDownloadLoop:
+    """Tests for _pre_download_loop method."""
+
+    @pytest.mark.asyncio
+    async def test_runs_immediately_when_past_pre_download_start(
+        self, validator: Validator
+    ) -> None:
+        """Pre-download runs immediately when already past pre_download_start time."""
+        validator.config.scheduler_pre_download_hours = 2.0
+        validator.config.scheduler_catch_up_minutes = 30.0
+        validator.config.validation_data_schedule_hour = 14
+        validator.config.validation_data_schedule_minute = 0
+
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.run_pre_download = AsyncMock(return_value={})
+
+        call_count = 0
+
+        async def mock_run_pre_download(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 1:
+                raise asyncio.CancelledError()
+            return {}
+
+        validator._model_scheduler.run_pre_download = mock_run_pre_download
+        validator._run_catch_up_if_time = AsyncMock()
+
+        # Mock time: now=13:00, eval=14:00, pre_download_start=12:00 (2h before eval)
+        # Since now > pre_download_start, should run immediately (no sleep)
+        mock_now = datetime(2025, 1, 15, 13, 0, 0, tzinfo=UTC)
+        mock_sleep = AsyncMock()
+
+        with (
+            patch("real_estate.validator.validator.datetime") as mock_datetime,
+            patch("real_estate.validator.validator.asyncio.sleep", mock_sleep),
+        ):
+            mock_datetime.now.return_value = mock_now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            with pytest.raises(asyncio.CancelledError):
+                await validator._pre_download_loop()
+
+        assert call_count == 1
+        # Should NOT have slept before pre-download (already past start time)
+        # Note: may sleep after eval for next cycle, but first pre-download is immediate
+        for call in mock_sleep.call_args_list:
+            # Any sleep should be small (not waiting hours)
+            if call.args:
+                assert call.args[0] < 3600, (
+                    "Should not wait hours when past pre_download_start"
+                )
+
+    @pytest.mark.asyncio
+    async def test_waits_until_pre_download_start_when_early(
+        self, validator: Validator
+    ) -> None:
+        """Pre-download waits until pre_download_start when validator starts early."""
+        validator.config.scheduler_pre_download_hours = 3.0  # 3h before eval
+        validator.config.scheduler_catch_up_minutes = 30.0
+        validator.config.validation_data_schedule_hour = 14
+        validator.config.validation_data_schedule_minute = 0
+
+        validator._model_scheduler = MagicMock()
+        pre_download_called = False
+        sleep_durations = []
+
+        async def mock_run_pre_download(*args, **kwargs):
+            nonlocal pre_download_called
+            pre_download_called = True
+            raise asyncio.CancelledError()
+
+        async def mock_sleep(seconds):
+            sleep_durations.append(seconds)
+            # After first sleep, advance time past pre_download_start
+            if len(sleep_durations) == 1:
+                mock_datetime.now.return_value = datetime(
+                    2025, 1, 15, 11, 0, 0, tzinfo=UTC
+                )
+
+        validator._model_scheduler.run_pre_download = mock_run_pre_download
+        validator._run_catch_up_if_time = AsyncMock()
+
+        # Mock time: now=10:00, eval=14:00, pre_download_start=11:00 (3h before eval)
+        # Should wait 1 hour (3600 seconds) before starting
+        mock_now = datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC)
+
+        with (
+            patch("real_estate.validator.validator.datetime") as mock_datetime,
+            patch("real_estate.validator.validator.asyncio.sleep", mock_sleep),
+        ):
+            mock_datetime.now.return_value = mock_now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            with pytest.raises(asyncio.CancelledError):
+                await validator._pre_download_loop()
+
+        assert pre_download_called, "Pre-download should have been called"
+        assert len(sleep_durations) >= 1, "Should have waited before pre-download"
+        # First sleep should be ~1 hour (3600 seconds) to wait until pre_download_start
+        assert sleep_durations[0] == pytest.approx(3600, rel=0.01), (
+            f"Should wait ~1 hour, got {sleep_durations[0]}s"
+        )
+
+    @pytest.mark.asyncio
+    async def test_calls_catch_up_after_pre_download(
+        self, validator: Validator
+    ) -> None:
+        """Catch-up is called after pre-download completes."""
+        validator.config.scheduler_pre_download_hours = 0.0  # Immediate
+        validator.config.scheduler_catch_up_minutes = 0.0
+        validator.config.validation_data_schedule_hour = 14
+        validator.config.validation_data_schedule_minute = 0
+
+        call_order = []
+
+        async def mock_pre_download(*args, **kwargs):
+            call_order.append("pre_download")
+            raise asyncio.CancelledError()  # Stop after one iteration
+
+        async def mock_catch_up(*args, **kwargs):
+            call_order.append("catch_up")
+
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.run_pre_download = mock_pre_download
+        validator._run_catch_up_if_time = mock_catch_up
+
+        mock_now = datetime(2025, 1, 15, 13, 0, 0, tzinfo=UTC)
+
+        with (
+            patch("real_estate.validator.validator.datetime") as mock_datetime,
+            patch(
+                "real_estate.validator.validator.asyncio.sleep", new_callable=AsyncMock
+            ),
+        ):
+            mock_datetime.now.return_value = mock_now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            with pytest.raises(asyncio.CancelledError):
+                await validator._pre_download_loop()
+
+        assert "pre_download" in call_order
+
+    @pytest.mark.asyncio
+    async def test_handles_pre_download_failure_gracefully(
+        self, validator: Validator
+    ) -> None:
+        """Pre-download failure doesn't crash the loop."""
+        validator.config.scheduler_pre_download_hours = 0.0
+        validator.config.scheduler_catch_up_minutes = 0.0
+        validator.config.validation_data_schedule_hour = 14
+        validator.config.validation_data_schedule_minute = 0
+
+        call_count = 0
+
+        async def mock_pre_download_fails(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("Download failed")
+            raise asyncio.CancelledError()
+
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.run_pre_download = mock_pre_download_fails
+        validator._run_catch_up_if_time = AsyncMock()
+
+        mock_now = datetime(2025, 1, 15, 13, 0, 0, tzinfo=UTC)
+
+        with (
+            patch("real_estate.validator.validator.datetime") as mock_datetime,
+            patch(
+                "real_estate.validator.validator.asyncio.sleep", new_callable=AsyncMock
+            ),
+        ):
+            mock_datetime.now.return_value = mock_now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            with pytest.raises(asyncio.CancelledError):
+                await validator._pre_download_loop()
+
+        # Should have attempted twice (first failed, second cancelled)
+        assert call_count == 2
+
+
+class TestEvaluationRetry:
+    """Tests for evaluation retry on connection errors."""
+
+    @pytest.mark.asyncio
+    async def test_retries_evaluation_on_chain_connection_error(
+        self, validator: Validator
+    ) -> None:
+        """Evaluation retries on ChainConnectionError."""
+        from real_estate.chain.errors import ChainConnectionError
+
+        validator.validation_data = MagicMock()
+        attempt_count = 0
+
+        async def mock_update_metagraph():
+            nonlocal attempt_count
+            attempt_count += 1
+            if attempt_count < 3:
+                raise ChainConnectionError("Connection failed")
+            # Third attempt succeeds
+
+        validator.update_metagraph = mock_update_metagraph
+        validator._run_evaluation = AsyncMock()
+        validator._evaluation_event = asyncio.Event()
+        validator._evaluation_event.set()
+
+        # Run one iteration of the loop by cancelling after success
+        async def run_once():
+            await validator._evaluation_event.wait()
+            validator._evaluation_event.clear()
+            # Import needed for retry
+            from tenacity import (
+                AsyncRetrying,
+                retry_if_exception_type,
+                stop_after_attempt,
+                wait_fixed,
+            )
+
+            try:
+                async for attempt in AsyncRetrying(
+                    wait=wait_fixed(0),  # No wait in tests
+                    stop=stop_after_attempt(3),
+                    retry=retry_if_exception_type(ChainConnectionError),
+                    reraise=True,
+                ):
+                    with attempt:
+                        await validator.update_metagraph()
+                        await validator._run_evaluation(validator.validation_data)
+            except ChainConnectionError:
+                pass
+
+        await run_once()
+
+        # Should have called update_metagraph 3 times (2 failures + 1 success)
+        assert attempt_count == 3
+        validator._run_evaluation.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_evaluation_fails_after_max_retries(
+        self, validator: Validator
+    ) -> None:
+        """Evaluation gives up after max retries exhausted."""
+        from real_estate.chain.errors import ChainConnectionError
+
+        validator.validation_data = MagicMock()
+
+        async def always_fail():
+            raise ChainConnectionError("Connection failed")
+
+        validator.update_metagraph = always_fail
+        validator._run_evaluation = AsyncMock()
+
+        # Import needed for retry
+        from tenacity import (
+            AsyncRetrying,
+            retry_if_exception_type,
+            stop_after_attempt,
+            wait_fixed,
+        )
+
+        failed = False
+        try:
+            async for attempt in AsyncRetrying(
+                wait=wait_fixed(0),
+                stop=stop_after_attempt(3),
+                retry=retry_if_exception_type(ChainConnectionError),
+                reraise=True,
+            ):
+                with attempt:
+                    await validator.update_metagraph()
+        except ChainConnectionError:
+            failed = True
+
+        assert failed
+        validator._run_evaluation.assert_not_called()
+
+
+class TestCatchUpRetry:
+    """Tests for catch-up retry on connection errors."""
+
+    @pytest.mark.asyncio
+    async def test_retries_catch_up_on_chain_connection_error(
+        self, validator: Validator
+    ) -> None:
+        """Catch-up retries on ChainConnectionError until success."""
+        from real_estate.chain.errors import ChainConnectionError
+
+        validator.download_results = {}
+        attempt_count = 0
+
+        async def mock_run_catch_up(*args, **kwargs):
+            nonlocal attempt_count
+            attempt_count += 1
+            if attempt_count < 2:
+                raise ChainConnectionError("Connection failed")
+            return {"hotkey1": MagicMock(success=True)}
+
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.run_catch_up = mock_run_catch_up
+        validator.config.scheduler_catch_up_minutes = 3.0
+
+        # Mock time: now is 2 min before eval
+        eval_time = datetime(2025, 1, 15, 14, 0, 0, tzinfo=UTC)
+        mock_now = datetime(2025, 1, 15, 13, 58, 0, tzinfo=UTC)
+
+        with (
+            patch("real_estate.validator.validator.datetime") as mock_datetime,
+            patch(
+                "real_estate.validator.validator.asyncio.sleep", new_callable=AsyncMock
+            ),
+        ):
+            mock_datetime.now.return_value = mock_now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            await validator._run_catch_up_if_time(eval_time)
+
+        # Should have retried once after initial failure
+        assert attempt_count == 2
+        assert "hotkey1" in validator.download_results

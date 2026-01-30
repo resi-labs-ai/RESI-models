@@ -110,6 +110,7 @@ class Neuron:
     dividends: float
     emission: float
     is_active: bool
+    validator_permit: bool
 
     @classmethod
     def from_pylon_response(cls, uid: int, data: dict[str, Any]) -> Neuron:
@@ -125,6 +126,7 @@ class Neuron:
             dividends=float(data.get("dividends", 0)),
             emission=float(data.get("emission", 0)),
             is_active=data.get("active", False),
+            validator_permit=data.get("validator_permit", False),
         )
 
 
@@ -195,6 +197,11 @@ class Metagraph:
             if neuron.hotkey == hotkey:
                 return neuron
         return None
+
+    def has_validator_permit(self, hotkey: str) -> bool:
+        """Check if a hotkey has validator permit to set weights."""
+        neuron = self.get_neuron(hotkey)
+        return neuron is not None and neuron.validator_permit
 
     @classmethod
     def from_pylon_response(cls, data: dict[str, Any]) -> Metagraph:

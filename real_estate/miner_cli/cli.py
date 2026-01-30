@@ -88,7 +88,9 @@ def cmd_submit(args: argparse.Namespace) -> int:
         return 2
 
     # Initialize wallet and subtensor
-    wallet = bt.wallet(name=args.wallet_name, hotkey=args.wallet_hotkey)
+    wallet = bt.wallet(
+        name=args.wallet_name, hotkey=args.wallet_hotkey, path=args.wallet_path
+    )
     subtensor = bt.subtensor(network=args.network)
     hotkey_ss58 = wallet.hotkey.ss58_address
 
@@ -154,7 +156,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
     print()
     print("Next steps:")
     print("  1. Ensure model.onnx is uploaded to your HuggingFace repo")
-    print("  2. Add LICENSE file to your repo")
+    print("  2. Ensure the model repo is having the proper license")
 
     if extrinsic_info:
         print("  3. Add extrinsic_record.json to your repo with this content:")
@@ -251,6 +253,14 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         required=True,
         metavar="HOTKEY",
         help="Bittensor wallet hotkey",
+    )
+
+    submit_parser.add_argument(
+        "--wallet.path",
+        dest="wallet_path",
+        default="~/.bittensor/wallets",
+        metavar="PATH",
+        help="Path to wallet directory (default: ~/.bittensor/wallets)",
     )
 
     # Network arguments

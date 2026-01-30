@@ -95,6 +95,13 @@ class WinnerSelector:
                 )
             )
 
+        # Log all candidates in winner set
+        logger.debug(
+            f"Winner set (threshold={self._threshold}, cutoff={threshold_cutoff:.4f}):"
+        )
+        for c in sorted(candidates, key=lambda x: x.block_number):
+            logger.debug(f"  {c.hotkey}: score={c.score:.4f}, block={c.block_number}")
+
         # Within winner set, pick earliest commit
         winner = min(candidates, key=lambda c: (c.block_number, c.hotkey))
 

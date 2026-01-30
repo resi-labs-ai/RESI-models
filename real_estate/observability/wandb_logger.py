@@ -153,6 +153,7 @@ class WandbLogger:
         result: ValidationResult,
         dataset: ValidationDataset,
         property_id_field: str = "zpid",
+        download_failures: dict[str, str] | None = None,
     ) -> None:
         """
         Log a complete evaluation round to WandB.
@@ -161,6 +162,8 @@ class WandbLogger:
             result: Validation result from orchestrator
             dataset: Validation dataset with properties
             property_id_field: Field name for property ID (default: zpid)
+            download_failures: Dict mapping hotkey to error message for miners
+                              that failed during download (license, hash, etc.)
         """
         if not self._config.enabled:
             return
@@ -171,7 +174,7 @@ class WandbLogger:
 
         try:
             # Build evaluation log
-            eval_log = self._build_evaluation_log(result)
+            eval_log = self._build_evaluation_log(result, download_failures)
 
             # Log summary metrics
             self._run.log(eval_log.to_summary_dict())
@@ -195,10 +198,14 @@ class WandbLogger:
             )
 
         except Exception as e:
-            logger.error(f"Failed to log evaluation to WandB: {e}")
+            logger.error(f"Failed to log evaluation to WandB: {e}", exc_info=True)
             # Don't raise - logging failures shouldn't break validation
 
-    def _build_evaluation_log(self, result: ValidationResult) -> EvaluationLog:
+    def _build_evaluation_log(
+        self,
+        result: ValidationResult,
+        download_failures: dict[str, str] | None = None,
+    ) -> EvaluationLog:
         """Build EvaluationLog from ValidationResult."""
         now = datetime.now(UTC)
 
@@ -230,7 +237,7 @@ class WandbLogger:
                 mae=eval_result.metrics.mae if eval_result.metrics else None,
                 rmse=eval_result.metrics.rmse if eval_result.metrics else None,
                 r2=eval_result.metrics.r2 if eval_result.metrics else None,
-                accuracy_10pct=(
+                accuracy=(
                     eval_result.metrics.accuracy.get(0.10)
                     if eval_result.metrics
                     else None
@@ -242,6 +249,17 @@ class WandbLogger:
                 error=eval_result.error_message if not eval_result.success else None,
             )
             miner_results.append(miner_log)
+
+        # Add download failures (miners that never made it to evaluation)
+        if download_failures:
+            for hotkey, error_msg in download_failures.items():
+                miner_log = MinerResultLog(
+                    hotkey=hotkey,
+                    score=0.0,
+                    success=False,
+                    error=error_msg,
+                )
+                miner_results.append(miner_log)
 
         return EvaluationLog(
             timestamp=now,
@@ -274,7 +292,7 @@ class WandbLogger:
             "mae",
             "rmse",
             "r2",
-            "accuracy_10pct",
+            "accuracy",
             "inference_time_ms",
             "is_winner",
             "is_copier",
@@ -292,7 +310,7 @@ class WandbLogger:
                 miner.mae,
                 miner.rmse,
                 miner.r2,
-                miner.accuracy_10pct,
+                miner.accuracy,
                 miner.inference_time_ms,
                 miner.is_winner,
                 miner.is_copier,
@@ -382,6 +400,7 @@ def create_wandb_logger(
     netuid: int = 46,
     enabled: bool = True,
     offline: bool = False,
+    log_predictions_table: bool = False,
 ) -> WandbLogger:
     """
     Create a WandB logger with common configuration.
@@ -394,6 +413,7 @@ def create_wandb_logger(
         netuid: Subnet UID
         enabled: Whether logging is enabled
         offline: Run in offline mode
+        log_predictions_table: Log per-property predictions table (disabled by default)
 
     Returns:
         Configured WandbLogger instance
@@ -415,5 +435,6 @@ def create_wandb_logger(
         api_key=api_key or None,
         enabled=enabled,
         offline=offline,
+        log_predictions_table=log_predictions_table,
     )
     return WandbLogger(config, validator_hotkey, netuid)

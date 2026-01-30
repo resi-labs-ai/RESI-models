@@ -7,6 +7,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -45,6 +46,8 @@ class ValidationDatasetClientConfig:
     schedule_hour: int = 2  # Default 2 AM UTC
     schedule_minute: int = 0
     download_raw: bool = False  # Whether to download raw files by default
+    # Test mode: load from local file instead of API
+    test_data_path: str = ""  # Path to local JSON file (bypasses API when set)
 
 
 @dataclass
@@ -90,6 +93,10 @@ class ValidationDatasetClient:
         self._config = config
         self._keypair = keypair
         self._base_url = config.url.rstrip("/")
+        self._use_test_data = bool(config.test_data_path)
+
+        if self._use_test_data:
+            logger.info(f"TEST DATA: Will load data from {config.test_data_path}")
 
     def _sign_request(self, method: str, url: str, nonce: str) -> dict[str, str]:
         """
@@ -124,6 +131,55 @@ class ValidationDatasetClient:
             **sign_headers,
             "Signature": signature,
         }
+
+    def _load_test_data(self) -> ValidationDataset:
+        """
+        Load validation data from local JSON file (test mode).
+
+        Expected JSON format:
+        {
+            "properties": [
+                {"price": 500000, "living_area_sqft": 2000, ...},
+                ...
+            ]
+        }
+        OR just a list of properties directly.
+
+        Returns:
+            ValidationDataset loaded from file.
+
+        Raises:
+            FileNotFoundError: If file doesn't exist.
+            ValidationDataRequestError: If JSON format is invalid.
+        """
+        file_path = Path(self._config.test_data_path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"Test data file not found: {file_path}")
+
+        logger.info(f"Loading test validation data from: {file_path}")
+
+        with open(file_path) as f:
+            data = json.load(f)
+
+        # Handle multiple formats (same as download_validation_set)
+        if isinstance(data, list):
+            properties = data
+        elif isinstance(data, dict) and "properties" in data:
+            properties = data["properties"]
+        elif isinstance(data, dict) and "records" in data:
+            properties = data["records"]
+        else:
+            raise ValidationDataRequestError(
+                "Invalid test data format: expected list or dict with 'properties'/'records' key"
+            )
+
+        if not properties:
+            raise ValidationDataRequestError("Test data has empty properties list")
+
+        dataset = ValidationDataset(properties=properties)
+        logger.info(f"Loaded {len(dataset)} properties from test data")
+
+        return dataset
 
     async def _request(
         self,
@@ -437,6 +493,8 @@ class ValidationDatasetClient:
         Retries on ValidationDataRequestError and ValidationDataRateLimitError.
         Does not retry on ValidationDataAuthError or ValidationDataNotFoundError.
 
+        In test mode (test_data_path set), loads from local file instead.
+
         Args:
             date: Optional date in YYYY-MM-DD format
             download_validation: Whether to download validation set
@@ -450,6 +508,21 @@ class ValidationDatasetClient:
             ValidationDataNotFoundError: If data not found (no retry)
             ValidationDataRequestError: If all retries exhausted
         """
+        # Test data mode: load from local file instead of API
+        if self._use_test_data:
+            validation_data = self._load_test_data() if download_validation else None
+            # Raw data not supported in test data mode
+            return validation_data, None
+
+        def _log_retry(retry_state):
+            """Log retry attempts with clear context."""
+            exc = retry_state.outcome.exception()
+            wait_time = retry_state.next_action.sleep
+            logger.warning(
+                f"Validation data fetch failed: {exc}. "
+                f"Retrying in {wait_time:.0f}s (attempt {retry_state.attempt_number}/{self._config.max_retries})"
+            )
+
         async for attempt in AsyncRetrying(
             wait=wait_fixed(self._config.retry_delay_seconds),
             stop=stop_after_attempt(self._config.max_retries),
@@ -460,6 +533,7 @@ class ValidationDatasetClient:
                     ValidationDataProcessingError,
                 )
             ),
+            before_sleep=_log_retry,
             reraise=True,
         ):
             with attempt:
@@ -487,6 +561,8 @@ class ValidationDatasetClient:
         Start scheduled validation data fetching using APScheduler.
 
         Fetches data daily at the configured time (default 2 AM UTC).
+
+        In test mode: schedules an immediate fetch instead of waiting for cron time.
 
         Args:
             on_fetch: Callback called with (ValidationDataset, raw_data) after each successful fetch.
@@ -522,10 +598,11 @@ class ValidationDatasetClient:
             minute=self._config.schedule_minute,
             id="validation_set_fetch",
         )
-
         logger.info(
             f"Scheduled validation set fetch: daily at {self._config.schedule_hour:02d}:{self._config.schedule_minute:02d} UTC"
         )
+        if self._use_test_data:
+            logger.info(f"  (using test data from: {self._config.test_data_path})")
 
         scheduler.start()
         return scheduler

@@ -10,6 +10,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+import coloredlogs
+
 
 def add_args(parser: argparse.ArgumentParser) -> None:
     """
@@ -39,6 +41,14 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         type=str,
         help="Name of the hotkey to use.",
         default=os.environ.get("WALLET_HOTKEY", "default"),
+    )
+
+    parser.add_argument(
+        "--wallet.path",
+        dest="wallet_path",
+        type=str,
+        help="Path to wallet directory.",
+        default=os.environ.get("BITTENSOR_WALLET_PATH", "~/.bittensor/wallets"),
     )
 
     parser.add_argument(
@@ -146,7 +156,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--log_level",
         type=str,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        choices=["TRACE", "DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level.",
         default=os.environ.get("LOG_LEVEL", "INFO"),
     )
@@ -191,6 +201,14 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=os.environ.get("WANDB_OFFLINE", "false").lower() == "true",
     )
 
+    parser.add_argument(
+        "--wandb.log_predictions",
+        dest="wandb_log_predictions",
+        action="store_true",
+        help="Enable logging per-property predictions table to WandB (disabled by default).",
+        default=os.environ.get("WANDB_LOG_PREDICTIONS", "false").lower() == "true",
+    )
+
     # Model download settings
     parser.add_argument(
         "--model.cache_path",
@@ -214,6 +232,14 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         type=str,
         help="Required license text for models.",
         default=os.environ.get("MODEL_REQUIRED_LICENSE", "Lorem Ipsum"),
+    )
+
+    parser.add_argument(
+        "--model.min_commitment_age_blocks",
+        dest="model_min_commitment_age_blocks",
+        type=int,
+        help="Minimum age in blocks for commitments to be eligible (~24h = 7200 blocks at 12s/block).",
+        default=int(os.environ.get("MODEL_MIN_COMMITMENT_AGE_BLOCKS", "7200")),
     )
 
     # Docker execution settings
@@ -247,6 +273,40 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         type=int,
         help="Maximum concurrent Docker evaluations.",
         default=int(os.environ.get("DOCKER_MAX_CONCURRENT", "4")),
+    )
+
+    # Scheduler settings
+    parser.add_argument(
+        "--scheduler.pre_download_hours",
+        dest="scheduler_pre_download_hours",
+        type=float,
+        help="Hours before eval to start downloading (default: 3.0).",
+        default=float(os.environ.get("SCHEDULER_PRE_DOWNLOAD_HOURS", "3.0")),
+    )
+
+    parser.add_argument(
+        "--scheduler.catch_up_minutes",
+        dest="scheduler_catch_up_minutes",
+        type=float,
+        help="Minutes before eval reserved for catch-up phase (default: 30.0).",
+        default=float(os.environ.get("SCHEDULER_CATCH_UP_MINUTES", "30.0")),
+    )
+
+    # Test mode settings
+    parser.add_argument(
+        "--test-data-path",
+        dest="test_data_path",
+        type=str,
+        help="Path to local JSON file with test validation data. Bypasses API fetch.",
+        default=os.environ.get("TEST_DATA_PATH", ""),
+    )
+
+    parser.add_argument(
+        "--test-mode",
+        dest="test_mode",
+        action="store_true",
+        help="Enable test mode: skip scheduling, run evaluation immediately.",
+        default=os.environ.get("TEST_MODE", "false").lower() == "true",
     )
 
 
@@ -291,6 +351,7 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "netuid": config.netuid,
         "wallet_name": config.wallet_name,
         "wallet_hotkey": config.wallet_hotkey,
+        "wallet_path": config.wallet_path,
         "subtensor_network": config.subtensor_network,
         "pylon_url": config.pylon_url,
         "pylon_token": "***" if config.pylon_token else "",
@@ -310,19 +371,57 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "wandb_entity": config.wandb_entity,
         "wandb_api_key": "***" if config.wandb_api_key else "",
         "wandb_offline": config.wandb_offline,
+        "wandb_log_predictions": config.wandb_log_predictions,
         "model_cache_path": str(config.model_cache_path),
         "model_max_size_mb": config.model_max_size_mb,
         "model_required_license": config.model_required_license,
+        "model_min_commitment_age_blocks": config.model_min_commitment_age_blocks,
         "docker_memory": config.docker_memory,
         "docker_cpu": config.docker_cpu,
         "docker_timeout": config.docker_timeout,
         "docker_max_concurrent": config.docker_max_concurrent,
+        "scheduler_pre_download_hours": config.scheduler_pre_download_hours,
+        "scheduler_catch_up_minutes": config.scheduler_catch_up_minutes,
+        "test_data_path": config.test_data_path,
+        "test_mode": config.test_mode,
     }
 
 
 def setup_logging(level: str) -> None:
-    """Configure logging."""
-    logging.basicConfig(
-        level=getattr(logging, level),
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    )
+    """
+    Configure logging with colored output.
+
+    Levels:
+    - TRACE: Everything including third-party debug (websockets, httpcore, etc.)
+    - DEBUG: Only real_estate.* debug logs, third-party at WARNING
+    - INFO/WARNING/ERROR: Standard behavior
+    """
+    # Add custom TRACE level (below DEBUG)
+    TRACE = 5
+    logging.addLevelName(TRACE, "TRACE")
+
+    if level.upper() == "TRACE":
+        # TRACE = show everything
+        coloredlogs.install(
+            level=TRACE,
+            fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        )
+    else:
+        coloredlogs.install(
+            level=getattr(logging, level),
+            fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        )
+
+        # At DEBUG level, quiet noisy third-party loggers
+        if level.upper() == "DEBUG":
+            noisy_loggers = [
+                "websockets",
+                "httpcore",
+                "httpx",
+                "docker",
+                "urllib3",
+                "asyncio",
+                "filelock",
+            ]
+            for name in noisy_loggers:
+                logging.getLogger(name).setLevel(logging.WARNING)

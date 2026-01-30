@@ -141,7 +141,9 @@ class TestCircuitBreaker:
         downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
 
         # Set to close in 60 seconds
-        downloader._circuit_breaker.open_until = datetime.now(UTC) + timedelta(seconds=60)
+        downloader._circuit_breaker.open_until = datetime.now(UTC) + timedelta(
+            seconds=60
+        )
 
         remaining = downloader._get_circuit_breaker_remaining_seconds()
         assert 58 <= remaining <= 62  # Allow small timing variance
@@ -177,7 +179,7 @@ class TestRetryLogic:
         with patch(
             "real_estate.models.downloader.hf_hub_download", side_effect=mock_download
         ):
-            path = await downloader._download_with_retry("user/repo")
+            path = await downloader._download_with_retry("user/repo", "model.onnx")
 
         assert call_count == 3
         assert path == downloaded_file
@@ -207,7 +209,7 @@ class TestRetryLogic:
             ),
             pytest.raises(ModelDownloadError),
         ):
-            await downloader._download_with_retry("user/repo")
+            await downloader._download_with_retry("user/repo", "model.onnx")
 
         # 4 retries = 3 sleeps with exponential backoff: 1, 2, 4
         assert delays == [1, 2, 4]
@@ -233,11 +235,12 @@ class TestRetryLogic:
 
         with (
             patch(
-                "real_estate.models.downloader.hf_hub_download", side_effect=mock_download
+                "real_estate.models.downloader.hf_hub_download",
+                side_effect=mock_download,
             ),
             pytest.raises(ModelDownloadError, match="Failed to download model"),
         ):
-            await downloader._download_with_retry("user/repo")
+            await downloader._download_with_retry("user/repo", "model.onnx")
 
         assert call_count == 2
 
@@ -266,11 +269,12 @@ class TestRetryLogic:
 
         with (
             patch(
-                "real_estate.models.downloader.hf_hub_download", side_effect=mock_download
+                "real_estate.models.downloader.hf_hub_download",
+                side_effect=mock_download,
             ),
             pytest.raises(ModelDownloadError, match="Repository not found"),
         ):
-            await downloader._download_with_retry("user/repo")
+            await downloader._download_with_retry("user/repo", "model.onnx")
 
         # Should fail immediately without retrying
         assert call_count == 1
@@ -299,11 +303,12 @@ class TestRetryLogic:
 
         with (
             patch(
-                "real_estate.models.downloader.hf_hub_download", side_effect=mock_download
+                "real_estate.models.downloader.hf_hub_download",
+                side_effect=mock_download,
             ),
             pytest.raises(ModelDownloadError, match="model.onnx not found"),
         ):
-            await downloader._download_with_retry("user/repo")
+            await downloader._download_with_retry("user/repo", "model.onnx")
 
         # Should fail immediately without retrying
         assert call_count == 1
@@ -340,11 +345,12 @@ class TestRetryLogic:
         with (
             patch("asyncio.sleep", new=mock_sleep),
             patch(
-                "real_estate.models.downloader.hf_hub_download", side_effect=slow_download
+                "real_estate.models.downloader.hf_hub_download",
+                side_effect=slow_download,
             ),
             pytest.raises(ModelDownloadError, match="Failed to download model"),
         ):
-            await downloader._download_with_retry("user/repo")
+            await downloader._download_with_retry("user/repo", "model.onnx")
 
         # Should retry all attempts
         assert call_count == 3
@@ -365,7 +371,9 @@ class TestDiskSpaceCheck:
     ) -> None:
         """Raises InsufficientDiskSpaceError when disk is full."""
         mock_cache.get_free_disk_space.return_value = 50_000_000  # 50MB free
-        mock_verifier.check_size = AsyncMock(return_value=100_000_000)  # 100MB model
+        mock_verifier.find_onnx_file = AsyncMock(
+            return_value=("model.onnx", 100_000_000)
+        )
 
         downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
 
@@ -382,8 +390,12 @@ class TestDiskSpaceCheck:
     ) -> None:
         """Disk space check includes 100MB safety buffer."""
         # Model is 50MB, but with 100MB buffer we need 150MB
-        mock_verifier.check_size = AsyncMock(return_value=50_000_000)  # 50MB model
-        mock_cache.get_free_disk_space.return_value = 120_000_000  # 120MB free (< 150MB)
+        mock_verifier.find_onnx_file = AsyncMock(
+            return_value=("model.onnx", 50_000_000)
+        )
+        mock_cache.get_free_disk_space.return_value = (
+            120_000_000  # 120MB free (< 150MB)
+        )
 
         downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
 
@@ -400,7 +412,9 @@ class TestDiskSpaceCheck:
         tmp_path: Path,
     ) -> None:
         """Proceeds with download when disk space is sufficient."""
-        mock_verifier.check_size = AsyncMock(return_value=50_000_000)  # 50MB model
+        mock_verifier.find_onnx_file = AsyncMock(
+            return_value=("model.onnx", 50_000_000)
+        )
         mock_cache.get_free_disk_space.return_value = 500_000_000  # 500MB free
 
         # Create mock downloaded file
@@ -440,6 +454,7 @@ class TestDownloadModel:
         cached_path = tmp_path / "cached" / "model.onnx"
         cached_model = MagicMock()
         cached_model.path = cached_path
+        cached_model.metadata.commit_block = 1000  # Set commit_block for cache hit
 
         mock_cache.is_valid.return_value = True
         mock_cache.get.return_value = cached_model
@@ -447,7 +462,10 @@ class TestDownloadModel:
         downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
         result = await downloader.download_model(sample_commitment)
 
-        assert result == cached_path
+        assert result.path == cached_path
+        assert result.commit_block == 1000
+        # No network calls needed - commit_block is in cache
+        mock_verifier.verify_extrinsic_record.assert_not_called()
         mock_verifier.check_license.assert_not_called()
 
     @pytest.mark.asyncio
@@ -461,7 +479,7 @@ class TestDownloadModel:
     ) -> None:
         """Calls all verification steps in correct order."""
         mock_cache.is_valid.return_value = False
-        mock_verifier.check_size = AsyncMock(return_value=1000)
+        mock_verifier.find_onnx_file = AsyncMock(return_value=("model.onnx", 1000))
 
         downloaded_file = tmp_path / "model.onnx"
         downloaded_file.write_bytes(b"model content")
@@ -478,12 +496,48 @@ class TestDownloadModel:
             result = await downloader.download_model(sample_commitment)
 
         # Verify all steps were called
-        mock_verifier.check_license.assert_called_once_with(sample_commitment.hf_repo_id)
-        mock_verifier.check_size.assert_called_once()
+        mock_verifier.check_license.assert_called_once_with(
+            sample_commitment.hf_repo_id
+        )
+        mock_verifier.find_onnx_file.assert_called_once()
         mock_verifier.verify_extrinsic_record.assert_called_once()
         mock_verifier.verify_hash.assert_called_once()
         mock_cache.put.assert_called_once()
-        assert result == cached_path
+        assert result.path == cached_path
+        assert result.commit_block == 1000
+
+    @pytest.mark.asyncio
+    async def test_passes_commit_block_to_cache_put(
+        self,
+        download_config: DownloadConfig,
+        mock_cache: MagicMock,
+        mock_verifier: MagicMock,
+        sample_commitment: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Passes commit_block from Pylon to cache.put() for new downloads."""
+        mock_cache.is_valid.return_value = False
+        mock_verifier.find_onnx_file = AsyncMock(return_value=("model.onnx", 1000))
+        mock_verifier.verify_extrinsic_record = AsyncMock(return_value=7500)
+
+        downloaded_file = tmp_path / "model.onnx"
+        downloaded_file.write_bytes(b"model content")
+
+        cached_path = tmp_path / "cached" / "model.onnx"
+        mock_cache.put.return_value = cached_path
+
+        downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
+
+        with patch(
+            "real_estate.models.downloader.hf_hub_download",
+            return_value=str(downloaded_file),
+        ):
+            result = await downloader.download_model(sample_commitment)
+
+        # Verify commit_block from Pylon is passed to cache.put()
+        put_call_kwargs = mock_cache.put.call_args[1]
+        assert put_call_kwargs["commit_block"] == 7500
+        assert result.commit_block == 7500
 
     @pytest.mark.asyncio
     async def test_cleans_up_temp_file_on_hash_failure(
@@ -498,7 +552,7 @@ class TestDownloadModel:
         from real_estate.models import HashMismatchError
 
         mock_cache.is_valid.return_value = False
-        mock_verifier.check_size = AsyncMock(return_value=1000)
+        mock_verifier.find_onnx_file = AsyncMock(return_value=("model.onnx", 1000))
 
         # Create temp file that will be cleaned up
         downloaded_file = tmp_path / "model.onnx"
@@ -522,6 +576,41 @@ class TestDownloadModel:
 
         # Temp file should be cleaned up
         assert not downloaded_file.exists()
+
+    @pytest.mark.asyncio
+    async def test_downloads_custom_onnx_filename(
+        self,
+        download_config: DownloadConfig,
+        mock_cache: MagicMock,
+        mock_verifier: MagicMock,
+        sample_commitment: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Downloads using the custom filename from find_onnx_file."""
+        mock_cache.is_valid.return_value = False
+        # Verifier returns custom filename
+        mock_verifier.find_onnx_file = AsyncMock(
+            return_value=("my_custom_model.onnx", 1000)
+        )
+
+        downloaded_file = tmp_path / "my_custom_model.onnx"
+        downloaded_file.write_bytes(b"model content")
+
+        cached_path = tmp_path / "cached" / "model.onnx"
+        mock_cache.put.return_value = cached_path
+
+        downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
+
+        with patch(
+            "real_estate.models.downloader.hf_hub_download",
+            return_value=str(downloaded_file),
+        ) as mock_download:
+            await downloader.download_model(sample_commitment)
+
+        # Verify hf_hub_download was called with custom filename
+        mock_download.assert_called_once()
+        call_kwargs = mock_download.call_args[1]
+        assert call_kwargs["filename"] == "my_custom_model.onnx"
 
 
 class TestIsCached:

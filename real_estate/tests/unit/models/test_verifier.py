@@ -12,6 +12,7 @@ from real_estate.models import (
     ExtrinsicVerificationError,
     HashMismatchError,
     LicenseError,
+    ModelDownloadError,
     ModelTooLargeError,
     ModelVerifier,
 )
@@ -88,14 +89,14 @@ class TestCheckLicense:
                 await verifier.check_license("user/repo")
 
 
-class TestCheckSize:
-    """Tests for ModelVerifier.check_size method."""
+class TestFindOnnxFile:
+    """Tests for ModelVerifier.find_onnx_file method."""
 
     @pytest.mark.asyncio
-    async def test_returns_size_when_under_limit(
+    async def test_returns_filename_and_size(
         self, mock_chain_client: MagicMock
     ) -> None:
-        """Returns size when model is under limit."""
+        """Returns (filename, size) tuple for found .onnx file."""
         verifier = ModelVerifier(mock_chain_client)
 
         mock_response = MagicMock()
@@ -110,21 +111,21 @@ class TestCheckSize:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )
-            size = await verifier.check_size("user/repo", max_size_bytes=100_000_000)
+            filename, size = await verifier.find_onnx_file("user/repo")
 
+        assert filename == "model.onnx"
         assert size == 50_000_000
 
     @pytest.mark.asyncio
-    async def test_raises_error_when_over_limit(
-        self, mock_chain_client: MagicMock
-    ) -> None:
-        """Raises ModelTooLargeError when model exceeds limit."""
+    async def test_finds_any_onnx_filename(self, mock_chain_client: MagicMock) -> None:
+        """Finds .onnx file with any name."""
         verifier = ModelVerifier(mock_chain_client)
 
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = [
-            {"path": "model.onnx", "size": 500_000_000},
+            {"path": "my_custom_model.onnx", "size": 50_000_000},
+            {"path": "README.md", "size": 1000},
         ]
         mock_response.raise_for_status = MagicMock()
 
@@ -132,14 +133,16 @@ class TestCheckSize:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )
-            with pytest.raises(ModelTooLargeError, match="exceeds limit"):
-                await verifier.check_size("user/repo", max_size_bytes=100_000_000)
+            filename, size = await verifier.find_onnx_file("user/repo")
+
+        assert filename == "my_custom_model.onnx"
+        assert size == 50_000_000
 
     @pytest.mark.asyncio
-    async def test_returns_zero_when_model_not_found(
+    async def test_raises_error_when_no_onnx_found(
         self, mock_chain_client: MagicMock
     ) -> None:
-        """Returns 0 when model.onnx not in file tree."""
+        """Raises ModelDownloadError when no .onnx file in repo."""
         verifier = ModelVerifier(mock_chain_client)
 
         mock_response = MagicMock()
@@ -154,24 +157,152 @@ class TestCheckSize:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )
-            size = await verifier.check_size("user/repo", max_size_bytes=100_000_000)
-
-        assert size == 0
+            with pytest.raises(ModelDownloadError, match="No .onnx file found"):
+                await verifier.find_onnx_file("user/repo")
 
     @pytest.mark.asyncio
-    async def test_returns_zero_on_http_error(
+    async def test_raises_error_when_multiple_onnx_found(
         self, mock_chain_client: MagicMock
     ) -> None:
-        """Returns 0 on HTTP error (graceful degradation)."""
+        """Raises ModelDownloadError when multiple .onnx files in repo."""
+        verifier = ModelVerifier(mock_chain_client)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {"path": "model.onnx", "size": 50_000_000},
+            {"path": "model_v2.onnx", "size": 60_000_000},
+        ]
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+                return_value=mock_response
+            )
+            with pytest.raises(ModelDownloadError, match="Multiple .onnx files"):
+                await verifier.find_onnx_file("user/repo")
+
+    @pytest.mark.asyncio
+    async def test_ignores_onnx_in_subdirectories(
+        self, mock_chain_client: MagicMock
+    ) -> None:
+        """Only finds .onnx files in root, not subdirectories."""
+        verifier = ModelVerifier(mock_chain_client)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {"path": "subdir/model.onnx", "size": 50_000_000},  # in subdir, ignored
+            {"path": "README.md", "size": 1000},
+        ]
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+                return_value=mock_response
+            )
+            with pytest.raises(ModelDownloadError, match="No .onnx file found"):
+                await verifier.find_onnx_file("user/repo")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "filename",
+        [
+            "price_predictor.onnx",
+            "model-v2.onnx",
+            "RealEstate_Model_2024.onnx",
+            "a.onnx",
+            "model123.onnx",
+        ],
+    )
+    async def test_accepts_various_valid_onnx_filenames(
+        self, mock_chain_client: MagicMock, filename: str
+    ) -> None:
+        """Accepts various valid .onnx filenames."""
+        verifier = ModelVerifier(mock_chain_client)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {"path": filename, "size": 50_000_000},
+            {"path": "README.md", "size": 1000},
+        ]
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+                return_value=mock_response
+            )
+            returned_filename, size = await verifier.find_onnx_file("user/repo")
+
+        assert returned_filename == filename
+        assert size == 50_000_000
+
+    @pytest.mark.asyncio
+    async def test_ignores_non_onnx_files(self, mock_chain_client: MagicMock) -> None:
+        """Ignores files that don't end with .onnx."""
+        verifier = ModelVerifier(mock_chain_client)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {"path": "model.onnx.backup", "size": 50_000_000},  # not .onnx
+            {"path": "model_onnx", "size": 50_000_000},  # not .onnx
+            {"path": "README.md", "size": 1000},
+        ]
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+                return_value=mock_response
+            )
+            with pytest.raises(ModelDownloadError, match="No .onnx file found"):
+                await verifier.find_onnx_file("user/repo")
+
+    @pytest.mark.asyncio
+    async def test_raises_error_on_http_error(
+        self, mock_chain_client: MagicMock
+    ) -> None:
+        """Raises ModelDownloadError on HTTP error."""
         verifier = ModelVerifier(mock_chain_client)
 
         with patch("httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 side_effect=httpx.HTTPError("API error")
             )
-            size = await verifier.check_size("user/repo", max_size_bytes=100_000_000)
+            with pytest.raises(ModelDownloadError, match="Failed to fetch file list"):
+                await verifier.find_onnx_file("user/repo")
 
-        assert size == 0
+
+class TestCheckModelSize:
+    """Tests for ModelVerifier.check_model_size method."""
+
+    def test_passes_when_under_limit(self, mock_chain_client: MagicMock) -> None:
+        """Does not raise when model is under limit."""
+        verifier = ModelVerifier(mock_chain_client)
+        # Should not raise
+        verifier.check_model_size(50_000_000, 100_000_000, "model.onnx")
+
+    def test_raises_error_when_over_limit(self, mock_chain_client: MagicMock) -> None:
+        """Raises ModelTooLargeError when model exceeds limit."""
+        verifier = ModelVerifier(mock_chain_client)
+
+        with pytest.raises(ModelTooLargeError, match="exceeds limit"):
+            verifier.check_model_size(500_000_000, 100_000_000, "model.onnx")
+
+    def test_raises_error_at_exact_limit(self, mock_chain_client: MagicMock) -> None:
+        """Raises ModelTooLargeError when model equals limit."""
+        verifier = ModelVerifier(mock_chain_client)
+
+        with pytest.raises(ModelTooLargeError, match="exceeds limit"):
+            verifier.check_model_size(100_000_001, 100_000_000, "model.onnx")
+
+    def test_includes_filename_in_error(self, mock_chain_client: MagicMock) -> None:
+        """Error message includes filename."""
+        verifier = ModelVerifier(mock_chain_client)
+
+        with pytest.raises(ModelTooLargeError, match="my_model.onnx"):
+            verifier.check_model_size(500_000_000, 100_000_000, "my_model.onnx")
 
 
 class TestVerifyExtrinsicRecord:
@@ -196,6 +327,7 @@ class TestVerifyExtrinsicRecord:
         # Mock chain client response
         mock_extrinsic = MagicMock()
         mock_extrinsic.address = "5TestHotkey"
+        mock_extrinsic.block_number = 12345  # Block from Pylon
         mock_extrinsic.is_commitment_extrinsic.return_value = True
         mock_extrinsic.call.call_args = []  # No call args to parse
         mock_chain_client.get_extrinsic = AsyncMock(return_value=mock_extrinsic)
@@ -204,11 +336,14 @@ class TestVerifyExtrinsicRecord:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=mock_response
             )
-            await verifier.verify_extrinsic_record(
+            commit_block = await verifier.verify_extrinsic_record(
                 hotkey="5TestHotkey",
                 hf_repo_id="user/repo",
                 expected_hash="abc12345",
             )
+
+        # Returns commit block from Pylon (trusted source)
+        assert commit_block == 12345
 
     @pytest.mark.asyncio
     async def test_raises_error_when_record_not_found(

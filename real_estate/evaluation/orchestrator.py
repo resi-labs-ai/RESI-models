@@ -134,7 +134,10 @@ class EvaluationOrchestrator:
             for result in completed_results:
                 if isinstance(result, Exception):
                     # This shouldn't happen as _evaluate_single_model catches exceptions
-                    logger.error(f"Unexpected exception during evaluation: {result}")
+                    logger.error(
+                        f"Unexpected exception during evaluation: {result}",
+                        exc_info=result,
+                    )
                     continue
                 results.append(result)
 

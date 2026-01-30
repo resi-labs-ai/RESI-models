@@ -5,16 +5,16 @@ numeric_fields:
   - price
   - beds
   - sqft
+  - property_age
 
 boolean_fields:
   - has_pool
 
-feature_transforms:
-  - days_since_last_sale
+feature_transforms: []
 
 feature_order:
   - price
   - beds
   - sqft
-  - days_since_last_sale
+  - property_age
   - has_pool
