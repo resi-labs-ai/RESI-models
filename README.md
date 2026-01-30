@@ -1,42 +1,62 @@
-# Real Estate Price Prediction Subnet
+# RESI - Real Estate Price Prediction Subnet
 
-A Bittensor subnet for real estate price prediction using machine learning models.
-
-**Subnet 46** on Bittensor Mainnet
+**Subnet 46** on Bittensor Mainnet | [Dashboard](https://dashboard.resilabs.ai) | [Validator Guide](docs/VALIDATOR.md) | [Miner Guide](docs/MINER.md)
 
 ---
 
 ## Overview
 
-This subnet incentivizes the development of accurate real estate price prediction models. Miners submit ONNX models to HuggingFace, and validators evaluate them against ground-truth sales data.
+RESI is a Bittensor subnet that incentivizes the development of accurate real estate price prediction models. Miners compete to build the best ONNX models for predicting US residential property prices, while validators evaluate predictions against ground-truth sales data.
+
+### Key Features
+
+- **Daily Evaluation Cycle**: Models are evaluated daily at 18:00 UTC against real sales data
+- **Never-Before-Seen Data**: Models must be committed ~28 hours before evaluation; evaluation uses last 24 hours of sales data - ensuring models are tested on data they couldn't have seen
+- **Winner-Takes-All**: Best performing model receives 99% of emissions
 
 ---
 
-## Quick Start
+## Incentive Mechanism
 
-### For Validators
+### Evaluation on Unseen Data
 
-See the [Validator Setup Guide](docs/VALIDATOR_SETUP.md) for setup instructions.
+To ensure models generalize rather than memorize, RESI enforces a temporal separation:
 
-### For Miners
+- **Commit Cutoff**: Models must be committed on-chain **~28 hours before evaluation**
+- **Fresh Data**: Evaluation uses sales data from the **last 24 hours**
 
-```bash
-# Clone and install
-git clone https://github.com/resi-labs-ai/RESI-models.git
-cd RESI-models
-uv sync
+This guarantees that every model is tested against data that didn't exist when the model was submitted.
 
-# Train your model and export to ONNX
-# Upload to HuggingFace
-# Register commitment on-chain
+### How Scoring Works
 
-uv run python -m real_estate.miner.miner_cli register \
-    --wallet.name miner \
-    --wallet.hotkey default \
-    --hf_repo your-username/your-model
+Models are scored using **MAPE (Mean Absolute Percentage Error)**:
+
+```
+Score = 1 - MAPE
 ```
 
-Miner guide coming soon.
+Example: A model with 8.5% average prediction error has a score of 0.915.
+
+### Winner Selection
+
+RESI uses a **threshold + commit-time mechanism** to reward innovation:
+
+1. **Find Best Score**: Identify the highest-scoring model
+2. **Define Winner Set**: All models within a configurable threshold of the best score qualify
+3. **Select Winner**: Within the winner set, the **earliest on-chain commit wins**
+
+This means:
+- If you match the current best model, the original pioneer keeps winning
+- To become the new winner, you must **improve by more than the threshold**
+- Incremental copycats cannot displace innovators
+
+### Reward Distribution
+
+| Category | Share | Description |
+|----------|-------|-------------|
+| **Winner** | 99% | Model that pioneered the best performance |
+| **Non-winners** | 1% | Shared proportionally by score among valid models |
+| **Copiers** | 0% | Detected duplicates receive nothing |
 
 ---
 
@@ -47,22 +67,51 @@ Miner guide coming soon.
 │     Miners      │     │   Validators    │     │    Bittensor    │
 │                 │     │                 │     │      Chain      │
 │  Train models   │     │  Fetch models   │     │                 │
-│  Upload to HF   │────►│  Evaluate       │────►│  Set weights    │
+│  Upload to HF   │────►│  Run inference  │────►│  Set weights    │
 │  Commit hash    │     │  Score & rank   │     │  Distribute TAO │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
+
+### Components
+
+- **Miners**: Train ML models, export to ONNX, upload to HuggingFace, register on-chain
+- **Validators**: Download models, run sandboxed inference, calculate scores, set weights
+- **Pylon**: Chain interaction layer handling metagraph sync and weight submission
+
+---
+
+## Quick Start
+
+### For Validators
+
+See the [Validator Setup Guide](docs/VALIDATOR.md) for complete setup instructions.
+
+### For Miners
+
+See the [Miner Guide](docs/MINER.md) for complete setup instructions.
+
+---
+
+## Model Requirements
+
+| Requirement | Specification |
+|-------------|---------------|
+| **Format** | ONNX (`.onnx` file) |
+| **Max Size** | 200 MB |
+| **License** | MIT (verified via HuggingFace metadata) |
+| **Commit Age** | Must be committed ~28 hours before evaluation |
+| **Input** | Property features (see documentation) |
+| **Output** | Predicted price in USD |
 
 ---
 
 ## Development Setup
 
-This project uses [uv](https://docs.astral.sh/uv/) - a fast Python package manager.
-
 ### Prerequisites
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) package manager
-- Docker (for running validators)
+- Docker (for validators)
 
 ### Install
 
@@ -94,56 +143,8 @@ uv run pytest real_estate/tests/ -v
 uv run pytest real_estate/tests/ --cov=real_estate
 ```
 
-### CI/CD
-
-GitHub Actions runs on every push and PR:
-
-| Job | Description |
-|-----|-------------|
-| **Lint** | `ruff check` and `ruff format --check` |
-| **Test** | `pytest` on Python 3.11, 3.12 |
-
----
-
-## Project Structure
-
-```
-RESI-models/
-├── real_estate/
-│   ├── chain/           # Pylon client for chain interactions
-│   ├── data/            # Validation dataset management
-│   ├── duplicate_detector/  # Pioneer/copier detection
-│   ├── evaluation/      # Docker-based model evaluation
-│   ├── incentives/      # Scoring and weight distribution
-│   ├── models/          # Model downloading and verification
-│   ├── orchestration/   # Validation pipeline orchestration
-│   ├── validator/       # Validator entry point and config
-│   └── tests/           # Test suite
-├── scripts/
-│   └── start_validator.py  # Auto-updating validator runner
-├── docs/
-│   └── VALIDATOR_SETUP.md  # Validator setup guide
-├── docker-compose.yml   # Pylon service configuration
-├── .env.example         # Environment template
-└── pyproject.toml       # Project configuration
-```
-
----
-
-## Documentation
-
-- [Validator Setup Guide](docs/VALIDATOR_SETUP.md)
-- Miner Guide (coming soon)
-
 ---
 
 ## Support
 
-- GitHub Issues: https://github.com/resi-labs-ai/RESI-models/issues
-- Discord: [RESI Discord](https://discord.gg/resi)
-
----
-
-## License
-
-Coming soon.
+- **GitHub Issues**: https://github.com/resi-labs-ai/RESI-models/issues
