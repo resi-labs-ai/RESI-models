@@ -59,6 +59,8 @@ def mock_config() -> MagicMock:
     config.validation_data_download_raw = False
     config.scheduler_pre_download_hours = 3.0
     config.scheduler_catch_up_minutes = 30.0
+    config.burn_amount = 0.0
+    config.burn_uid = -1
     return config
 
 
@@ -243,6 +245,63 @@ class TestSetWeights:
         # [1, 0, 3, 0] / 4 = [0.25, 0, 0.75, 0] -> only non-zero in dict
         mock_chain.set_weights.assert_called_once_with(
             {"hotkey_0": 0.25, "hotkey_2": 0.75}
+        )
+
+    @pytest.mark.asyncio
+    async def test_set_weights_with_burn_allocation(
+        self, validator: Validator
+    ) -> None:
+        """Test burn allocates fraction to burn_uid and scales down rest."""
+        validator.hotkeys = [
+            "hotkey_0",
+            "hotkey_1",
+            "burn_hotkey",  # UID 2 is the burn target
+            "hotkey_3",
+            "our_hotkey",
+        ]
+        validator.scores = np.array([1.0, 0.0, 0.0, 3.0, 0.0], dtype=np.float32)
+        validator.metagraph = create_mock_metagraph(validator.hotkeys)
+
+        # Configure 50% burn to UID 2
+        validator.config.burn_amount = 0.5
+        validator.config.burn_uid = 2
+
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock()
+        validator.chain = mock_chain
+
+        await validator.set_weights()
+
+        # Original: {hotkey_0: 0.25, hotkey_3: 0.75}
+        # After 50% burn: {hotkey_0: 0.125, hotkey_3: 0.375, burn_hotkey: 0.5}
+        mock_chain.set_weights.assert_called_once()
+        weights = mock_chain.set_weights.call_args[0][0]
+        assert weights["hotkey_0"] == pytest.approx(0.125)
+        assert weights["hotkey_3"] == pytest.approx(0.375)
+        assert weights["burn_hotkey"] == pytest.approx(0.5)
+
+    @pytest.mark.asyncio
+    async def test_set_weights_no_burn_when_zero(
+        self, validator: Validator
+    ) -> None:
+        """Test no burn applied when burn_amount is 0."""
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey"]
+        validator.scores = np.array([1.0, 3.0, 0.0], dtype=np.float32)
+        validator.metagraph = create_mock_metagraph(validator.hotkeys)
+
+        # No burn configured (defaults)
+        validator.config.burn_amount = 0.0
+        validator.config.burn_uid = -1
+
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock()
+        validator.chain = mock_chain
+
+        await validator.set_weights()
+
+        # No burn: {hotkey_0: 0.25, hotkey_1: 0.75}
+        mock_chain.set_weights.assert_called_once_with(
+            {"hotkey_0": 0.25, "hotkey_1": 0.75}
         )
 
 

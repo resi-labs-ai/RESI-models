@@ -227,14 +227,6 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--model.required_license",
-        dest="model_required_license",
-        type=str,
-        help="Required license text for models.",
-        default=os.environ.get("MODEL_REQUIRED_LICENSE", "Lorem Ipsum"),
-    )
-
-    parser.add_argument(
         "--model.min_commitment_age_blocks",
         dest="model_min_commitment_age_blocks",
         type=int,
@@ -309,6 +301,21 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=os.environ.get("TEST_MODE", "false").lower() == "true",
     )
 
+    # Burn settings (emission burning via subnet owner UID)
+    parser.add_argument(
+        "--burn_amount",
+        type=float,
+        help="Fraction of emissions to burn (0.0-1.0). Allocated to burn_uid, rest distributed normally.",
+        default=float(os.environ.get("BURN_AMOUNT", "1.0")),
+    )
+
+    parser.add_argument(
+        "--burn_uid",
+        type=int,
+        help="UID of subnet owner to receive burn allocation (protocol burns this emission).",
+        default=int(os.environ.get("BURN_UID", "-1")),
+    )
+
 
 def get_config() -> argparse.Namespace:
     """Parse arguments and return configuration."""
@@ -344,6 +351,13 @@ def check_config(config: argparse.Namespace) -> None:
     if not config.pylon_identity:
         raise ValueError("--pylon.identity is required (or set PYLON_IDENTITY env var)")
 
+    # Validate burn settings
+    if config.burn_amount < 0.0 or config.burn_amount > 1.0:
+        raise ValueError("--burn_amount must be between 0.0 and 1.0")
+
+    if config.burn_amount > 0.0 and config.burn_uid < 0:
+        raise ValueError("--burn_uid is required when --burn_amount > 0")
+
 
 def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
     """Convert config to dictionary for logging."""
@@ -374,7 +388,6 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "wandb_log_predictions": config.wandb_log_predictions,
         "model_cache_path": str(config.model_cache_path),
         "model_max_size_mb": config.model_max_size_mb,
-        "model_required_license": config.model_required_license,
         "model_min_commitment_age_blocks": config.model_min_commitment_age_blocks,
         "docker_memory": config.docker_memory,
         "docker_cpu": config.docker_cpu,
@@ -384,6 +397,8 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "scheduler_catch_up_minutes": config.scheduler_catch_up_minutes,
         "test_data_path": config.test_data_path,
         "test_mode": config.test_mode,
+        "burn_amount": config.burn_amount,
+        "burn_uid": config.burn_uid,
     }
 
 
