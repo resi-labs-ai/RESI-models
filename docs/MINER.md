@@ -191,7 +191,7 @@ miner-cli submit \
 **Example output:**
 ```
 License Notice:
-Your HuggingFace model repository must include a LICENSE file.
+Your HuggingFace model must be MIT licensed.
 Validators verify this before evaluating your model.
 
 Submitting model to chain...
@@ -226,9 +226,10 @@ Your repo must contain:
 ```
 your-username/housing-model/
 ├── model.onnx              # Your ONNX model (required)
-├── LICENSE                 # License file (required)
 └── extrinsic_record.json   # Chain commitment link (required)
 ```
+
+> **Note:** Select **MIT** license when creating your HuggingFace repository.
 
 ### extrinsic_record.json Format
 
@@ -255,7 +256,7 @@ The CLI only hashes your local model file - it doesn't interact with HuggingFace
 Validators perform these checks before scoring your model:
 
 **Pre-download (via HuggingFace API):**
-1. LICENSE file exists
+1. MIT license in model card metadata (`license: mit` in README.md)
 2. model.onnx size ≤ 200MB
 3. extrinsic_record.json exists and is valid
 4. Extrinsic exists on chain and was signed by your hotkey
