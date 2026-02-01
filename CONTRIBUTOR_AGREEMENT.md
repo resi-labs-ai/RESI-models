@@ -1,8 +1,8 @@
 # RESI Model Contributor Agreement
 
-**Version 1.0**  
-**Effective Date:** February 1, 2026  
-**Last Updated:** January 26, 2026
+**Version 1.1**
+**Effective Date:** February 1, 2026
+**Last Updated:** January 28, 2026
 
 ---
 
@@ -12,7 +12,7 @@ This Model Contributor Agreement ("Agreement") governs your submission of AI mod
 
 **⚠️ Important:** By submitting materials to Subnet 46, you agree to be bound by this Agreement. Please read it carefully.
 
-**⚠️ EXCLUSIVE LICENSE:** By submitting materials to Subnet 46, you grant RESI exclusive commercial rights. Please read Section 2 carefully.
+**MIT License Requirement:** All models submitted to Subnet 46 must be licensed under the MIT License. See Section 5 for details.
 
 **Legal Review Notice:** RESI recommends that contributors consult with their own legal counsel before submitting materials.
 
@@ -21,10 +21,10 @@ This Model Contributor Agreement ("Agreement") governs your submission of AI mod
 ## Table of Contents
 
 1. [Definitions](#1-definitions)
-2. [License Grant to RESI](#2-license-grant-to-resi)
+2. [MIT License and Rights](#2-mit-license-and-rights)
 3. [Representations and Warranties](#3-representations-and-warranties)
 4. [Base Model and License Disclosure](#4-base-model-and-license-disclosure)
-5. [Required License for Submitted Models](#5-required-license-for-submitted-models) ⭐ NEW
+5. [Required License for Submitted Models](#5-required-license-for-submitted-models)
 6. [Indemnification](#6-indemnification)
 7. [Rewards and Compensation](#7-rewards-and-compensation)
 8. [Intellectual Property Rights](#8-intellectual-property-rights)
@@ -53,66 +53,50 @@ This Model Contributor Agreement ("Agreement") governs your submission of AI mod
 
 ---
 
-## 2. License Grant to RESI
+## 2. MIT License and Rights
 
-### 2.1 Rights Granted
+### 2.1 MIT License Requirement
 
-By submitting materials to Subnet 46, You hereby grant RESI a **worldwide, royalty-free, EXCLUSIVE, perpetual, irrevocable, sublicensable, and transferable license** to:
+All models submitted to Subnet 46 must be licensed under the **MIT License**. By requiring MIT licensing, Your Submitted Materials are openly available under permissive terms.
 
-a) **Use and Reproduce:** Use, run, execute, copy, and reproduce Your Submitted Materials in any manner;
+### 2.2 What MIT License Means
 
-b) **Modify and Adapt:** Modify, adapt, improve, enhance, and create derivative works based on Your Submitted Materials;
+The MIT License grants everyone (including RESI, validators, other miners, and the public) the following rights:
 
-c) **Distribute and Display:** Distribute, publish, publicly display, and publicly perform Your Submitted Materials, including through APIs, web interfaces, or third-party integrations;
+- **Use:** Use the Submitted Materials for any purpose, including commercial use
+- **Copy:** Make copies of the Submitted Materials
+- **Modify:** Modify and create derivative works
+- **Distribute:** Distribute the original or modified versions
+- **Sublicense:** Grant these same rights to others
+- **Sell:** Sell copies or services based on the Submitted Materials
 
-d) **Incorporate into Products:** Incorporate Your Submitted Materials into RESI's products, services, research projects, and commercial offerings;
+### 2.3 Your Rights as Author
 
-e) **Sublicense:** Grant sublicenses to any or all of the foregoing rights to third parties, including but not limited to:
-   - Other Subnet 46 participants (miners, validators, users)
-   - RESI's commercial partners and customers
-   - The broader Bittensor community
+You retain:
 
-f) **Model Training:** Use Your Submitted Materials to train, fine-tune, evaluate, benchmark, or otherwise improve other AI models;
+- **Ownership:** You remain the copyright holder of Your original work
+- **Attribution:** The MIT License requires attribution to You as the original author
+- **Full Usage Rights:** You may use, modify, distribute, and commercialize Your own work without restriction
+- **No Exclusivity:** You are free to submit the same or similar models to other platforms, subnets, or competitions
 
-g) **Research and Development:** Use Your Submitted Materials for internal research, development, testing, and quality assurance purposes.
+### 2.4 RESI's Rights
 
-### 2.2 Scope and Duration
+Under the MIT License, RESI has the same rights as any other recipient:
 
-- This license is **perpetual** and **irrevocable** once granted
-- This license applies to the Submitted Materials as originally submitted and any modifications made by RESI
-- This license survives termination of Your account or participation in Subnet 46
+- Use Your Submitted Materials in Subnet 46 operations
+- Evaluate, benchmark, and score Your models
+- Create derivative works or improvements
+- Use for commercial purposes
 
-### 2.3 Exclusive Rights and Restrictions
+RESI does not claim any exclusive rights to MIT-licensed Submitted Materials.
 
-⚠️ **IMPORTANT:** This is an EXCLUSIVE license. You retain ownership, but grant RESI exclusive commercial rights.
+### 2.5 Acknowledgment
 
-**RESI's Exclusive Rights:**
+By submitting MIT-licensed materials to Subnet 46, You acknowledge that:
 
-By granting RESI an exclusive license, only RESI may:
-- Use the Submitted Materials for commercial purposes
-- License or sublicense the Submitted Materials to third parties
-- Monetize or commercialize the Submitted Materials
-- Distribute the Submitted Materials for commercial use
-
-**Your Restrictions:**
-
-After submission, You may NOT:
-- Submit the same Submitted Materials to competing platforms, subnets, or competitions
-- License, sell, or distribute the Submitted Materials to third parties for commercial use
-- Offer commercial services (APIs, SaaS, hosting) using the Submitted Materials
-- Use the Submitted Materials commercially outside of Subnet 46 participation
-- Create competing services using the Submitted Materials
-
-**Your Permitted Uses:**
-
-You MAY still:
-- Use the Submitted Materials for personal, non-commercial research and development
-- Reference Your participation and contributions in Your portfolio or resume
-- Be credited as the original creator (RESI will provide attribution)
-- Continue learning from and improving upon the techniques used (but not the specific implementation)
-- Create entirely new, substantially different models using Your own work
-
-**Violation:** Violating this exclusivity is a material breach of this Agreement and may result in immediate termination, forfeiture of Rewards, and legal action.
+- Anyone may use Your Submitted Materials under MIT terms
+- RESI operates Subnet 46 infrastructure but does not own exclusive rights to submitted models
+- Other participants may study, learn from, or build upon Your work (with attribution)
 
 ---
 
@@ -122,11 +106,11 @@ You MAY still:
 
 You represent and warrant that:
 
-a) **Authority:** You have the full legal authority to enter into this Agreement and grant the license in Section 2. If You are entering this Agreement on behalf of an organization, You represent that You have authority to bind that organization;
+a) **Authority:** You have the full legal authority to enter into this Agreement and license Your Submitted Materials under the MIT License. If You are entering this Agreement on behalf of an organization, You represent that You have authority to bind that organization;
 
 b) **Ownership or Rights:** You either:
    - Are the sole and original author of the Submitted Materials, OR
-   - Have obtained all necessary rights, permissions, and licenses from third parties to submit the materials and grant RESI the license described in Section 2;
+   - Have obtained all necessary rights, permissions, and licenses from third parties to submit the materials under the MIT License;
 
 c) **Original Work:** To the best of Your knowledge, the Submitted Materials are Your original work or You have properly licensed all components from authorized sources.
 
@@ -208,7 +192,7 @@ b) You have verified that the Base Model license permits:
    - Commercial use (if applicable)
    - Derivative works
    - Redistribution
-   - Sublicensing to RESI as described in Section 2
+   - Sublicensing under MIT License terms
 
 c) If the Base Model license requires attribution, You will provide appropriate attribution information.
 
@@ -239,93 +223,40 @@ Base model and license information must be provided:
 
 ## 5. Required License for Submitted Models
 
-### 5.1 RESI Subnet 46 Exclusive License Requirement
+### 5.1 MIT License Requirement
 
-All models submitted to Subnet 46 MUST be licensed under the **RESI Subnet 46 Exclusive License** provided by RESI. You may NOT use any other license (MIT, Apache, GPL, Creative Commons, etc.) for models submitted to Subnet 46.
+All models submitted to Subnet 46 MUST be licensed under the **MIT License**. The validator automatically verifies this by checking the HuggingFace model card metadata.
 
-### 5.2 License File Requirement
+### 5.2 License Setup on HuggingFace
 
-When hosting Your Submitted Materials on public platforms (Hugging Face, GitHub, etc.), You MUST:
+When hosting Your Submitted Materials on HuggingFace, You MUST:
 
-a) **Include the RESI License:** Place the RESI Subnet 46 Exclusive License template in a LICENSE or LICENSE.md file in Your repository root;
+a) **Set License:** Select **MIT** from the license dropdown when creating your model repository.
 
-b) **Add README Notice:** Include this notice prominently in Your README.md:
-```markdown
-## ⚖️ Exclusive License - Bittensor Subnet 46
+b) **Optional LICENSE File:** You may also include a LICENSE file with the standard MIT license text, but the model card metadata is what the validator checks.
 
-**This model is exclusively licensed to RESI for Bittensor Subnet 46.**
+### 5.3 Verification Process
 
-- ✅ **Subnet 46 Use:** Authorized for mining/validation through Subnet 46
-- ✅ **Non-Commercial Research:** Permitted for academic research and evaluation  
-- ❌ **Commercial Use:** All commercial rights reserved by RESI
-- ❌ **Redistribution:** Not permitted without RESI's explicit permission
+The validator performs automated license verification:
+- Fetches model card metadata from the HuggingFace API
+- Performs a case-insensitive check for "mit" in the license field
+- Rejects models with `LicenseError` if MIT license is not detected
 
-📧 **Commercial Licensing:** legal@resilabs.ai  
-🔗 **License Details:** https://www.resilabs.ai/legal/model-license
-```
+### 5.4 Why MIT License?
 
-c) **Hugging Face Metadata:** Use this YAML front matter in Your README.md:
-```yaml
----
-license: other
-license_name: resi-subnet-46-exclusive
-license_link: https://www.resilabs.ai/legal/model-license
-tags:
-  - bittensor
-  - subnet-46
-  - resi-exclusive
----
-```
-
-### 5.3 License Template Provided by RESI
-
-RESI provides the official license template at:
-- **Template File:** [MODEL_LICENSE_TEMPLATE.md](https://github.com/resi-labs-ai/RESI-models/blob/main/MODEL_LICENSE_TEMPLATE.md)
-- **Web Version:** https://www.resilabs.ai/legal/model-license
-
-This license:
-- States the model is exclusive to RESI for commercial purposes
-- Grants the public limited rights for non-commercial viewing and research
-- Prohibits redistribution and commercial use
-- Reserves all commercial rights to RESI
-
-**You must use this exact template** - do not modify the license terms.
-
-### 5.4 Filling Out the Template
-
-When using the template, fill in these fields:
-- `[YEAR]` - Current year
-- `[MODEL AUTHOR NAME]` - Your name or entity name
-- `[Model Name]` - The name of Your model
-- `[Date]` - Date of submission to Subnet 46
+The MIT License requirement ensures:
+- Models can be freely used, modified, and distributed
+- Clear and simple terms for all participants
+- Compatibility with the open-source Bittensor ecosystem
+- No ambiguity about usage rights
 
 ### 5.5 Compliance Verification
 
 RESI reserves the right to:
-- Verify that Your public repositories contain the correct license
+- Verify that Your HuggingFace repositories contain the correct license metadata
 - Request You update or correct licensing information within 7 days
-- Remove Your models from Subnet 46 if licensing is incorrect, missing, or misleading
+- Remove Your models from Subnet 46 if licensing is incorrect or missing
 - Terminate Your account for repeated licensing violations
-
-### 5.6 Pre-Existing Licenses
-
-If Your model was previously published under a different license:
-
-**Option A: Remove from Public Access**
-- Remove the model from all public repositories before submission
-- RESI's exclusive rights apply upon submission
-
-**Option B: Change the License**
-- Replace the existing license with the RESI Exclusive License
-- Ensure no third parties have conflicting rights under the previous license
-- You warrant that You have the right to change the license
-
-**You Cannot:**
-- Keep a more permissive license (MIT, Apache, etc.) alongside the RESI license
-- Grandfather previous downloads under a different license
-- Claim dual-licensing
-
-**Once submitted under the RESI Exclusive License, You cannot revert to a more permissive license.**
 
 ---
 
@@ -468,24 +399,23 @@ RESI reserves the right to:
 
 **You retain ownership** of Your Submitted Materials. This Agreement is a license grant, not a transfer of ownership.
 
-### 8.2 RESI's Exclusive Rights in Submitted Materials
+### 8.2 Rights Under MIT License
 
-Upon submission, RESI acquires exclusive rights including:
+Your Submitted Materials are licensed under MIT, which means:
 
-a) **Exclusive Commercial Rights:** Sole rights to commercialize, monetize, distribute, sublicense, and otherwise commercially exploit Your Submitted Materials;
+a) **Open Access:** Anyone (including RESI) may use, modify, distribute, and commercialize the Submitted Materials under MIT terms;
 
-b) **Platform Control:** Sole discretion over how, when, and where Submitted Materials are used, displayed, evaluated, and integrated within Subnet 46 and RESI's services;
+b) **Platform Operation:** RESI may use Submitted Materials to operate Subnet 46, including evaluation, scoring, and display of results;
 
-c) **Derivative Works:** Exclusive rights to modify, improve, enhance, and create derivative works from Your Submitted Materials without further permission or compensation;
+c) **No Exclusive Rights:** RESI does not claim exclusive rights to MIT-licensed Submitted Materials;
 
-d) **Enforcement Rights:** Right to enforce the license and take legal action against third parties who misuse the Submitted Materials;
-
-e) **Branding and Marketing:** Right to use Your name, likeness, and the Submitted Materials' name in connection with Subnet 46 marketing, promotion, and publicity.
+d) **Attribution:** Users of Your Submitted Materials must include the MIT license notice and copyright attribution.
 
 **You retain:**
-- Attribution rights (RESI will credit You as the original creator)
-- Non-commercial research rights as specified in Section 2.3
-- Right to reference Your participation in portfolio/resume
+- Full copyright ownership
+- Right to use, modify, and commercialize Your own work
+- Right to submit to other platforms or competitions
+- Attribution rights under MIT License
 
 ### 8.3 RESI's Platform Intellectual Property
 
@@ -695,7 +625,7 @@ c) Closing Your Subnet 46 account (if applicable).
 Upon Your termination:
 - You will receive any Rewards earned but not yet distributed (subject to verification)
 - You must cease accessing RESI's confidential information
-- RESI retains all rights granted under Section 2 (License Grant)
+- Previously submitted MIT-licensed materials remain available under MIT License terms
 
 ### 11.3 RESI's Right to Terminate
 
@@ -718,13 +648,13 @@ g) You are subject to sanctions or in a prohibited jurisdiction.
 Upon RESI's termination:
 - Your access to Subnet 46 is immediately revoked
 - Unpaid Rewards may be forfeited if termination was for cause
-- RESI retains all rights granted under Section 2 (License Grant)
+- Previously submitted MIT-licensed materials remain available under MIT License terms
 
 ### 11.4 Effect of Termination
 
 Upon termination of this Agreement:
 
-a) **Licenses Survive:** The license granted to RESI in Section 2 survives termination and remains perpetual and irrevocable;
+a) **MIT License Survives:** The MIT License on previously submitted materials survives termination and remains in effect;
 
 b) **Confidentiality Survives:** Confidentiality obligations in Section 10 survive for the duration specified;
 
@@ -968,13 +898,13 @@ f) **Exhibits:** Any exhibits or attachments are incorporated by reference.
 ### 13.11 Survival
 
 The following sections survive termination of this Agreement:
-- Section 2 (License Grant to RESI)
+- Section 2 (MIT License and Rights)
 - Section 3 (Representations and Warranties)
-- Section 5 (Indemnification)
-- Section 8 (Disclaimers)
-- Section 10 (Confidentiality - for specified duration)
-- Section 12 (Dispute Resolution)
-- Section 13 (General Provisions)
+- Section 6 (Indemnification)
+- Section 9 (Disclaimers)
+- Section 11 (Confidentiality - for specified duration)
+- Section 13 (Dispute Resolution)
+- Section 14 (General Provisions)
 
 ### 13.12 Export Control Compliance
 
@@ -1035,8 +965,8 @@ For privacy-related inquiries:
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** January 26, 2026  
+**Document Version:** 1.1
+**Last Updated:** January 28, 2026
 **Effective Date:** February 1, 2026
 
 ---
@@ -1052,6 +982,7 @@ For privacy-related inquiries:
 | Version | Date | Changes | Approved By |
 |---------|------|---------|-------------|
 | 1.0 (Draft) | 2026-01-26 | Initial draft | Pending legal review |
+| 1.1 | 2026-01-28 | Changed to MIT license requirement, removed exclusivity | Pending legal review |
 
 ---
 
