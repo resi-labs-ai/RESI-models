@@ -266,25 +266,22 @@ class Validator:
 
         # Normalize scores to weights
         total = np.sum(self.scores)
-        if total == 0:
-            logger.warning("All scores are zero, skipping weight setting")
-            return
-
-        normalized_weights = self.scores / total
 
         # Build hotkey -> weight mapping for non-zero weights
         weights: dict[str, float] = {}
-        for uid, weight in enumerate(normalized_weights):
-            if weight > 0 and uid < len(self.hotkeys):
-                hotkey = self.hotkeys[uid]
-                weights[hotkey] = float(weight)
+        if total > 0:
+            normalized_weights = self.scores / total
+            for uid, weight in enumerate(normalized_weights):
+                if weight > 0 and uid < len(self.hotkeys):
+                    hotkey = self.hotkeys[uid]
+                    weights[hotkey] = float(weight)
+
+        # Apply burn if configured (works even with empty weights)
+        weights = self._apply_burn(weights)
 
         if not weights:
-            logger.warning("No non-zero weights to set")
+            logger.warning("No weights to set (no scores and no burn configured)")
             return
-
-        # Apply burn if configured
-        weights = self._apply_burn(weights)
 
         logger.info(f"Setting weights for {len(weights)} hotkeys")
 
