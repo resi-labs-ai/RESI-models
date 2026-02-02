@@ -304,6 +304,60 @@ class TestSetWeights:
             {"hotkey_0": 0.25, "hotkey_1": 0.75}
         )
 
+    @pytest.mark.asyncio
+    async def test_set_weights_burns_100_percent_when_all_scores_zero(
+        self, validator: Validator
+    ) -> None:
+        """Test burn gets 100% when no models are scored (all scores zero)."""
+        validator.hotkeys = [
+            "hotkey_0",
+            "hotkey_1",
+            "burn_hotkey",  # UID 2 is the burn target
+            "hotkey_3",
+            "our_hotkey",
+        ]
+        # All scores are zero - no models evaluated
+        validator.scores = np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+        validator.metagraph = create_mock_metagraph(validator.hotkeys)
+
+        # Configure 100% burn to UID 2
+        validator.config.burn_amount = 1.0
+        validator.config.burn_uid = 2
+
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock()
+        validator.chain = mock_chain
+
+        await validator.set_weights()
+
+        # All scores zero + 100% burn = only burn_hotkey gets weight
+        mock_chain.set_weights.assert_called_once()
+        weights = mock_chain.set_weights.call_args[0][0]
+        assert weights == {"burn_hotkey": 1.0}
+
+    @pytest.mark.asyncio
+    async def test_set_weights_skips_when_all_scores_zero_and_no_burn(
+        self, validator: Validator
+    ) -> None:
+        """Test weights are not set when all scores zero and no burn configured."""
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey"]
+        validator.scores = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        validator.metagraph = create_mock_metagraph(validator.hotkeys)
+
+        # No burn configured
+        validator.config.burn_amount = 0.0
+        validator.config.burn_uid = -1
+
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock()
+        validator.chain = mock_chain
+
+        await validator.set_weights()
+
+        # Should not call set_weights (nothing to set)
+        mock_chain.set_weights.assert_not_called()
+
+
 
 class TestRunEvaluationScores:
     """Tests for score updates in _run_evaluation."""
@@ -917,3 +971,4 @@ class TestCatchUpRetry:
         # Should have retried once after initial failure
         assert attempt_count == 2
         assert "hotkey1" in validator.download_results
+
