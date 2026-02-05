@@ -1,6 +1,6 @@
 # RESI - Real Estate Price Prediction Subnet
 
-**Subnet 46** on Bittensor Mainnet | [Dashboard](https://dashboard.resilabs.ai) | [Validator Guide](docs/VALIDATOR.md) | [Miner Guide](docs/MINER.md)
+**Subnet 46** on Bittensor Mainnet | [Dashboard](https://dashboard.resilabs.ai) | [Validator Guide](docs/VALIDATOR.md) | [Miner Guide](docs/MINER.md) | [Twitter](https://x.com/resilabsai)
 
 ---
 
@@ -11,7 +11,7 @@ RESI is a Bittensor subnet that incentivizes the development of accurate real es
 ### Key Features
 
 - **Daily Evaluation Cycle**: Models are evaluated daily at 18:00 UTC against real sales data
-- **Never-Before-Seen Data**: Models must be committed ~28 hours before evaluation; evaluation uses last 24 hours of sales data - ensuring models are tested on data they couldn't have seen
+- **Never-Before-Seen Data**: Models must be committed ~31 hours before evaluation; evaluation uses last 24 hours of sales data - ensuring models are tested on data they couldn't have seen
 - **Winner-Takes-All**: Best performing model receives 99% of emissions
 
 ---
@@ -22,7 +22,7 @@ RESI is a Bittensor subnet that incentivizes the development of accurate real es
 
 To ensure models generalize rather than memorize, RESI enforces a temporal separation:
 
-- **Commit Cutoff**: Models must be committed on-chain **~28 hours before evaluation**
+- **Commit Cutoff**: Models must be committed on-chain **~31 hours before evaluation**
 - **Fresh Data**: Evaluation uses sales data from the **last 24 hours**
 
 This guarantees that every model is tested against data that didn't exist when the model was submitted.
@@ -99,7 +99,7 @@ See the [Miner Guide](docs/MINER.md) for complete setup instructions.
 | **Format** | ONNX (`.onnx` file) |
 | **Max Size** | 200 MB |
 | **License** | MIT (verified via HuggingFace metadata) |
-| **Commit Age** | Must be committed ~28 hours before evaluation |
+| **Commit Age** | Must be committed ~31 hours before evaluation |
 | **Input** | Property features (see documentation) |
 | **Output** | Predicted price in USD |
 

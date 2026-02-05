@@ -16,10 +16,10 @@ The miner CLI (`miner-cli`) helps you:
 |-------------|---------------|
 | Format | ONNX |
 | Max size | 200 MB |
-| Input shape | `(batch, 73)` float32 |
+| Input shape | `(batch, 79)` float32 |
 | Output shape | `(batch, 1)` or `(batch,)` float32 |
 
-Your model must accept exactly **73 features** in the order defined in `real_estate/data/mappings/feature_config.yaml`.
+Your model must accept exactly **79 features** in the order defined in `real_estate/data/mappings/feature_config.yaml`.
 
 ## Prerequisites
 
@@ -118,7 +118,7 @@ miner-cli evaluate --model.path PATH [--max-size-mb MB]
 **What it checks:**
 1. File exists and is under size limit
 2. Valid ONNX format
-3. Correct input shape (batch, 73)
+3. Correct input shape (batch, 79)
 4. Correct output shape
 5. No NaN or Inf in predictions
 
@@ -285,9 +285,9 @@ ERROR: Invalid ONNX format: Unable to parse proto from file...
 ### Wrong number of features
 
 ```
-ERROR: Model expects 72 features, but validator expects 73.
+ERROR: Model expects 72 features, but validator expects 79.
 ```
-**Fix:** Retrain your model with the correct 73 input features from `feature_config.yaml`.
+**Fix:** Retrain your model with the correct 79 input features from `feature_config.yaml`.
 
 ### Model too large
 
