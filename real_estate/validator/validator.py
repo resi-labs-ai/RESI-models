@@ -476,7 +476,9 @@ class Validator:
         registered_hotkeys = set(self.hotkeys)
 
         # Get all available models from cache (handles pre-download failures gracefully)
-        model_paths = self._model_scheduler.get_available_models(registered_hotkeys)
+        model_paths = self._model_scheduler.get_available_models(
+            registered_hotkeys, self.block
+        )
 
         if not model_paths:
             logger.warning("No models available for evaluation")
