@@ -71,7 +71,9 @@ class ModelDownloadScheduler:
         """Cached commitments from last download run."""
         return self._known_commitments
 
-    def get_available_models(self, registered_hotkeys: set[str]) -> dict[str, Path]:
+    def get_available_models(
+        self, registered_hotkeys: set[str], current_block: int
+    ) -> dict[str, Path]:
         """
         Get all models ready for evaluation.
 
@@ -79,18 +81,27 @@ class ModelDownloadScheduler:
         1. Are registered on chain (in registered_hotkeys)
         2. Have a known commitment
         3. Are in cache with matching hash
+        4. Have a commitment old enough (>= min_commitment_age_blocks)
 
         Args:
             registered_hotkeys: Set of hotkeys currently registered on metagraph
+            current_block: Current chain block number
 
         Returns:
             Dict mapping hotkey to model path
         """
+        cutoff_block = current_block - self._config.min_commitment_age_blocks
         result: dict[str, Path] = {}
         for hotkey in registered_hotkeys:
             if hotkey not in self._known_commitments:
                 continue
             commitment = self._known_commitments[hotkey]
+            if commitment.block_number > cutoff_block:
+                logger.info(
+                    f"Skipping {hotkey}: commitment too recent "
+                    f"(block {commitment.block_number} > cutoff {cutoff_block})"
+                )
+                continue
             cached = self._downloader._cache.get(hotkey)
             if cached and cached.metadata.hash == commitment.model_hash:
                 result[hotkey] = cached.path

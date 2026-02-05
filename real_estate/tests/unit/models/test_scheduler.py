@@ -1116,12 +1116,13 @@ class TestGetAvailableModels:
             scheduler_config, mock_downloader, mock_chain_client
         )
 
-        # Set up known commitment
+        # Set up known commitment (old enough to pass age filter)
         commitment = MagicMock()
         commitment.model_hash = "hash123"
+        commitment.block_number = 1000
         scheduler._known_commitments = {"5Hotkey1": commitment}
 
-        result = scheduler.get_available_models({"5Hotkey1", "5Hotkey2"})
+        result = scheduler.get_available_models({"5Hotkey1", "5Hotkey2"}, current_block=10000)
 
         assert result == {"5Hotkey1": Path("/cache/hotkey1/model.onnx")}
 
@@ -1139,7 +1140,7 @@ class TestGetAvailableModels:
         )
         scheduler._known_commitments = {}  # No known commitments
 
-        result = scheduler.get_available_models({"5Hotkey1"})
+        result = scheduler.get_available_models({"5Hotkey1"}, current_block=10000)
 
         assert result == {}
         mock_downloader._cache.get.assert_not_called()
@@ -1165,9 +1166,10 @@ class TestGetAvailableModels:
         # Commitment has new hash
         commitment = MagicMock()
         commitment.model_hash = "new_hash"
+        commitment.block_number = 1000
         scheduler._known_commitments = {"5Hotkey1": commitment}
 
-        result = scheduler.get_available_models({"5Hotkey1"})
+        result = scheduler.get_available_models({"5Hotkey1"}, current_block=10000)
 
         assert result == {}
 
@@ -1186,9 +1188,10 @@ class TestGetAvailableModels:
 
         commitment = MagicMock()
         commitment.model_hash = "hash123"
+        commitment.block_number = 1000
         scheduler._known_commitments = {"5Hotkey1": commitment}
 
-        result = scheduler.get_available_models({"5Hotkey1"})
+        result = scheduler.get_available_models({"5Hotkey1"}, current_block=10000)
 
         assert result == {}
 
@@ -1212,9 +1215,67 @@ class TestGetAvailableModels:
         # Known commitment exists
         commitment = MagicMock()
         commitment.model_hash = "hash123"
+        commitment.block_number = 1000
         scheduler._known_commitments = {"5Hotkey1": commitment}
 
         # But hotkey not in registered set
-        result = scheduler.get_available_models({"5OtherHotkey"})
+        result = scheduler.get_available_models({"5OtherHotkey"}, current_block=10000)
 
         assert result == {}
+
+    def test_excludes_models_with_too_recent_commitment(
+        self,
+        scheduler_config: SchedulerConfig,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """Excludes models whose commitment is too recent (< min_commitment_age_blocks)."""
+        mock_downloader = MagicMock()
+
+        # Model is cached and hash matches
+        cached_model = MagicMock()
+        cached_model.path = Path("/cache/model.onnx")
+        cached_model.metadata.hash = "hash123"
+        mock_downloader._cache.get.return_value = cached_model
+
+        scheduler = ModelDownloadScheduler(
+            scheduler_config, mock_downloader, mock_chain_client
+        )
+
+        # Commitment is too recent: block 9950, current_block=10000, cutoff=9900
+        commitment = MagicMock()
+        commitment.model_hash = "hash123"
+        commitment.block_number = 9950
+        scheduler._known_commitments = {"5Hotkey1": commitment}
+
+        result = scheduler.get_available_models({"5Hotkey1"}, current_block=10000)
+
+        assert result == {}
+        # Should not even check cache for too-recent commitments
+        mock_downloader._cache.get.assert_not_called()
+
+    def test_includes_models_exactly_at_cutoff_block(
+        self,
+        scheduler_config: SchedulerConfig,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """Includes models committed exactly at the cutoff block (boundary case)."""
+        mock_downloader = MagicMock()
+
+        cached_model = MagicMock()
+        cached_model.path = Path("/cache/model.onnx")
+        cached_model.metadata.hash = "hash123"
+        mock_downloader._cache.get.return_value = cached_model
+
+        scheduler = ModelDownloadScheduler(
+            scheduler_config, mock_downloader, mock_chain_client
+        )
+
+        # Commitment is exactly at cutoff: block 9900, current_block=10000, cutoff=9900
+        commitment = MagicMock()
+        commitment.model_hash = "hash123"
+        commitment.block_number = 9900
+        scheduler._known_commitments = {"5Hotkey1": commitment}
+
+        result = scheduler.get_available_models({"5Hotkey1"}, current_block=10000)
+
+        assert result == {"5Hotkey1": Path("/cache/model.onnx")}
