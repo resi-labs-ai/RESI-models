@@ -52,6 +52,17 @@ cd RESI-models
 uv sync
 ```
 
+### Build Evaluation Runner
+The validator runs miner models inside isolated Docker containers.
+```bash
+# Build the evaluation image:
+docker build -t resi-onnx-runner:latest real_estate/evaluation/
+
+# Confirm image present (optional)
+docker images | grep resi-onnx-runner
+```
+*Note: This only needs rebuilding when the evaluation environment changes (e.g., ONNX version bump). The auto-updater does not rebuild this image automatically.*
+
 ### Generate Pylon Token
 
 ```bash
