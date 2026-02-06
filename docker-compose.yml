@@ -36,3 +36,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  # ONNX Runner image for model evaluation (build-only, not a running service)
+  onnx-runner:
+    build: ./real_estate/evaluation
+    image: resi-onnx-runner:latest
+    profiles: ["build"]

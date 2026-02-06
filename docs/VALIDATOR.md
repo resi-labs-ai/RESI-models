@@ -133,6 +133,16 @@ docker logs resi_pylon
 curl http://localhost:8000/api/v1/identity/validator/subnet/<NETUID>/block/latest/neurons
 ```
 
+### Build ONNX Runner Image
+
+The validator runs model inference in isolated Docker containers. Build the image once:
+
+```bash
+docker compose build onnx-runner
+```
+
+This builds the `resi-onnx-runner:latest` image used for sandboxed model evaluation.
+
 ### Start Validator
 
 **Option A: With Auto-Updates (Recommended)**
@@ -458,6 +468,15 @@ uv run python -m real_estate.validator.validator ...
 1. Check network connectivity
 2. Verify `SUBTENSOR_NETWORK` is correct
 3. Check Pylon logs for WebSocket errors: `docker logs resi_pylon`
+
+### Docker Image Not Found
+
+If you see `Docker image 'resi-onnx-runner:latest' not found`:
+
+```bash
+# Build the ONNX runner image
+docker compose build onnx-runner
+```
 
 ### Wallet Errors
 
