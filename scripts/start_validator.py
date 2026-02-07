@@ -303,7 +303,7 @@ if __name__ == "__main__":
         "--burn_amount",
         dest="burn_amount",
         type=float,
-        default=float(os.environ.get("BURN_AMOUNT", "1.0")),
+        default=float(os.environ.get("BURN_AMOUNT", "0.5")),
     )
     parser.add_argument(
         "--burn_uid",

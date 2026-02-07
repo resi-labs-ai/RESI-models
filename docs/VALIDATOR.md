@@ -371,7 +371,7 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | `VALIDATION_DATA_MAX_RETRIES` | `24` | Retry attempts if data not ready (~2 hours) |
 | `VALIDATION_DATA_RETRY_DELAY` | `300` | Seconds between retries |
 | **Burn Configuration** | | |
-| `BURN_AMOUNT` | `1.0` | Fraction of emissions to burn (0.0-1.0) |
+| `BURN_AMOUNT` | `0.5` | Fraction of emissions to burn (0.0-1.0) |
 | `BURN_UID` | `238` | UID receiving burn allocation (subnet owner) |
 | **Model Settings** | | |
 | `MODEL_CACHE_PATH` | `./model_cache` | Path to cache downloaded models |
