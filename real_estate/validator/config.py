@@ -306,7 +306,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--burn_amount",
         type=float,
         help="Fraction of emissions to burn (0.0-1.0). Allocated to burn_uid, rest distributed normally.",
-        default=float(os.environ.get("BURN_AMOUNT", "1.0")),
+        default=float(os.environ.get("BURN_AMOUNT", "0.5")),
     )
 
     parser.add_argument(
