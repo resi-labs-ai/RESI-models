@@ -101,6 +101,8 @@ def cmd_submit(args: argparse.Namespace) -> int:
             wallet=wallet,
             subtensor=subtensor,
             netuid=netuid,
+            commit_reveal=args.commit_reveal,
+            blocks_until_reveal=args.reveal_blocks,
         )
     except MinerCLIError as e:
         print(f"ERROR: {e}", file=sys.stderr)
@@ -111,12 +113,19 @@ def cmd_submit(args: argparse.Namespace) -> int:
         return 1
 
     print()
-    print("✓ Model committed to chain successfully!")
+    if result.commit_reveal:
+        print("✓ Model committed to chain with commit-reveal!")
+    else:
+        print("✓ Model committed to chain successfully!")
     print()
     print("Commitment details:")
     print(f"  Repository:         {result.hf_repo_id}")
     print(f"  Model hash:         {result.model_hash}")
     print(f"  Submitted at block: {result.submitted_at_block}")
+    if result.commit_reveal and result.reveal_round:
+        print(
+            f"  Commit-reveal:      Yes (reveal at drand round {result.reveal_round})"
+        )
 
     # Scan for extrinsic ID (unless skipped)
     extrinsic_info = None
@@ -294,6 +303,24 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         default=25,
         metavar="N",
         help="Maximum blocks to scan for extrinsic (default: 25)",
+    )
+
+    # Commit-reveal arguments
+    submit_parser.add_argument(
+        "--no-commit-reveal",
+        dest="commit_reveal",
+        action="store_false",
+        default=True,
+        help="Disable timelock commit-reveal (commitment visible immediately)",
+    )
+
+    submit_parser.add_argument(
+        "--reveal-blocks",
+        dest="reveal_blocks",
+        type=int,
+        default=360,
+        metavar="N",
+        help="Blocks until commitment reveal (default: 360, ~1 epoch/72 min)",
     )
 
     return parser.parse_args(args)

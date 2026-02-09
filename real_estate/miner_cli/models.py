@@ -51,6 +51,10 @@ class SubmitResult:
     # Extrinsic ID in "block-index" format (set if scanning was successful)
     extrinsic_id: str | None = None
 
+    # Commit-reveal fields
+    commit_reveal: bool = False
+    reveal_round: int | None = None
+
     def get_extrinsic_record(self, hotkey: str) -> dict | None:
         """
         Build extrinsic_record.json content for HuggingFace upload.
