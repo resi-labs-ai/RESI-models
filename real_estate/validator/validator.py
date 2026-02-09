@@ -322,7 +322,7 @@ class Validator:
         Returns:
             Adjusted weights with burn allocation (sums to 1.0)
         """
-        burn_amount: float = self.config.burn_amount
+        burn_amount: float = 0.5  # Hardcoded to ensure autoupdater picks up change
         burn_uid: int = self.config.burn_uid
 
         # No burn configured
