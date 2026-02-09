@@ -54,6 +54,9 @@ def submit_model(
     wallet: bt.wallet,
     subtensor: bt.subtensor,
     netuid: int,
+    *,
+    commit_reveal: bool = False,
+    blocks_until_reveal: int = 360,
 ) -> SubmitResult:
     """
     Submit a model commitment to the Bittensor chain.
@@ -71,9 +74,13 @@ def submit_model(
         wallet: Bittensor wallet instance.
         subtensor: Bittensor subtensor instance.
         netuid: Subnet UID.
+        commit_reveal: If True, use timelock-encrypted commit-reveal.
+            The commitment will be hidden until the reveal round.
+        blocks_until_reveal: Blocks until commitment is revealed (default: 360).
+            Only used when commit_reveal=True. 360 blocks = 1 epoch ≈ 72 min.
 
     Returns:
-        SubmitResult with commitment details.
+        SubmitResult with commitment details (includes reveal_round if commit_reveal).
 
     Note:
         The same model file must be uploaded to the HF repo at model.onnx.
@@ -124,9 +131,25 @@ def submit_model(
     current_block = subtensor.get_current_block()
     logger.debug(f"Current block: {current_block}")
 
+    reveal_round: int | None = None
+
     try:
-        subtensor.commit(wallet, netuid, commitment)
-        logger.debug("Commitment submitted to chain")
+        if commit_reveal:
+            logger.debug(
+                f"Using commit-reveal with {blocks_until_reveal} blocks until reveal"
+            )
+            success, reveal_round = subtensor.set_reveal_commitment(
+                wallet=wallet,
+                netuid=netuid,
+                data=commitment,
+                blocks_until_reveal=blocks_until_reveal,
+            )
+            if not success:
+                raise CommitmentError("set_reveal_commitment returned False")
+            logger.debug(f"Commitment submitted with reveal_round={reveal_round}")
+        else:
+            subtensor.commit(wallet, netuid, commitment)
+            logger.debug("Commitment submitted to chain")
     except Exception as e:
         raise CommitmentError(f"Failed to submit commitment: {e}") from e
 
@@ -136,6 +159,8 @@ def submit_model(
         model_hash=model_hash,
         success=True,
         submitted_at_block=current_block,
+        commit_reveal=commit_reveal,
+        reveal_round=reveal_round,
     )
 
 
