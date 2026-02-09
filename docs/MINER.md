@@ -159,7 +159,9 @@ miner-cli submit \
     [--network NETWORK] \
     [--netuid UID] \
     [--skip-scan] \
-    [--scan-blocks N]
+    [--scan-blocks N] \
+    [--no-commit-reveal] \
+    [--reveal-blocks N]
 ```
 
 | Argument | Required | Default | Description |
@@ -172,6 +174,8 @@ miner-cli submit \
 | `--netuid` | No | Auto | Subnet UID (46 for finney, 428 for test) |
 | `--skip-scan` | No | False | Skip scanning for extrinsic ID |
 | `--scan-blocks` | No | 25 | Blocks to scan for extrinsic |
+| `--no-commit-reveal` | No | False | Disable commit-reveal (not recommended) |
+| `--reveal-blocks` | No | 360 | Blocks until commitment reveal (~1 epoch) |
 
 **Network options:**
 | Network | Flag | Subnet UID |
@@ -179,6 +183,18 @@ miner-cli submit \
 | Mainnet | `--network finney` | 46 |
 | Testnet | `--network test` | 428 |
 | Custom | `--network ws://host:port` | Must specify `--netuid` |
+
+**Commit-Reveal (enabled by default):**
+
+Your commitment is encrypted using timelock encryption and only revealed after `--reveal-blocks` blocks (~72 minutes by default). This prevents frontrunning - competitors cannot see your model details until the reveal.
+
+How it works:
+1. Your commitment is encrypted with a drand timelock
+2. The encrypted commitment is stored on-chain
+3. After `reveal_round`, the chain automatically decrypts and reveals your commitment
+4. Validators can then download and evaluate your model
+
+To disable commit-reveal (not recommended): `--no-commit-reveal`
 
 **What it does:**
 1. Validates model file exists
@@ -196,12 +212,13 @@ Validators verify this before evaluating your model.
 
 Submitting model to chain...
 
-✓ Model committed to chain successfully!
+✓ Model committed to chain with commit-reveal!
 
 Commitment details:
   Repository:         alice/housing-v1
   Model hash:         a3f8c2e9d1b4f6a8...
   Submitted at block: 142857
+  Commit-reveal:      Yes (reveal at drand round 25864000)
 
 Scanning for extrinsic (up to 25 blocks)...
   Found extrinsic: 142858-3
@@ -216,7 +233,7 @@ Next steps:
   "hotkey": "5ABC...XYZ"
 }
 
-  4. Wait for validator evaluation
+  4. Wait for validator evaluation (~72 min after reveal)
 ```
 
 ## HuggingFace Repository Structure
