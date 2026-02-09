@@ -305,10 +305,10 @@ class TestSetWeights:
         )
 
     @pytest.mark.asyncio
-    async def test_set_weights_burns_100_percent_when_all_scores_zero(
+    async def test_set_weights_burns_50_percent_when_all_scores_zero(
         self, validator: Validator
     ) -> None:
-        """Test burn gets 100% when no models are scored (all scores zero)."""
+        """Test burn gets 50% (hardcoded) when no models are scored (all scores zero)."""
         validator.hotkeys = [
             "hotkey_0",
             "hotkey_1",
@@ -320,8 +320,7 @@ class TestSetWeights:
         validator.scores = np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
 
-        # Configure 100% burn to UID 2
-        validator.config.burn_amount = 1.0
+        # burn_amount is hardcoded to 0.5 in validator.py, config value ignored
         validator.config.burn_uid = 2
 
         mock_chain = MagicMock()
@@ -330,10 +329,10 @@ class TestSetWeights:
 
         await validator.set_weights()
 
-        # All scores zero + 100% burn = only burn_hotkey gets weight
+        # All scores zero + 50% hardcoded burn = only burn_hotkey gets weight
         mock_chain.set_weights.assert_called_once()
         weights = mock_chain.set_weights.call_args[0][0]
-        assert weights == {"burn_hotkey": 1.0}
+        assert weights == {"burn_hotkey": 0.5}
 
     @pytest.mark.asyncio
     async def test_set_weights_skips_when_all_scores_zero_and_no_burn(

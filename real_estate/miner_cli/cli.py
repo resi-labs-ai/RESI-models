@@ -123,7 +123,9 @@ def cmd_submit(args: argparse.Namespace) -> int:
     print(f"  Model hash:         {result.model_hash}")
     print(f"  Submitted at block: {result.submitted_at_block}")
     if result.commit_reveal and result.reveal_round:
-        print(f"  Commit-reveal:      Yes (reveal at drand round {result.reveal_round})")
+        print(
+            f"  Commit-reveal:      Yes (reveal at drand round {result.reveal_round})"
+        )
 
     # Scan for extrinsic ID (unless skipped)
     extrinsic_info = None
