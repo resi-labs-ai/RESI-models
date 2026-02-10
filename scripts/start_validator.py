@@ -85,7 +85,7 @@ def pull_latest_version() -> None:
         log.error("Failed to pull, reverting: %s", exc)
         subprocess.run(
             split("git rebase --abort"),
-            check=True,
+            check=False, # OK to fail if no rebase to abort  
             cwd=PROJECT_ROOT,
         )
 
@@ -297,7 +297,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--wandb.entity",
         dest="wandb_entity",
-        default=os.environ.get("WANDB_ENTITY", "resi-labs-org"),
+        default=os.environ.get("WANDB_ENTITY", "resi-labs"),
     )
     parser.add_argument(
         "--burn_amount",
