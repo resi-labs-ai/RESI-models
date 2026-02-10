@@ -456,10 +456,16 @@ class Validator:
         """Callback when new validation data is fetched."""
         if validation_data is None:
             logger.warning("Validation data fetch returned None")
+            # TODO: More sophisticated burn logic will be implemented.
+            # For now, zero scores so the burn mechanism kicks in on next weight setting.
+            self.scores.fill(0.0)
             return
 
         if len(validation_data) == 0:
             logger.warning("Validation data is empty, skipping evaluation")
+            # TODO: More sophisticated burn logic will be implemented.
+            # For now, zero scores so the burn mechanism kicks in on next weight setting.
+            self.scores.fill(0.0)
             return
 
         self.validation_data = validation_data
