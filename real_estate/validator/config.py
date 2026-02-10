@@ -209,12 +209,13 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=os.environ.get("WANDB_LOG_PREDICTIONS", "false").lower() == "true",
     )
 
+    _top_n_env = os.environ.get("WANDB_PREDICTIONS_TOP_N")
     parser.add_argument(
         "--wandb.predictions_top_n",
         dest="wandb_predictions_top_n",
         type=int,
-        help="Limit prediction logging to top N miners by score. 0 = all miners (default).",
-        default=int(os.environ.get("WANDB_PREDICTIONS_TOP_N", "0")),
+        help="Limit prediction logging to top N miners by score. Default: all miners.",
+        default=int(_top_n_env) if _top_n_env else None,
     )
 
     # Model download settings
