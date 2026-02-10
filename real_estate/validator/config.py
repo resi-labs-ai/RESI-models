@@ -182,7 +182,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="wandb_entity",
         type=str,
         help="WandB entity.",
-        default=os.environ.get("WANDB_ENTITY", "resi-labs-org"),
+        default=os.environ.get("WANDB_ENTITY", "resi-labs"),
     )
 
     parser.add_argument(

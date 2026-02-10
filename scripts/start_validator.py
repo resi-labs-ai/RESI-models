@@ -297,7 +297,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--wandb.entity",
         dest="wandb_entity",
-        default=os.environ.get("WANDB_ENTITY", "resi-labs-org"),
+        default=os.environ.get("WANDB_ENTITY", "resi-labs"),
     )
     parser.add_argument(
         "--burn_amount",
