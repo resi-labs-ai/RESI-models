@@ -1053,6 +1053,52 @@ class TestStartScheduled:
                 # Should not raise, just log the error
                 await scheduled_func()
 
-            # on_fetch should not have been called
-            on_fetch.assert_not_called()
+            # on_fetch should be called with (None, None) to signal failure
+            # This allows the validator to handle the failure (e.g., zero scores for burn)
+            on_fetch.assert_called_once_with(None, None)
+
+    async def test_scheduled_job_retries_exhausted_then_calls_callback(self, mock_keypair):
+        """Callback only called after retries exhausted, not during retries."""
+        config = ValidationDatasetClientConfig(
+            url="https://api.example.com",
+            max_retries=3,
+            retry_delay_seconds=0,  # No delay for test speed
+        )
+        client = ValidationDatasetClient(config, mock_keypair)
+
+        with patch(
+            "real_estate.data.validation_dataset_client.AsyncIOScheduler"
+        ) as mock_scheduler_cls:
+            on_fetch = MagicMock()
+            client.start_scheduled(on_fetch)
+
+            # Get the scheduled function
+            job_args, _ = mock_scheduler_cls.return_value.add_job.call_args
+            scheduled_func = job_args[0]
+
+            # Track callback calls during retries
+            callback_calls_during_retries = []
+
+            def track_download_attempts(*args, **kwargs):
+                # Record callback call count at each retry attempt
+                callback_calls_during_retries.append(on_fetch.call_count)
+                raise ValidationDataRequestError("Server error")
+
+            # Mock download_validation_set to always fail (triggers retries)
+            with patch.object(
+                client,
+                "download_validation_set",
+                new_callable=AsyncMock,
+                side_effect=track_download_attempts,
+            ) as mock_download:
+                await scheduled_func()
+
+                # Should have retried max_retries times
+                assert mock_download.call_count == 3
+
+            # Callback was NOT called during any retry attempt
+            assert callback_calls_during_retries == [0, 0, 0]
+
+            # Callback only called AFTER all retries exhausted
+            on_fetch.assert_called_once_with(None, None)
 

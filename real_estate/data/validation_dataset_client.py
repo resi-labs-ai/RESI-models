@@ -560,7 +560,7 @@ class ValidationDatasetClient:
         """
         Start scheduled validation data fetching using APScheduler.
 
-        Fetches data daily at the configured time (default 2 AM UTC).
+        Fetches data daily at the configured time (default 6 PM UTC).
 
         In test mode: schedules an immediate fetch instead of waiting for cron time.
 
@@ -589,6 +589,11 @@ class ValidationDatasetClient:
                 logger.info("Scheduled validation set fetch completed successfully")
             except Exception as e:
                 logger.error(f"Scheduled validation set fetch failed: {e}")
+                # Notify callback of failure so validator can handle it
+                # (e.g., zero scores to trigger burn instead of rewarding stale winners)
+                result = on_fetch(None, None)
+                if isinstance(result, Awaitable):
+                    await result
 
         # Schedule daily at configured time
         scheduler.add_job(
