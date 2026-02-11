@@ -67,6 +67,8 @@ def mock_config() -> MagicMock:
 @pytest.fixture
 def validator(mock_config: MagicMock) -> Validator:
     """Create a Validator instance with mocked dependencies."""
+    from datetime import UTC, datetime
+
     with (
         patch("real_estate.validator.validator.check_config"),
         patch("real_estate.validator.validator.bt.subtensor") as mock_subtensor,
@@ -78,7 +80,10 @@ def validator(mock_config: MagicMock) -> Validator:
         mock_wallet.return_value = MagicMock(
             hotkey=MagicMock(ss58_address="our_hotkey")
         )
-        return Validator(mock_config)
+        v = Validator(mock_config)
+        # Set recent evaluation to avoid staleness check in tests
+        v._last_successful_evaluation = datetime.now(UTC)
+        return v
 
 
 class TestOnMetagraphUpdated:
@@ -970,4 +975,54 @@ class TestCatchUpRetry:
         # Should have retried once after initial failure
         assert attempt_count == 2
         assert "hotkey1" in validator.download_results
+
+
+class TestOnValidationDataFetched:
+    """Tests for _on_validation_data_fetched callback."""
+
+    def test_none_data_zeros_scores(self, validator: Validator) -> None:
+        """When validation data is None, scores are zeroed for burn."""
+        # Setup: validator has existing scores
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
+        validator.scores = np.array([0.5, 0.3, 0.2], dtype=np.float32)
+
+        # Callback with None (fetch failed after retries exhausted)
+        validator._on_validation_data_fetched(None, None)
+
+        # Scores should be zeroed so burn mechanism kicks in
+        assert np.all(validator.scores == 0.0)
+
+    def test_empty_data_zeros_scores(self, validator: Validator) -> None:
+        """When validation data is empty, scores are zeroed for burn."""
+        from real_estate.data import ValidationDataset
+
+        # Setup: validator has existing scores
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
+        validator.scores = np.array([0.5, 0.3, 0.2], dtype=np.float32)
+
+        # Callback with empty dataset
+        empty_dataset = ValidationDataset(properties=[])
+        validator._on_validation_data_fetched(empty_dataset, None)
+
+        # Scores should be zeroed so burn mechanism kicks in
+        assert np.all(validator.scores == 0.0)
+
+    def test_valid_data_triggers_evaluation(self, validator: Validator) -> None:
+        """When validation data is valid, evaluation event is set."""
+        from real_estate.data import ValidationDataset
+
+        # Setup: validator has existing scores
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
+        validator.scores = np.array([0.5, 0.3, 0.2], dtype=np.float32)
+
+        # Callback with valid dataset
+        valid_dataset = ValidationDataset(properties=[{"price": 500000}])
+        validator._on_validation_data_fetched(valid_dataset, None)
+
+        # Scores should NOT be zeroed
+        assert not np.all(validator.scores == 0.0)
+        # Evaluation event should be set
+        assert validator._evaluation_event.is_set()
+        # Validation data should be stored
+        assert validator.validation_data == valid_dataset
 
