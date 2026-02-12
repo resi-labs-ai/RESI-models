@@ -96,7 +96,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="validation_data_max_retries",
         type=int,
         help="Max retry attempts for failed validation data fetches.",
-        default=int(os.environ.get("VALIDATION_DATA_MAX_RETRIES", "24")),
+        default=int(os.environ.get("VALIDATION_DATA_MAX_RETRIES", "36")),
     )
 
     parser.add_argument(
