@@ -1026,3 +1026,59 @@ class TestOnValidationDataFetched:
         # Validation data should be stored
         assert validator.validation_data == valid_dataset
 
+
+class TestWeightSettingLoopConnectionError:
+    """Tests that _weight_setting_loop survives connection errors."""
+
+    @pytest.mark.asyncio
+    async def test_connection_error_in_should_set_weights_does_not_crash(
+        self, validator: Validator
+    ) -> None:
+        """ConnectionError from self.block in should_set_weights is caught."""
+        call_count = 0
+
+        def mock_should_set_weights():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ConnectionError(
+                    "[Errno -3] Temporary failure in name resolution"
+                )
+            # Stop the loop on second iteration
+            raise asyncio.CancelledError()
+
+        validator.should_set_weights = mock_should_set_weights
+
+        with patch(
+            "real_estate.validator.validator.asyncio.sleep", new_callable=AsyncMock
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await validator._weight_setting_loop()
+
+        # Loop survived the ConnectionError and iterated again
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_timeout_error_in_should_set_weights_does_not_crash(
+        self, validator: Validator
+    ) -> None:
+        """TimeoutError from subtensor websocket in should_set_weights is caught."""
+        call_count = 0
+
+        def mock_should_set_weights():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise TimeoutError("timed out in 60.0s")
+            raise asyncio.CancelledError()
+
+        validator.should_set_weights = mock_should_set_weights
+
+        with patch(
+            "real_estate.validator.validator.asyncio.sleep", new_callable=AsyncMock
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await validator._weight_setting_loop()
+
+        assert call_count == 2
+

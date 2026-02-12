@@ -571,8 +571,8 @@ class Validator:
     async def _weight_setting_loop(self) -> None:
         """Loop that periodically checks and sets weights."""
         while True:
-            if self.should_set_weights():
-                try:
+            try:
+                if self.should_set_weights():
                     await self.update_metagraph()
                     if not self.is_registered():
                         logger.error(
@@ -581,8 +581,8 @@ class Validator:
                         )
                     else:
                         await self.set_weights()
-                except Exception as e:
-                    logger.warning(f"Weight setting failed: {e}")
+            except Exception as e:
+                logger.warning(f"Weight setting failed: {e}", exc_info=True)
 
             await asyncio.sleep(60)
 
