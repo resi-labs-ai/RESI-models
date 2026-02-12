@@ -234,6 +234,14 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=int(os.environ.get("MODEL_MIN_COMMITMENT_AGE_BLOCKS", "8400")),
     )
 
+    parser.add_argument(
+        "--hf.token",
+        dest="hf_token",
+        type=str,
+        help="HuggingFace API token for authenticated downloads (higher rate limits).",
+        default=os.environ.get("HF_TOKEN", ""),
+    )
+
     # Docker execution settings
     parser.add_argument(
         "--docker.memory",
@@ -386,6 +394,7 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "wandb_api_key": "***" if config.wandb_api_key else "",
         "wandb_offline": config.wandb_offline,
         "wandb_log_predictions": config.wandb_log_predictions,
+        "hf_token": "***" if config.hf_token else "",
         "model_cache_path": str(config.model_cache_path),
         "model_max_size_mb": config.model_max_size_mb,
         "model_min_commitment_age_blocks": config.model_min_commitment_age_blocks,
