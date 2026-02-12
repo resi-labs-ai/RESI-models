@@ -203,6 +203,7 @@ class EvaluationOrchestrator:
                 metrics=metrics,
                 inference_time_ms=inference_result.inference_time_ms,
                 model_hash=metadata.model_hash if metadata else None,
+                hf_repo_id=metadata.hf_repo_id if metadata else None,
             )
 
         except Exception as e:
@@ -216,6 +217,7 @@ class EvaluationOrchestrator:
                 hotkey=hotkey,
                 error=e,
                 model_hash=metadata.model_hash if metadata else None,
+                hf_repo_id=metadata.hf_repo_id if metadata else None,
             )
 
 
