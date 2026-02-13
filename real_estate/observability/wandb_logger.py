@@ -334,7 +334,8 @@ class WandbLogger:
         Log per-property predictions as a WandB table.
 
         For dashboard joining - allows matching predictions to addresses/zpids.
-        Only logs predictions for top N miners to limit data volume.
+        Logs all miners by default. When predictions_top_n_miners is set,
+        limits to top N miners by score.
         """
         wandb = self._import_wandb()
 
@@ -406,6 +407,7 @@ def create_wandb_logger(
     enabled: bool = True,
     offline: bool = False,
     log_predictions_table: bool = False,
+    predictions_top_n_miners: int | None = None,
 ) -> WandbLogger:
     """
     Create a WandB logger with common configuration.
@@ -419,6 +421,7 @@ def create_wandb_logger(
         enabled: Whether logging is enabled
         offline: Run in offline mode
         log_predictions_table: Log per-property predictions table (disabled by default)
+        predictions_top_n_miners: Limit to top N miners by score. None = all miners (default).
 
     Returns:
         Configured WandbLogger instance
@@ -441,5 +444,6 @@ def create_wandb_logger(
         enabled=enabled,
         offline=offline,
         log_predictions_table=log_predictions_table,
+        predictions_top_n_miners=predictions_top_n_miners,
     )
     return WandbLogger(config, validator_hotkey, netuid)

@@ -201,5 +201,6 @@ class WandbConfig:
     )
 
     # Prediction logging settings
-    # Only log predictions for top N miners (to limit data volume)
-    predictions_top_n_miners: int = 10
+    # Cap predictions to top N miners by score (to limit data volume).
+    # None = log all miners (default).
+    predictions_top_n_miners: int | None = None

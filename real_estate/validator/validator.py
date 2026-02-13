@@ -135,6 +135,7 @@ class Validator:
             enabled=not self.config.wandb_off,
             offline=self.config.wandb_offline,
             log_predictions_table=self.config.wandb_log_predictions,
+            predictions_top_n_miners=self.config.wandb_predictions_top_n,
         )
 
         # State
