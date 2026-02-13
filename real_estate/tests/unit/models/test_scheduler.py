@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from real_estate.chain.models import ChainModelMetadata
 from real_estate.models import ModelDownloadError, ModelError, SchedulerConfig
 from real_estate.models.scheduler import ModelDownloadScheduler
 
@@ -1279,3 +1280,641 @@ class TestGetAvailableModels:
         result = scheduler.get_available_models({"5Hotkey1"}, current_block=10000)
 
         assert result == {"5Hotkey1": Path("/cache/model.onnx")}
+
+    def test_skips_block_zero_models(
+        self,
+        scheduler_config: SchedulerConfig,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """Models with block_number=0 (unverified) are excluded with warning."""
+        mock_downloader = MagicMock()
+
+        # Model is cached and hash matches
+        cached_model = MagicMock()
+        cached_model.path = Path("/cache/model.onnx")
+        cached_model.metadata.hash = "hash123"
+        mock_downloader._cache.get.return_value = cached_model
+
+        scheduler = ModelDownloadScheduler(
+            scheduler_config, mock_downloader, mock_chain_client
+        )
+
+        # Commitment has block=0 (Pylon didn't return real block)
+        commitment = MagicMock()
+        commitment.model_hash = "hash123"
+        commitment.block_number = 0
+        scheduler._known_commitments = {"5Hotkey1": commitment}
+
+        result = scheduler.get_available_models({"5Hotkey1"}, current_block=10000)
+
+        assert result == {}
+        # Should not even check cache for block=0 commitments
+        mock_downloader._cache.get.assert_not_called()
+
+
+class TestCatchUpPreservesVerifiedBlocks:
+    """Tests for run_catch_up preserving verified blocks from pre-download.
+
+    The bug: run_catch_up fetches fresh commitments from Pylon (all block=0),
+    then overwrites _known_commitments with this data. This discards the
+    verified block numbers that run_pre_download set via extrinsic verification.
+
+    The fix: before overwriting, copy verified blocks from the old
+    _known_commitments into current_map for models that weren't retried.
+    """
+
+    @pytest.mark.asyncio
+    async def test_preserves_verified_block_for_cached_model(
+        self,
+        scheduler_config: SchedulerConfig,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """Cached model's verified block from pre-download survives catch-up."""
+        scheduler_config.min_delay_between_downloads_seconds = 0
+        mock_downloader = MagicMock()
+        mock_downloader.is_cached.return_value = True
+
+        chain_commitment = ChainModelMetadata(
+            hotkey="5Hotkey1",
+            hf_repo_id="user/repo",
+            model_hash="hash123",
+            block_number=0,
+        )
+        mock_chain_client.get_all_commitments = AsyncMock(
+            return_value=[chain_commitment]
+        )
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(
+            scheduler_config, mock_downloader, mock_chain_client
+        )
+        scheduler._known_commitments = {
+            "5Hotkey1": ChainModelMetadata(
+                hotkey="5Hotkey1",
+                hf_repo_id="user/repo",
+                model_hash="hash123",
+                block_number=500,
+            )
+        }
+        scheduler._pre_download_ran = True
+
+        await scheduler.run_catch_up()
+
+        assert scheduler._known_commitments["5Hotkey1"].block_number == 500
+        mock_downloader.download_model.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_preserves_blocks_for_multiple_cached_models(
+        self,
+        scheduler_config: SchedulerConfig,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """All cached models' verified blocks are preserved, not just one."""
+        scheduler_config.min_delay_between_downloads_seconds = 0
+        mock_downloader = MagicMock()
+        mock_downloader.is_cached.return_value = True
+
+        chain_commitments = [
+            ChainModelMetadata(
+                hotkey=f"5Hotkey{i}",
+                hf_repo_id="user/repo",
+                model_hash=f"hash{i}",
+                block_number=0,
+            )
+            for i in range(5)
+        ]
+        mock_chain_client.get_all_commitments = AsyncMock(
+            return_value=chain_commitments
+        )
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(
+            scheduler_config, mock_downloader, mock_chain_client
+        )
+        scheduler._known_commitments = {
+            f"5Hotkey{i}": ChainModelMetadata(
+                hotkey=f"5Hotkey{i}",
+                hf_repo_id="user/repo",
+                model_hash=f"hash{i}",
+                block_number=1000 + i * 100,
+            )
+            for i in range(5)
+        }
+        scheduler._pre_download_ran = True
+
+        await scheduler.run_catch_up()
+
+        for i in range(5):
+            assert (
+                scheduler._known_commitments[f"5Hotkey{i}"].block_number
+                == 1000 + i * 100
+            )
+
+    @pytest.mark.asyncio
+    async def test_retried_model_uses_fresh_block_not_preserved(
+        self,
+        scheduler_config: SchedulerConfig,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """Retried model gets its block from extrinsic verification, not from old state."""
+        from real_estate.models.downloader import ModelDownloadResult
+
+        scheduler_config.min_delay_between_downloads_seconds = 0
+        mock_downloader = MagicMock()
+        mock_downloader.is_cached.return_value = False  # Needs retry
+
+        download_result = ModelDownloadResult(
+            path=Path("/cache/model.onnx"), commit_block=999
+        )
+        mock_downloader.download_model = AsyncMock(return_value=download_result)
+
+        chain_commitment = ChainModelMetadata(
+            hotkey="5Hotkey1",
+            hf_repo_id="user/repo",
+            model_hash="hash123",
+            block_number=0,
+        )
+        mock_chain_client.get_all_commitments = AsyncMock(
+            return_value=[chain_commitment]
+        )
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(
+            scheduler_config, mock_downloader, mock_chain_client
+        )
+        # Old block was 500, but retry should get fresh block 999
+        scheduler._known_commitments = {
+            "5Hotkey1": ChainModelMetadata(
+                hotkey="5Hotkey1",
+                hf_repo_id="user/repo",
+                model_hash="hash123",
+                block_number=500,
+            )
+        }
+        scheduler._pre_download_ran = True
+
+        await scheduler.run_catch_up()
+
+        assert scheduler._known_commitments["5Hotkey1"].block_number == 999
+
+    @pytest.mark.asyncio
+    async def test_does_not_preserve_block_on_hash_change(
+        self,
+        scheduler_config: SchedulerConfig,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """Hash changed = new commitment, old block is irrelevant."""
+        scheduler_config.min_delay_between_downloads_seconds = 0
+        mock_downloader = MagicMock()
+        mock_downloader.is_cached.return_value = True
+
+        chain_commitment = ChainModelMetadata(
+            hotkey="5Hotkey1",
+            hf_repo_id="user/repo",
+            model_hash="new_hash",
+            block_number=0,
+        )
+        mock_chain_client.get_all_commitments = AsyncMock(
+            return_value=[chain_commitment]
+        )
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(
+            scheduler_config, mock_downloader, mock_chain_client
+        )
+        scheduler._known_commitments = {
+            "5Hotkey1": ChainModelMetadata(
+                hotkey="5Hotkey1",
+                hf_repo_id="user/repo",
+                model_hash="old_hash",
+                block_number=500,
+            )
+        }
+        scheduler._pre_download_ran = True
+
+        await scheduler.run_catch_up()
+
+        assert scheduler._known_commitments["5Hotkey1"].block_number == 0
+
+    @pytest.mark.asyncio
+    async def test_does_not_preserve_block_zero(
+        self,
+        scheduler_config: SchedulerConfig,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """If pre-download also had block=0, nothing to preserve."""
+        scheduler_config.min_delay_between_downloads_seconds = 0
+        mock_downloader = MagicMock()
+        mock_downloader.is_cached.return_value = True
+
+        chain_commitment = ChainModelMetadata(
+            hotkey="5Hotkey1",
+            hf_repo_id="user/repo",
+            model_hash="hash123",
+            block_number=0,
+        )
+        mock_chain_client.get_all_commitments = AsyncMock(
+            return_value=[chain_commitment]
+        )
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(
+            scheduler_config, mock_downloader, mock_chain_client
+        )
+        # Pre-download also had block=0 (extrinsic verification failed)
+        scheduler._known_commitments = {
+            "5Hotkey1": ChainModelMetadata(
+                hotkey="5Hotkey1",
+                hf_repo_id="user/repo",
+                model_hash="hash123",
+                block_number=0,
+            )
+        }
+        scheduler._pre_download_ran = True
+
+        await scheduler.run_catch_up()
+
+        assert scheduler._known_commitments["5Hotkey1"].block_number == 0
+
+    @pytest.mark.asyncio
+    async def test_deregistered_hotkey_dropped(
+        self,
+        scheduler_config: SchedulerConfig,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """Hotkey no longer on chain is removed from _known_commitments."""
+        scheduler_config.min_delay_between_downloads_seconds = 0
+        mock_downloader = MagicMock()
+        mock_downloader.is_cached.return_value = True
+
+        # Chain only returns Hotkey2 — Hotkey1 deregistered
+        mock_chain_client.get_all_commitments = AsyncMock(
+            return_value=[
+                ChainModelMetadata(
+                    hotkey="5Hotkey2",
+                    hf_repo_id="user/repo",
+                    model_hash="hash2",
+                    block_number=0,
+                )
+            ]
+        )
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(
+            scheduler_config, mock_downloader, mock_chain_client
+        )
+        scheduler._known_commitments = {
+            "5Hotkey1": ChainModelMetadata(
+                hotkey="5Hotkey1",
+                hf_repo_id="user/repo",
+                model_hash="hash1",
+                block_number=500,
+            ),
+            "5Hotkey2": ChainModelMetadata(
+                hotkey="5Hotkey2",
+                hf_repo_id="user/repo",
+                model_hash="hash2",
+                block_number=600,
+            ),
+        }
+        scheduler._pre_download_ran = True
+
+        await scheduler.run_catch_up()
+
+        assert "5Hotkey1" not in scheduler._known_commitments
+        assert scheduler._known_commitments["5Hotkey2"].block_number == 600
+
+    @pytest.mark.asyncio
+    async def test_new_hotkey_added_with_block_zero(
+        self,
+        scheduler_config: SchedulerConfig,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """New hotkey appearing in catch-up has block=0 (no prior state to preserve)."""
+        scheduler_config.min_delay_between_downloads_seconds = 0
+        mock_downloader = MagicMock()
+        mock_downloader.is_cached.return_value = True
+
+        mock_chain_client.get_all_commitments = AsyncMock(
+            return_value=[
+                ChainModelMetadata(
+                    hotkey="5Existing",
+                    hf_repo_id="user/repo",
+                    model_hash="hash1",
+                    block_number=0,
+                ),
+                ChainModelMetadata(
+                    hotkey="5NewMiner",
+                    hf_repo_id="user/repo",
+                    model_hash="hash2",
+                    block_number=0,
+                ),
+            ]
+        )
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(
+            scheduler_config, mock_downloader, mock_chain_client
+        )
+        scheduler._known_commitments = {
+            "5Existing": ChainModelMetadata(
+                hotkey="5Existing",
+                hf_repo_id="user/repo",
+                model_hash="hash1",
+                block_number=500,
+            )
+        }
+        scheduler._pre_download_ran = True
+
+        await scheduler.run_catch_up()
+
+        assert scheduler._known_commitments["5Existing"].block_number == 500
+        assert scheduler._known_commitments["5NewMiner"].block_number == 0
+
+
+class TestCatchUpBlockPreservationE2E:
+    """End-to-end tests: pre-download → catch-up → get_available_models.
+
+    Reproduces the exact bug from production: model excluded as too recent
+    in pre-download, catch-up resets block to 0, model enters evaluation.
+    """
+
+    @pytest.mark.asyncio
+    async def test_too_recent_model_stays_excluded_after_catch_up(
+        self,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """
+        Reproduces the 5Gv6yo bug: model correctly excluded as too recent
+        in pre-download must remain excluded after catch-up.
+        """
+        from real_estate.models.downloader import ModelDownloadResult
+
+        config = SchedulerConfig(
+            pre_download_hours=3.0,
+            catch_up_minutes=30.0,
+            min_delay_between_downloads_seconds=0,
+            min_commitment_age_blocks=7200,
+        )
+        mock_downloader = MagicMock()
+
+        # --- Phase 1: pre-download ---
+        # Download succeeds, real block is 7528022 (too recent, cutoff ~7521036)
+        download_result = ModelDownloadResult(
+            path=Path("/cache/model.onnx"), commit_block=7528022
+        )
+        mock_downloader.download_model = AsyncMock(return_value=download_result)
+        mock_downloader.is_cached.return_value = False
+        mock_downloader.cleanup_stale_cache = MagicMock()
+        mock_downloader._cache.get.return_value = None
+
+        commitment = ChainModelMetadata(
+            hotkey="5Gv6yo",
+            hf_repo_id="Joshep1/RE",
+            model_hash="abc123",
+            block_number=0,
+        )
+        mock_chain_client.get_all_commitments = AsyncMock(return_value=[commitment])
+        mock_chain_client.get_metagraph = AsyncMock(
+            return_value=MagicMock(block=7528236)
+        )
+
+        scheduler = ModelDownloadScheduler(config, mock_downloader, mock_chain_client)
+
+        eval_time = datetime.now(UTC) + timedelta(hours=5)
+        pre_results = await scheduler.run_pre_download(eval_time)
+
+        # Pre-download correctly excluded it as too recent
+        assert pre_results["5Gv6yo"].success is False
+        assert "too recent" in str(pre_results["5Gv6yo"].error)
+        assert scheduler._known_commitments["5Gv6yo"].block_number == 7528022
+
+        # --- Phase 2: catch-up ---
+        # Chain still returns block=0, model is now cached
+        mock_downloader.is_cached.return_value = True
+        mock_chain_client.get_all_commitments = AsyncMock(return_value=[commitment])
+        mock_chain_client.get_metagraph = AsyncMock(
+            return_value=MagicMock(block=7528236)
+        )
+
+        await scheduler.run_catch_up()
+
+        # Block must be preserved, NOT reset to 0
+        assert scheduler._known_commitments["5Gv6yo"].block_number == 7528022
+
+        # --- Phase 3: get_available_models ---
+        cached_model = MagicMock()
+        cached_model.path = Path("/cache/model.onnx")
+        cached_model.metadata.hash = "abc123"
+        mock_downloader._cache.get.return_value = cached_model
+
+        available = scheduler.get_available_models({"5Gv6yo"}, current_block=7528236)
+
+        # Must NOT be available — still too recent
+        assert "5Gv6yo" not in available
+
+    @pytest.mark.asyncio
+    async def test_old_enough_model_available_after_catch_up(
+        self,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """
+        Model old enough in pre-download stays available after catch-up.
+        """
+        from real_estate.models.downloader import ModelDownloadResult
+
+        config = SchedulerConfig(
+            pre_download_hours=3.0,
+            catch_up_minutes=30.0,
+            min_delay_between_downloads_seconds=0,
+            min_commitment_age_blocks=100,
+        )
+        mock_downloader = MagicMock()
+
+        # Download succeeds, real block is 5000 (old enough, cutoff 9900)
+        download_result = ModelDownloadResult(
+            path=Path("/cache/model.onnx"), commit_block=5000
+        )
+        mock_downloader.download_model = AsyncMock(return_value=download_result)
+        mock_downloader.is_cached.return_value = False
+        mock_downloader.cleanup_stale_cache = MagicMock()
+        mock_downloader._cache.get.return_value = None
+
+        commitment = ChainModelMetadata(
+            hotkey="5GoodModel",
+            hf_repo_id="user/repo",
+            model_hash="hash123",
+            block_number=0,
+        )
+        mock_chain_client.get_all_commitments = AsyncMock(return_value=[commitment])
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(config, mock_downloader, mock_chain_client)
+
+        eval_time = datetime.now(UTC) + timedelta(hours=5)
+        pre_results = await scheduler.run_pre_download(eval_time)
+
+        assert pre_results["5GoodModel"].success is True
+        assert scheduler._known_commitments["5GoodModel"].block_number == 5000
+
+        # Catch-up: model is now cached, chain still returns block=0
+        mock_downloader.is_cached.return_value = True
+        mock_chain_client.get_all_commitments = AsyncMock(return_value=[commitment])
+
+        await scheduler.run_catch_up()
+
+        # Block preserved
+        assert scheduler._known_commitments["5GoodModel"].block_number == 5000
+
+        # Model should be available for evaluation
+        cached_model = MagicMock()
+        cached_model.path = Path("/cache/model.onnx")
+        cached_model.metadata.hash = "hash123"
+        mock_downloader._cache.get.return_value = cached_model
+
+        available = scheduler.get_available_models({"5GoodModel"}, current_block=10000)
+
+        assert "5GoodModel" in available
+
+    @pytest.mark.asyncio
+    async def test_block_zero_model_excluded_from_evaluation(
+        self,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """
+        Model with block=0 (never verified) must not enter evaluation,
+        even if it's cached and hash matches.
+        """
+        config = SchedulerConfig(
+            pre_download_hours=3.0,
+            catch_up_minutes=30.0,
+            min_delay_between_downloads_seconds=0,
+            min_commitment_age_blocks=100,
+        )
+        mock_downloader = MagicMock()
+
+        # Model is cached
+        cached_model = MagicMock()
+        cached_model.path = Path("/cache/model.onnx")
+        cached_model.metadata.hash = "hash123"
+        mock_downloader._cache.get.return_value = cached_model
+
+        scheduler = ModelDownloadScheduler(config, mock_downloader, mock_chain_client)
+
+        # Commitment has block=0 — extrinsic verification never happened
+        scheduler._known_commitments = {
+            "5Unverified": ChainModelMetadata(
+                hotkey="5Unverified",
+                hf_repo_id="user/repo",
+                model_hash="hash123",
+                block_number=0,
+            )
+        }
+
+        available = scheduler.get_available_models(
+            {"5Unverified"}, current_block=10000
+        )
+
+        assert available == {}
+        # Should not even check cache
+        mock_downloader._cache.get.assert_not_called()
+
+
+class TestCatchUpPreDownloadCrash:
+    """Tests for catch-up recovering cached models when pre-download never ran."""
+
+    @pytest.mark.asyncio
+    async def test_cached_model_verified_when_pre_download_never_ran(
+        self,
+        scheduler_config: SchedulerConfig,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """Cached model gets its block from disk metadata when pre-download crashed."""
+        from real_estate.models.downloader import ModelDownloadResult
+
+        scheduler_config.min_delay_between_downloads_seconds = 0
+        mock_downloader = MagicMock()
+
+        # Model is cached with matching hash
+        cached_model = MagicMock()
+        cached_model.metadata.hash = "hash123"
+        mock_downloader._cache.get.return_value = cached_model
+
+        # is_cached returns True → not added to to_retry
+        mock_downloader.is_cached.return_value = True
+
+        # download_model returns cached result with real block from metadata.json
+        download_result = ModelDownloadResult(
+            path=Path("/cache/model.onnx"), commit_block=500
+        )
+        mock_downloader.download_model = AsyncMock(return_value=download_result)
+
+        chain_commitment = ChainModelMetadata(
+            hotkey="5Hotkey1",
+            hf_repo_id="user/repo",
+            model_hash="hash123",
+            block_number=0,
+        )
+        mock_chain_client.get_all_commitments = AsyncMock(
+            return_value=[chain_commitment]
+        )
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(
+            scheduler_config, mock_downloader, mock_chain_client
+        )
+        # Pre-download never ran — _known_commitments is empty, flag is False
+        scheduler._known_commitments = {}
+        scheduler._pre_download_ran = False
+
+        await scheduler.run_catch_up()
+
+        # Block recovered from cached metadata
+        assert scheduler._known_commitments["5Hotkey1"].block_number == 500
+
+    @pytest.mark.asyncio
+    async def test_cached_model_not_verified_when_pre_download_ran(
+        self,
+        scheduler_config: SchedulerConfig,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """Cached model is NOT re-verified in catch-up when pre-download ran normally."""
+        scheduler_config.min_delay_between_downloads_seconds = 0
+        mock_downloader = MagicMock()
+
+        cached_model = MagicMock()
+        cached_model.metadata.hash = "hash123"
+        mock_downloader._cache.get.return_value = cached_model
+        mock_downloader.is_cached.return_value = True
+
+        chain_commitment = ChainModelMetadata(
+            hotkey="5Hotkey1",
+            hf_repo_id="user/repo",
+            model_hash="hash123",
+            block_number=0,
+        )
+        mock_chain_client.get_all_commitments = AsyncMock(
+            return_value=[chain_commitment]
+        )
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(
+            scheduler_config, mock_downloader, mock_chain_client
+        )
+        # Pre-download ran normally and set verified block
+        scheduler._known_commitments = {
+            "5Hotkey1": ChainModelMetadata(
+                hotkey="5Hotkey1",
+                hf_repo_id="user/repo",
+                model_hash="hash123",
+                block_number=500,
+            )
+        }
+        scheduler._pre_download_ran = True
+
+        await scheduler.run_catch_up()
+
+        # download_model NOT called — no re-verification needed
+        mock_downloader.download_model.assert_not_called()
+        # Block preserved via normal preservation logic
+        assert scheduler._known_commitments["5Hotkey1"].block_number == 500
