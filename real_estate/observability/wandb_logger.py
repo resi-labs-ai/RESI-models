@@ -243,6 +243,7 @@ class WandbLogger:
                     else None
                 ),
                 model_hash=eval_result.model_hash,
+                hf_repo_id=eval_result.hf_repo_id,
                 inference_time_ms=eval_result.inference_time_ms,
                 is_winner=(eval_result.hotkey == result.winner.winner_hotkey),
                 is_copier=(eval_result.hotkey in copiers),
@@ -296,6 +297,8 @@ class WandbLogger:
             "inference_time_ms",
             "is_winner",
             "is_copier",
+            "model_hash",
+            "hf_repo_id",
             "error",
         ]
 
@@ -314,6 +317,8 @@ class WandbLogger:
                 miner.inference_time_ms,
                 miner.is_winner,
                 miner.is_copier,
+                miner.model_hash,
+                miner.hf_repo_id,
                 miner.error,
             )
 
