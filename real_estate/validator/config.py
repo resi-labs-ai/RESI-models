@@ -96,7 +96,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="validation_data_max_retries",
         type=int,
         help="Max retry attempts for failed validation data fetches.",
-        default=int(os.environ.get("VALIDATION_DATA_MAX_RETRIES", "24")),
+        default=int(os.environ.get("VALIDATION_DATA_MAX_RETRIES", "36")),
     )
 
     parser.add_argument(
@@ -207,6 +207,15 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Enable logging per-property predictions table to WandB (disabled by default).",
         default=os.environ.get("WANDB_LOG_PREDICTIONS", "false").lower() == "true",
+    )
+
+    _top_n_env = os.environ.get("WANDB_PREDICTIONS_TOP_N")
+    parser.add_argument(
+        "--wandb.predictions_top_n",
+        dest="wandb_predictions_top_n",
+        type=int,
+        help="Limit prediction logging to top N miners by score. Default: all miners.",
+        default=int(_top_n_env) if _top_n_env else None,
     )
 
     # Model download settings
@@ -386,6 +395,7 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "wandb_api_key": "***" if config.wandb_api_key else "",
         "wandb_offline": config.wandb_offline,
         "wandb_log_predictions": config.wandb_log_predictions,
+        "wandb_predictions_top_n": config.wandb_predictions_top_n,
         "model_cache_path": str(config.model_cache_path),
         "model_max_size_mb": config.model_max_size_mb,
         "model_min_commitment_age_blocks": config.model_min_commitment_age_blocks,

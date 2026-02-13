@@ -243,6 +243,7 @@ class WandbLogger:
                     else None
                 ),
                 model_hash=eval_result.model_hash,
+                hf_repo_id=eval_result.hf_repo_id,
                 inference_time_ms=eval_result.inference_time_ms,
                 is_winner=(eval_result.hotkey == result.winner.winner_hotkey),
                 is_copier=(eval_result.hotkey in copiers),
@@ -296,6 +297,8 @@ class WandbLogger:
             "inference_time_ms",
             "is_winner",
             "is_copier",
+            "model_hash",
+            "hf_repo_id",
             "error",
         ]
 
@@ -314,6 +317,8 @@ class WandbLogger:
                 miner.inference_time_ms,
                 miner.is_winner,
                 miner.is_copier,
+                miner.model_hash,
+                miner.hf_repo_id,
                 miner.error,
             )
 
@@ -329,7 +334,8 @@ class WandbLogger:
         Log per-property predictions as a WandB table.
 
         For dashboard joining - allows matching predictions to addresses/zpids.
-        Only logs predictions for top N miners to limit data volume.
+        Logs all miners by default. When predictions_top_n_miners is set,
+        limits to top N miners by score.
         """
         wandb = self._import_wandb()
 
@@ -401,6 +407,7 @@ def create_wandb_logger(
     enabled: bool = True,
     offline: bool = False,
     log_predictions_table: bool = False,
+    predictions_top_n_miners: int | None = None,
 ) -> WandbLogger:
     """
     Create a WandB logger with common configuration.
@@ -414,6 +421,7 @@ def create_wandb_logger(
         enabled: Whether logging is enabled
         offline: Run in offline mode
         log_predictions_table: Log per-property predictions table (disabled by default)
+        predictions_top_n_miners: Limit to top N miners by score. None = all miners (default).
 
     Returns:
         Configured WandbLogger instance
@@ -436,5 +444,6 @@ def create_wandb_logger(
         enabled=enabled,
         offline=offline,
         log_predictions_table=log_predictions_table,
+        predictions_top_n_miners=predictions_top_n_miners,
     )
     return WandbLogger(config, validator_hotkey, netuid)
