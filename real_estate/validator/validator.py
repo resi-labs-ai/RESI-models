@@ -661,6 +661,7 @@ class Validator:
                     pre_download_hours=self.config.scheduler_pre_download_hours,
                     catch_up_minutes=self.config.scheduler_catch_up_minutes,
                 ),
+                hf_token=self.config.hf_token or None,
             )
 
             await self._startup()

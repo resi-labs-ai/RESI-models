@@ -373,6 +373,8 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | **Burn Configuration** | | |
 | `BURN_AMOUNT` | `0.5` | Fraction of emissions to burn (0.0-1.0) |
 | `BURN_UID` | `238` | UID receiving burn allocation (subnet owner) |
+| **HuggingFace** | | |
+| `HF_TOKEN` | | HuggingFace API token (higher rate limits) |
 | **Model Settings** | | |
 | `MODEL_CACHE_PATH` | `./model_cache` | Path to cache downloaded models |
 | `MODEL_MAX_SIZE_MB` | `200` | Maximum model size in MB |

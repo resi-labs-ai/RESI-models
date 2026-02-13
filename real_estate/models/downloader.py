@@ -80,6 +80,7 @@ class ModelDownloader:
         config: DownloadConfig,
         cache: ModelCache,
         verifier: ModelVerifier,
+        hf_token: str | None = None,
     ):
         """
         Initialize downloader.
@@ -88,10 +89,12 @@ class ModelDownloader:
             config: Download configuration
             cache: Model cache for storing downloads
             verifier: Verifier for pre/post-download checks
+            hf_token: Optional HuggingFace API token for authenticated downloads
         """
         self._config = config
         self._cache = cache
         self._verifier = verifier
+        self._hf_token = hf_token
         self._circuit_breaker = _CircuitBreakerState()
 
     async def download_model(
@@ -227,6 +230,7 @@ class ModelDownloader:
                         filename=filename,
                         local_dir=temp_dir,
                         local_dir_use_symlinks=False,
+                        token=self._hf_token,
                     ),
                     timeout=self._config.download_timeout_seconds,
                 )
