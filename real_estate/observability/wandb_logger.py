@@ -179,11 +179,12 @@ class WandbLogger:
         if not self._config.enabled:
             return
 
+        if self._run is None and self._init_failed:
+            logger.warning("Skipping WandB logging (initialization failed earlier)")
+            return
+
         if self._run is None:
-            if self._init_failed:
-                logger.warning("Skipping WandB logging (initialization failed earlier)")
-            else:
-                logger.warning("WandB run not started. Call start_run() first.")
+            logger.warning("WandB run not started. Call start_run() first.")
             return
 
         try:
