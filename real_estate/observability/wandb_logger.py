@@ -67,6 +67,7 @@ class WandbLogger:
         self._netuid = netuid
         self._run: wandb.sdk.wandb_run.Run | None = None
         self._wandb: Any = None  # Lazy import
+        self._init_failed: bool = False  # Track if start_run() failed
 
     def _import_wandb(self) -> Any:
         """Lazy import wandb to avoid dependency if disabled."""
@@ -144,6 +145,7 @@ class WandbLogger:
 
         except Exception as e:
             logger.error(f"Failed to start WandB run: {e}", exc_info=True)
+            self._init_failed = True
             # Don't raise - logging failures shouldn't break validation
 
     def finish(self) -> None:
@@ -178,7 +180,10 @@ class WandbLogger:
             return
 
         if self._run is None:
-            logger.warning("WandB run not started. Call start_run() first.")
+            if self._init_failed:
+                logger.warning("Skipping WandB logging (initialization failed earlier)")
+            else:
+                logger.warning("WandB run not started. Call start_run() first.")
             return
 
         try:
