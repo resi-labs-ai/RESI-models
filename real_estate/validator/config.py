@@ -143,7 +143,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--score_threshold",
         type=float,
         help="Score threshold for winner set. Models within this of best are equivalent.",
-        default=float(os.environ.get("SCORE_THRESHOLD", "0.002")),
+        default=float(os.environ.get("SCORE_THRESHOLD", "0.01")),
     )
 
     parser.add_argument(
@@ -166,7 +166,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="wandb_off",
         action="store_true",
         help="Disable WandB logging.",
-        default=os.environ.get("WANDB_OFF", "false").lower() == "true",
+        default=os.environ.get("WANDB_OFF", "true").lower() == "true",
     )
 
     parser.add_argument(

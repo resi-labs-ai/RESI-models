@@ -124,6 +124,60 @@ class TestWandbLoggerDisabledBehavior:
         assert logger._run is None
 
 
+class TestWandbLoggerFailureHandling:
+    """Tests for graceful handling of WandB failures."""
+
+    def test_start_run_catches_wandb_init_failure(self) -> None:
+        """Test start_run catches wandb.init() exception and doesn't raise."""
+        config = WandbConfig(enabled=True)
+        logger = WandbLogger(config, "5FTest", 46)
+
+        mock_wandb = MagicMock()
+        mock_wandb.init.side_effect = Exception("403 permission denied")
+        logger._wandb = mock_wandb
+
+        # Should not raise
+        logger.start_run()
+
+        assert logger._run is None
+
+    def test_finish_catches_run_finish_failure(self) -> None:
+        """Test finish catches run.finish() exception and doesn't raise."""
+        config = WandbConfig(enabled=True)
+        logger = WandbLogger(config, "5FTest", 46)
+
+        mock_run = MagicMock()
+        mock_run.finish.side_effect = Exception("Network error")
+        logger._run = mock_run
+
+        # Should not raise
+        logger.finish()
+
+        # Run reference should be cleaned up even after failure
+        assert logger._run is None
+
+    def test_evaluation_completes_after_failed_start_run(self) -> None:
+        """Test that log_evaluation and finish no-op after failed start_run."""
+        config = WandbConfig(enabled=True)
+        logger = WandbLogger(config, "5FTest", 46)
+
+        mock_wandb = MagicMock()
+        mock_wandb.init.side_effect = Exception("403 permission denied")
+        logger._wandb = mock_wandb
+
+        # start_run fails
+        logger.start_run()
+        assert logger._run is None
+
+        # log_evaluation should no-op (run is None)
+        logger.log_evaluation(MagicMock(), MagicMock())
+
+        # finish should no-op (run is None)
+        logger.finish()
+
+        assert logger._run is None
+
+
 class TestWandbLoggerStartRun:
     """Tests for start_run method."""
 
