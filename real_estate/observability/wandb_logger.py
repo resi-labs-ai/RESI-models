@@ -67,6 +67,7 @@ class WandbLogger:
         self._netuid = netuid
         self._run: wandb.sdk.wandb_run.Run | None = None
         self._wandb: Any = None  # Lazy import
+        self._init_failed: bool = False  # Track if start_run() failed
 
     def _import_wandb(self) -> Any:
         """Lazy import wandb to avoid dependency if disabled."""
@@ -103,50 +104,60 @@ class WandbLogger:
             logger.info("WandB logging is disabled")
             return
 
-        # Set API key if provided (wandb also checks WANDB_API_KEY env var)
-        if self._config.api_key:
-            import os
+        try:
+            # Set API key if provided (wandb also checks WANDB_API_KEY env var)
+            if self._config.api_key:
+                import os
 
-            os.environ["WANDB_API_KEY"] = self._config.api_key
+                os.environ["WANDB_API_KEY"] = self._config.api_key
 
-        wandb = self._import_wandb()
+            wandb = self._import_wandb()
 
-        # Generate run name if not provided
-        if run_name is None:
-            run_name = self._config.run_name
-        if run_name is None:
-            timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-            run_name = f"validator-{self._validator_hotkey[:8]}-{timestamp}"
+            # Generate run name if not provided
+            if run_name is None:
+                run_name = self._config.run_name
+            if run_name is None:
+                timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+                run_name = f"validator-{self._validator_hotkey[:8]}-{timestamp}"
 
-        # Prepare tags
-        tags = list(self._config.tags)
-        tags.append(f"netuid-{self._netuid}")
-        tags.append(f"validator-{self._validator_hotkey[:8]}")
+            # Prepare tags
+            tags = list(self._config.tags)
+            tags.append(f"netuid-{self._netuid}")
+            tags.append(f"validator-{self._validator_hotkey[:8]}")
 
-        # Initialize run
-        mode = "offline" if self._config.offline else "online"
+            # Initialize run
+            mode = "offline" if self._config.offline else "online"
 
-        self._run = wandb.init(
-            project=self._config.project,
-            entity=self._config.entity,
-            name=run_name,
-            tags=tags,
-            config={
-                "validator_hotkey": self._validator_hotkey,
-                "netuid": self._netuid,
-            },
-            mode=mode,
-            resume="allow",  # Allow resuming if run exists
-        )
+            self._run = wandb.init(
+                project=self._config.project,
+                entity=self._config.entity,
+                name=run_name,
+                tags=tags,
+                config={
+                    "validator_hotkey": self._validator_hotkey,
+                    "netuid": self._netuid,
+                },
+                mode=mode,
+                resume="allow",  # Allow resuming if run exists
+            )
 
-        logger.info(f"WandB run started: {self._run.name} ({self._run.url})")
+            logger.info(f"WandB run started: {self._run.name} ({self._run.url})")
+
+        except Exception as e:
+            logger.error(f"Failed to start WandB run: {e}", exc_info=True)
+            self._init_failed = True
+            # Don't raise - logging failures shouldn't break validation
 
     def finish(self) -> None:
         """Finish the current WandB run."""
         if self._run is not None:
-            self._run.finish()
-            logger.info("WandB run finished")
-            self._run = None
+            try:
+                self._run.finish()
+                logger.info("WandB run finished")
+            except Exception as e:
+                logger.error(f"Failed to finish WandB run: {e}", exc_info=True)
+            finally:
+                self._run = None
 
     def log_evaluation(
         self,
@@ -169,7 +180,10 @@ class WandbLogger:
             return
 
         if self._run is None:
-            logger.warning("WandB run not started. Call start_run() first.")
+            if self._init_failed:
+                logger.warning("Skipping WandB logging (initialization failed earlier)")
+            else:
+                logger.warning("WandB run not started. Call start_run() first.")
             return
 
         try:
