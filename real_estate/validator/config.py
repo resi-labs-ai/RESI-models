@@ -166,7 +166,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="wandb_off",
         action="store_true",
         help="Disable WandB logging.",
-        default=os.environ.get("WANDB_OFF", "false").lower() == "true",
+        default=os.environ.get("WANDB_OFF", "true").lower() == "true",
     )
 
     parser.add_argument(
