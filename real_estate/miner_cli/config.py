@@ -49,7 +49,7 @@ def get_feature_order() -> list[str]:
 
 
 def get_expected_num_features() -> int:
-    """Get expected number of input features (currently 73)."""
+    """Get expected number of input features (currently 79)."""
     return len(get_feature_order())
 
 

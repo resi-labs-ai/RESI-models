@@ -143,7 +143,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--score_threshold",
         type=float,
         help="Score threshold for winner set. Models within this of best are equivalent.",
-        default=float(os.environ.get("SCORE_THRESHOLD", "0.002")),
+        default=float(os.environ.get("SCORE_THRESHOLD", "0.01")),
     )
 
     parser.add_argument(
@@ -166,7 +166,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="wandb_off",
         action="store_true",
         help="Disable WandB logging.",
-        default=os.environ.get("WANDB_OFF", "false").lower() == "true",
+        default=os.environ.get("WANDB_OFF", "true").lower() == "true",
     )
 
     parser.add_argument(
@@ -207,6 +207,15 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Enable logging per-property predictions table to WandB (disabled by default).",
         default=os.environ.get("WANDB_LOG_PREDICTIONS", "false").lower() == "true",
+    )
+
+    _top_n_env = os.environ.get("WANDB_PREDICTIONS_TOP_N")
+    parser.add_argument(
+        "--wandb.predictions_top_n",
+        dest="wandb_predictions_top_n",
+        type=int,
+        help="Limit prediction logging to top N miners by score. Default: all miners.",
+        default=int(_top_n_env) if _top_n_env else None,
     )
 
     # Model download settings
@@ -395,6 +404,7 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "wandb_offline": config.wandb_offline,
         "wandb_log_predictions": config.wandb_log_predictions,
         "hf_token": "***" if config.hf_token else "",
+        "wandb_predictions_top_n": config.wandb_predictions_top_n,
         "model_cache_path": str(config.model_cache_path),
         "model_max_size_mb": config.model_max_size_mb,
         "model_min_commitment_age_blocks": config.model_min_commitment_age_blocks,

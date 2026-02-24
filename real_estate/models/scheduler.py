@@ -82,6 +82,7 @@ class ModelDownloadScheduler:
         2. Have a known commitment
         3. Are in cache with matching hash
         4. Have a commitment old enough (>= min_commitment_age_blocks)
+        5. Have a verified block number (block_number != 0)
 
         Args:
             registered_hotkeys: Set of hotkeys currently registered on metagraph
@@ -96,6 +97,11 @@ class ModelDownloadScheduler:
             if hotkey not in self._known_commitments:
                 continue
             commitment = self._known_commitments[hotkey]
+            if commitment.block_number == 0:
+                logger.warning(
+                    f"Skipping {hotkey}: commitment block unknown (not yet verified)"
+                )
+                continue
             if commitment.block_number > cutoff_block:
                 logger.info(
                     f"Skipping {hotkey}: commitment too recent "
@@ -315,25 +321,50 @@ class ModelDownloadScheduler:
                 to_retry.append(commitment)
                 logger.info(f"Downloading uncached commitment for {hotkey}")
 
-        if not to_retry:
-            logger.info("No failed downloads to retry in catch-up phase")
-            return {}
-
-        logger.info(f"Retrying {len(to_retry)} failed downloads")
-
-        # Download with minimal delays
+        # Download retries with minimal delays
         results: dict[str, DownloadResult] = {}
-        for commitment in to_retry:
-            result, commit_block = await self._download_single(commitment)
-            results[commitment.hotkey] = result
+        if to_retry:
+            logger.info(f"Retrying {len(to_retry)} failed downloads")
+            for commitment in to_retry:
+                result, commit_block = await self._download_single(commitment)
+                results[commitment.hotkey] = result
 
-            # Update metadata with correct commit block from Pylon
-            if result.success and commit_block is not None:
-                self._update_commitment_block(commitment, commit_block, current_map)
+                # Update metadata with correct commit block from Pylon
+                if result.success and commit_block is not None:
+                    self._update_commitment_block(commitment, commit_block, current_map)
 
-            await asyncio.sleep(self._config.min_delay_between_downloads_seconds)
+                await asyncio.sleep(self._config.min_delay_between_downloads_seconds)
+        else:
+            logger.info("No failed downloads to retry in catch-up phase")
 
-        # Update known commitments (with corrected block numbers)
+        # If pre-download never ran, verify cached models to recover their
+        # commit blocks from disk (metadata.json). Without this, cached models
+        # would stay block=0 and be excluded from evaluation for one cycle.
+        if pre_download_never_ran:
+            for hotkey, commitment in current_map.items():
+                if hotkey in results:
+                    continue
+                cached = self._downloader._cache.get(hotkey)
+                if cached and cached.metadata.hash == commitment.model_hash:
+                    result, commit_block = await self._download_single(commitment)
+                    results[commitment.hotkey] = result
+                    if result.success and commit_block is not None:
+                        self._update_commitment_block(
+                            commitment, commit_block, current_map
+                        )
+
+        # Update known commitments: use fresh chain set but preserve
+        # verified blocks from pre-download (don't overwrite with zeros)
+        for hotkey, commitment in current_map.items():
+            if hotkey in results:
+                continue  # Retried — current_map already has correct block
+            existing = self._known_commitments.get(hotkey)
+            if (
+                existing
+                and existing.model_hash == commitment.model_hash
+                and existing.block_number > 0
+            ):
+                current_map[hotkey] = existing
         self._known_commitments = current_map
 
         # Filter out models that are too new based on real commit_block from Pylon

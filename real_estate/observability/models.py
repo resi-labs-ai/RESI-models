@@ -28,6 +28,7 @@ class MinerResultLog:
 
     # Metadata
     model_hash: str | None = None
+    hf_repo_id: str | None = None
     inference_time_ms: float | None = None
     is_winner: bool = False
     is_copier: bool = False
@@ -49,6 +50,7 @@ class MinerResultLog:
                 round(self.accuracy, 4) if self.accuracy is not None else None
             ),
             "model_hash": self.model_hash,
+            "hf_repo_id": self.hf_repo_id,
             "inference_time_ms": (
                 round(self.inference_time_ms, 2)
                 if self.inference_time_ms is not None
@@ -199,5 +201,6 @@ class WandbConfig:
     )
 
     # Prediction logging settings
-    # Only log predictions for top N miners (to limit data volume)
-    predictions_top_n_miners: int = 10
+    # Cap predictions to top N miners by score (to limit data volume).
+    # None = log all miners (default).
+    predictions_top_n_miners: int | None = None

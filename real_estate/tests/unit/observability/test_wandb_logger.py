@@ -124,6 +124,60 @@ class TestWandbLoggerDisabledBehavior:
         assert logger._run is None
 
 
+class TestWandbLoggerFailureHandling:
+    """Tests for graceful handling of WandB failures."""
+
+    def test_start_run_catches_wandb_init_failure(self) -> None:
+        """Test start_run catches wandb.init() exception and doesn't raise."""
+        config = WandbConfig(enabled=True)
+        logger = WandbLogger(config, "5FTest", 46)
+
+        mock_wandb = MagicMock()
+        mock_wandb.init.side_effect = Exception("403 permission denied")
+        logger._wandb = mock_wandb
+
+        # Should not raise
+        logger.start_run()
+
+        assert logger._run is None
+
+    def test_finish_catches_run_finish_failure(self) -> None:
+        """Test finish catches run.finish() exception and doesn't raise."""
+        config = WandbConfig(enabled=True)
+        logger = WandbLogger(config, "5FTest", 46)
+
+        mock_run = MagicMock()
+        mock_run.finish.side_effect = Exception("Network error")
+        logger._run = mock_run
+
+        # Should not raise
+        logger.finish()
+
+        # Run reference should be cleaned up even after failure
+        assert logger._run is None
+
+    def test_evaluation_completes_after_failed_start_run(self) -> None:
+        """Test that log_evaluation and finish no-op after failed start_run."""
+        config = WandbConfig(enabled=True)
+        logger = WandbLogger(config, "5FTest", 46)
+
+        mock_wandb = MagicMock()
+        mock_wandb.init.side_effect = Exception("403 permission denied")
+        logger._wandb = mock_wandb
+
+        # start_run fails
+        logger.start_run()
+        assert logger._run is None
+
+        # log_evaluation should no-op (run is None)
+        logger.log_evaluation(MagicMock(), MagicMock())
+
+        # finish should no-op (run is None)
+        logger.finish()
+
+        assert logger._run is None
+
+
 class TestWandbLoggerStartRun:
     """Tests for start_run method."""
 
@@ -338,9 +392,47 @@ class TestWandbLoggerPredictionsTable:
         # Should have 2 miners x 2 properties = 4 rows
         assert mock_table.add_data.call_count == 4
 
+    def test_logs_all_miners_when_top_n_is_none(self) -> None:
+        """Test that all successful miners are logged when top_n is None."""
+        config = WandbConfig(enabled=True, predictions_top_n_miners=None)
+        logger = WandbLogger(config, "5FTest", 46)
+
+        mock_wandb = MagicMock()
+        mock_table = MagicMock()
+        mock_wandb.Table.return_value = mock_table
+        logger._wandb = mock_wandb
+
+        mock_run = MagicMock()
+        logger._run = mock_run
+
+        # 3 miners, all should be logged
+        predictions = {
+            "5FFirst": np.array([300000.0, 310000.0]),
+            "5FSecond": np.array([305000.0, 315000.0]),
+            "5FThird": np.array([350000.0, 360000.0]),
+        }
+        result = create_mock_validation_result(
+            miners=[
+                ("5FFirst", 0.95, True),
+                ("5FSecond", 0.90, True),
+                ("5FThird", 0.80, True),
+            ],
+            winner_hotkey="5FFirst",
+            predictions=predictions,
+        )
+        for eval_result in result.eval_batch.results:
+            eval_result.predictions = predictions.get(eval_result.hotkey)
+
+        dataset = create_mock_dataset(n_properties=2)
+
+        logger._log_predictions_table(result, dataset, "zpid")
+
+        # Should have 3 miners x 2 properties = 6 rows
+        assert mock_table.add_data.call_count == 6
+
     def test_skips_miners_without_predictions(self) -> None:
         """Test that miners with no predictions are skipped."""
-        config = WandbConfig(enabled=True, predictions_top_n_miners=10)
+        config = WandbConfig(enabled=True, predictions_top_n_miners=None)
         logger = WandbLogger(config, "5FTest", 46)
 
         mock_wandb = MagicMock()
@@ -371,7 +463,7 @@ class TestWandbLoggerPredictionsTable:
 
     def test_uses_fallback_property_id(self) -> None:
         """Test that fallback property ID is used when zpid missing."""
-        config = WandbConfig(enabled=True, predictions_top_n_miners=10)
+        config = WandbConfig(enabled=True, predictions_top_n_miners=None)
         logger = WandbLogger(config, "5FTest", 46)
 
         mock_wandb = MagicMock()
@@ -409,7 +501,7 @@ class TestWandbLoggerLogEvaluation:
             enabled=True,
             log_miner_table=True,
             log_predictions_table=True,
-            predictions_top_n_miners=10,
+            predictions_top_n_miners=None,
         )
         logger = WandbLogger(config, "5FValidator", 46)
 
@@ -440,7 +532,7 @@ class TestWandbLoggerLogEvaluation:
             enabled=True,
             log_miner_table=False,
             log_predictions_table=True,
-            predictions_top_n_miners=10,
+            predictions_top_n_miners=None,
         )
         logger = WandbLogger(config, "5FValidator", 46)
 
@@ -518,7 +610,7 @@ class TestWandbLoggerEdgeCases:
 
     def test_handles_empty_predictions_table(self) -> None:
         """Test handling when no miners have predictions."""
-        config = WandbConfig(enabled=True, predictions_top_n_miners=10)
+        config = WandbConfig(enabled=True, predictions_top_n_miners=None)
         logger = WandbLogger(config, "5FValidator", 46)
 
         mock_wandb = MagicMock()
@@ -560,3 +652,12 @@ class TestCreateWandbLogger:
         assert logger._config.offline is True
         assert logger._validator_hotkey == "5FTest"
         assert logger._netuid == 99
+
+    def test_creates_logger_with_predictions_top_n(self) -> None:
+        """Test factory wires predictions_top_n_miners."""
+        logger = create_wandb_logger(
+            validator_hotkey="5FTest",
+            predictions_top_n_miners=5,
+        )
+
+        assert logger._config.predictions_top_n_miners == 5

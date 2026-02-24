@@ -91,21 +91,24 @@ SUBTENSOR_NETWORK=finney
 NETUID=46
 
 # =============================================================================
-# WandB Logging (Recommended)
+# WandB Logging (Recommended, disabled by default)
 # =============================================================================
-WANDB_API_KEY=your_wandb_api_key_here
-WANDB_PROJECT=subnet-46-evaluations-mainnet
-WANDB_ENTITY=resi-labs
+# WANDB_API_KEY=your_wandb_api_key_here
+# WANDB_PROJECT=subnet-46-evaluations-mainnet
+# WANDB_ENTITY=resi-labs
+WANDB_OFF=true
+# WANDB_OFFLINE=false
 ```
 
 ### WandB Setup (Recommended)
 
-Track evaluation metrics and model performance on [Weights & Biases](https://wandb.ai). Validators receive a shared API key from subnet owners to log to the team project.
+Track evaluation metrics and model performance on [Weights & Biases](https://wandb.ai). WandB logging is disabled by default. Validators receive a shared API key from subnet owners to log to the team project.
+
+To enable WandB logging:
 
 1. Request a WandB API key from subnet owners on Discord
-2. Add `WANDB_API_KEY` to your `.env` file
-
-To disable WandB logging, set `WANDB_OFF=true`.
+2. Uncomment and set `WANDB_API_KEY`, `WANDB_PROJECT`, and `WANDB_ENTITY` in your `.env` file
+3. Set `WANDB_OFF=false` in your `.env` file
 
 ## Running the Validator
 
@@ -397,7 +400,7 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | `WANDB_API_KEY` | | WandB API key (request from subnet owners on Discord) |
 | `WANDB_PROJECT` | `subnet-46-evaluations-mainnet` | WandB project name |
 | `WANDB_ENTITY` | `resi-labs` | WandB team/entity |
-| `WANDB_OFF` | `false` | Disable WandB logging |
+| `WANDB_OFF` | `true` | Disable WandB logging |
 | `WANDB_OFFLINE` | `false` | Run WandB in offline mode (logs saved locally) |
 
 ## Network Configuration

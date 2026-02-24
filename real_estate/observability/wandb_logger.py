@@ -67,6 +67,7 @@ class WandbLogger:
         self._netuid = netuid
         self._run: wandb.sdk.wandb_run.Run | None = None
         self._wandb: Any = None  # Lazy import
+        self._init_failed: bool = False  # Track if start_run() failed
 
     def _import_wandb(self) -> Any:
         """Lazy import wandb to avoid dependency if disabled."""
@@ -103,50 +104,60 @@ class WandbLogger:
             logger.info("WandB logging is disabled")
             return
 
-        # Set API key if provided (wandb also checks WANDB_API_KEY env var)
-        if self._config.api_key:
-            import os
+        try:
+            # Set API key if provided (wandb also checks WANDB_API_KEY env var)
+            if self._config.api_key:
+                import os
 
-            os.environ["WANDB_API_KEY"] = self._config.api_key
+                os.environ["WANDB_API_KEY"] = self._config.api_key
 
-        wandb = self._import_wandb()
+            wandb = self._import_wandb()
 
-        # Generate run name if not provided
-        if run_name is None:
-            run_name = self._config.run_name
-        if run_name is None:
-            timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-            run_name = f"validator-{self._validator_hotkey[:8]}-{timestamp}"
+            # Generate run name if not provided
+            if run_name is None:
+                run_name = self._config.run_name
+            if run_name is None:
+                timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+                run_name = f"validator-{self._validator_hotkey[:8]}-{timestamp}"
 
-        # Prepare tags
-        tags = list(self._config.tags)
-        tags.append(f"netuid-{self._netuid}")
-        tags.append(f"validator-{self._validator_hotkey[:8]}")
+            # Prepare tags
+            tags = list(self._config.tags)
+            tags.append(f"netuid-{self._netuid}")
+            tags.append(f"validator-{self._validator_hotkey[:8]}")
 
-        # Initialize run
-        mode = "offline" if self._config.offline else "online"
+            # Initialize run
+            mode = "offline" if self._config.offline else "online"
 
-        self._run = wandb.init(
-            project=self._config.project,
-            entity=self._config.entity,
-            name=run_name,
-            tags=tags,
-            config={
-                "validator_hotkey": self._validator_hotkey,
-                "netuid": self._netuid,
-            },
-            mode=mode,
-            resume="allow",  # Allow resuming if run exists
-        )
+            self._run = wandb.init(
+                project=self._config.project,
+                entity=self._config.entity,
+                name=run_name,
+                tags=tags,
+                config={
+                    "validator_hotkey": self._validator_hotkey,
+                    "netuid": self._netuid,
+                },
+                mode=mode,
+                resume="allow",  # Allow resuming if run exists
+            )
 
-        logger.info(f"WandB run started: {self._run.name} ({self._run.url})")
+            logger.info(f"WandB run started: {self._run.name} ({self._run.url})")
+
+        except Exception as e:
+            logger.error(f"Failed to start WandB run: {e}", exc_info=True)
+            self._init_failed = True
+            # Don't raise - logging failures shouldn't break validation
 
     def finish(self) -> None:
         """Finish the current WandB run."""
         if self._run is not None:
-            self._run.finish()
-            logger.info("WandB run finished")
-            self._run = None
+            try:
+                self._run.finish()
+                logger.info("WandB run finished")
+            except Exception as e:
+                logger.error(f"Failed to finish WandB run: {e}", exc_info=True)
+            finally:
+                self._run = None
 
     def log_evaluation(
         self,
@@ -166,6 +177,10 @@ class WandbLogger:
                               that failed during download (license, hash, etc.)
         """
         if not self._config.enabled:
+            return
+
+        if self._run is None and self._init_failed:
+            logger.warning("Skipping WandB logging (initialization failed earlier)")
             return
 
         if self._run is None:
@@ -243,6 +258,7 @@ class WandbLogger:
                     else None
                 ),
                 model_hash=eval_result.model_hash,
+                hf_repo_id=eval_result.hf_repo_id,
                 inference_time_ms=eval_result.inference_time_ms,
                 is_winner=(eval_result.hotkey == result.winner.winner_hotkey),
                 is_copier=(eval_result.hotkey in copiers),
@@ -296,6 +312,8 @@ class WandbLogger:
             "inference_time_ms",
             "is_winner",
             "is_copier",
+            "model_hash",
+            "hf_repo_id",
             "error",
         ]
 
@@ -314,6 +332,8 @@ class WandbLogger:
                 miner.inference_time_ms,
                 miner.is_winner,
                 miner.is_copier,
+                miner.model_hash,
+                miner.hf_repo_id,
                 miner.error,
             )
 
@@ -329,7 +349,8 @@ class WandbLogger:
         Log per-property predictions as a WandB table.
 
         For dashboard joining - allows matching predictions to addresses/zpids.
-        Only logs predictions for top N miners to limit data volume.
+        Logs all miners by default. When predictions_top_n_miners is set,
+        limits to top N miners by score.
         """
         wandb = self._import_wandb()
 
@@ -401,6 +422,7 @@ def create_wandb_logger(
     enabled: bool = True,
     offline: bool = False,
     log_predictions_table: bool = False,
+    predictions_top_n_miners: int | None = None,
 ) -> WandbLogger:
     """
     Create a WandB logger with common configuration.
@@ -414,6 +436,7 @@ def create_wandb_logger(
         enabled: Whether logging is enabled
         offline: Run in offline mode
         log_predictions_table: Log per-property predictions table (disabled by default)
+        predictions_top_n_miners: Limit to top N miners by score. None = all miners (default).
 
     Returns:
         Configured WandbLogger instance
@@ -436,5 +459,6 @@ def create_wandb_logger(
         enabled=enabled,
         offline=offline,
         log_predictions_table=log_predictions_table,
+        predictions_top_n_miners=predictions_top_n_miners,
     )
     return WandbLogger(config, validator_hotkey, netuid)

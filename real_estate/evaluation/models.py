@@ -81,6 +81,7 @@ class EvaluationResult:
 
     # Model metadata (for context)
     model_hash: str | None = None
+    hf_repo_id: str | None = None
 
     @property
     def success(self) -> bool:
