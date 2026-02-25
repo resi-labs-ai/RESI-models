@@ -16,7 +16,7 @@ class TestPropertyPredictionLog:
     def test_computes_absolute_error(self) -> None:
         """Test absolute_error is computed from prices."""
         log = PropertyPredictionLog(
-            property_id="zpid-12345",
+            property_id="ext-12345",
             hotkey="5FTest",
             predicted_price=500000.0,
             ground_truth_price=480000.0,
@@ -27,7 +27,7 @@ class TestPropertyPredictionLog:
     def test_computes_percentage_error(self) -> None:
         """Test percentage_error is computed correctly."""
         log = PropertyPredictionLog(
-            property_id="zpid-12345",
+            property_id="ext-12345",
             hotkey="5FTest",
             predicted_price=550000.0,
             ground_truth_price=500000.0,
@@ -39,7 +39,7 @@ class TestPropertyPredictionLog:
     def test_percentage_error_underprediction(self) -> None:
         """Test percentage_error for underprediction (absolute value)."""
         log = PropertyPredictionLog(
-            property_id="zpid-12345",
+            property_id="ext-12345",
             hotkey="5FTest",
             predicted_price=450000.0,
             ground_truth_price=500000.0,
@@ -51,7 +51,7 @@ class TestPropertyPredictionLog:
     def test_explicit_errors_not_overwritten(self) -> None:
         """Test that explicitly provided error values are used."""
         log = PropertyPredictionLog(
-            property_id="zpid-12345",
+            property_id="ext-12345",
             hotkey="5FTest",
             predicted_price=500000.0,
             ground_truth_price=480000.0,
@@ -65,7 +65,7 @@ class TestPropertyPredictionLog:
     def test_to_dict_rounds_prices(self) -> None:
         """Test that to_dict rounds prices to 2 decimal places."""
         log = PropertyPredictionLog(
-            property_id="zpid-12345",
+            property_id="ext-12345",
             hotkey="5FTest",
             predicted_price=500000.123456,
             ground_truth_price=480000.789012,

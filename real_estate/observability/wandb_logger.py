@@ -163,7 +163,7 @@ class WandbLogger:
         self,
         result: ValidationResult,
         dataset: ValidationDataset,
-        property_id_field: str = "zpid",
+        property_id_field: str = "external_id",
         download_failures: dict[str, str] | None = None,
     ) -> None:
         """
@@ -172,7 +172,7 @@ class WandbLogger:
         Args:
             result: Validation result from orchestrator
             dataset: Validation dataset with properties
-            property_id_field: Field name for property ID (default: zpid)
+            property_id_field: Field name for property ID in dataset properties
             download_failures: Dict mapping hotkey to error message for miners
                               that failed during download (license, hash, etc.)
         """
@@ -348,7 +348,7 @@ class WandbLogger:
         """
         Log per-property predictions as a WandB table.
 
-        For dashboard joining - allows matching predictions to addresses/zpids.
+        For dashboard joining - allows matching predictions to property IDs.
         Logs all miners by default. When predictions_top_n_miners is set,
         limits to top N miners by score.
         """
@@ -381,10 +381,8 @@ class WandbLogger:
                 continue
 
             for i, prop in enumerate(dataset.properties):
-                # Get property ID
-                prop_id = (
-                    prop.get(property_id_field) or prop.get("address") or f"idx-{i}"
-                )
+                # Get property ID (falls back to address, then index)
+                prop_id = prop.get(property_id_field) or prop.get("address") or f"idx-{i}"
 
                 # Get prediction for this property
                 if i < len(miner.predictions):

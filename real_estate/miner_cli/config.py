@@ -58,7 +58,7 @@ def load_test_samples() -> list[dict]:
     Load test samples from shared JSON file.
 
     Returns:
-        List of sample dicts with 'zpid', 'actual_price', and 'features'.
+        List of sample dicts with 'external_id', 'actual_price', and 'features'.
     """
     if not _TEST_SAMPLES_PATH.exists():
         raise ConfigurationError(f"Test samples not found: {_TEST_SAMPLES_PATH}")
