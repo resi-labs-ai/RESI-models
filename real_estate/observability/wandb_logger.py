@@ -381,8 +381,8 @@ class WandbLogger:
                 continue
 
             for i, prop in enumerate(dataset.properties):
-                # Get property ID (falls back to index if field missing)
-                prop_id = prop.get(property_id_field) or f"idx-{i}"
+                # Get property ID (falls back to address, then index)
+                prop_id = prop.get(property_id_field) or prop.get("address") or f"idx-{i}"
 
                 # Get prediction for this property
                 if i < len(miner.predictions):
