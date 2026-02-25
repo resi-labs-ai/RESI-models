@@ -72,7 +72,7 @@ class PropertyPredictionLog:
     """
 
     # Property identifier (for joining with validation data)
-    property_id: str  # zpid or address
+    property_id: str  # external_id or index fallback
 
     # Miner info
     hotkey: str
