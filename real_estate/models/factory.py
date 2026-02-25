@@ -20,6 +20,7 @@ def create_model_scheduler(
     download_config: DownloadConfig | None = None,
     scheduler_config: SchedulerConfig | None = None,
     required_license: str | None = None,
+    hf_token: str | None = None,
 ) -> ModelDownloadScheduler:
     """
     Create a fully-wired ModelDownloadScheduler.
@@ -33,6 +34,7 @@ def create_model_scheduler(
         download_config: Optional custom download config (uses defaults if None)
         scheduler_config: Optional custom scheduler config (uses defaults if None)
         required_license: Optional custom required license string
+        hf_token: Optional HuggingFace API token for authenticated downloads
 
     Returns:
         Ready-to-use ModelDownloadScheduler
@@ -46,12 +48,13 @@ def create_model_scheduler(
     verifier_kwargs = {}
     if required_license is not None:
         verifier_kwargs["required_license"] = required_license
-    verifier = ModelVerifier(chain_client, **verifier_kwargs)
+    verifier = ModelVerifier(chain_client, hf_token=hf_token, **verifier_kwargs)
 
     downloader = ModelDownloader(
         config=download_config or DownloadConfig(),
         cache=cache,
         verifier=verifier,
+        hf_token=hf_token,
     )
 
     return ModelDownloadScheduler(
