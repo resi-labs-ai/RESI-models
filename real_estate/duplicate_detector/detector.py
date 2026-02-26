@@ -134,6 +134,7 @@ class PioneerDetector:
         """
         Find the pioneer (earliest committer) in a group.
 
-        Returns hotkey with lowest block_number.
+        Returns hotkey with lowest (block_number, hotkey) tuple.
+        This ensures deterministic tie-breaking when block numbers match.
         """
-        return min(hotkeys, key=lambda hk: metadata[hk].block_number)
+        return min(hotkeys, key=lambda hk: (metadata[hk].block_number, hk))
