@@ -2,6 +2,19 @@
 
 Guide for miners on the Real Estate Price Prediction Subnet (Bittensor subnet 46).
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Model Requirements](#model-requirements)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Commands Reference](#commands-reference)
+- [HuggingFace Repository Structure](#huggingface-repository-structure)
+- [Competition Rules](#competition-rules)
+- [Troubleshooting](#troubleshooting)
+- [Support](#support)
+
 ## Overview
 
 The miner CLI (`miner-cli`) helps you:
@@ -23,7 +36,7 @@ Your model must accept exactly **79 features** in the order defined in `real_est
 
 ## Prerequisites
 
-- Python 3.11+
+- Python >=3.11, <3.14
 - Bittensor wallet with registered hotkey
 - HuggingFace account
 - TAO for subnet registration
@@ -282,6 +295,46 @@ Validators perform these checks before scoring your model:
 5. SHA-256 hash of downloaded file matches your commitment
 
 **Important:** The file you provide to `miner-cli submit` is hashed locally. This exact file must be uploaded to HuggingFace - any difference will cause validation to fail.
+
+## Competition Rules
+
+### Evaluation Schedule
+
+Evaluation runs **daily at 18:00 UTC** against the last 24 hours of real sales data. (time to be adjusted in future)
+
+### Non-Disclosure States
+
+Some states have non-disclosure laws for housing sale prices, meaning we can't validate predictions for those states. **Do not include these states in your training data:**
+
+Alaska, Idaho, Kansas, Louisiana, Mississippi, Missouri, Montana, New Mexico, North Dakota, Texas, Utah, and Wyoming.
+
+### Scoring
+
+Models are scored using MAPE (Mean Absolute Percentage Error):
+
+```
+Score = 1 - MAPE
+```
+
+For example, a model with 8.5% average error scores 0.915.
+
+### Winner Selection
+
+1. **Winner set**: All models scoring within **1% (0.01)** of the best score are grouped into a winner set.
+2. **Earliest commit wins**: Within the winner set, the model with the **earliest on-chain commitment** (lowest block number) wins. This means a newcomer must beat the existing leader by more than 1% to take the top spot.
+3. **Commitment age**: Models must be committed on-chain **~31 hours before evaluation**  to be eligible.
+
+### Emission Distribution
+
+| Category | Share | Description |
+|----------|-------|-------------|
+| Winner | 99% | Highest-scoring model (or earliest commit within threshold) |
+| Non-winners | 1% | Shared proportionally by score among remaining valid models |
+| Copiers | 0% | Detected duplicates receive nothing |
+
+### Duplicate Detection
+
+Predictions are compared at high precision (1e-6). Models producing near-identical outputs are grouped, and only the **earliest committer (pioneer)** in each group is eligible. All others are flagged as copiers and receive 0% emissions.
 
 ## Troubleshooting
 
