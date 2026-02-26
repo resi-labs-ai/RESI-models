@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from real_estate.chain.models import Metagraph, Neuron
+from real_estate.incentives import NoValidModelsError
 from real_estate.models import DownloadResult
 from real_estate.validator import Validator
 
@@ -361,10 +362,119 @@ class TestSetWeights:
         # Should not call set_weights (nothing to set)
         mock_chain.set_weights.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_set_weights_submits_neutral_when_fail_closed_no_burn(
+        self, validator: Validator
+    ) -> None:
+        """Fail-closed path submits neutral weights when burn is unavailable."""
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey"]
+        validator.scores = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        validator.metagraph = create_mock_metagraph(validator.hotkeys)
+
+        validator.config.burn_uid = -1
+
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock()
+        validator.chain = mock_chain
+
+        await validator.set_weights(fail_closed=True)
+
+        mock_chain.set_weights.assert_called_once()
+        submitted = mock_chain.set_weights.call_args[0][0]
+        assert set(submitted.keys()) == set(validator.hotkeys)
+        for weight in submitted.values():
+            assert weight == pytest.approx(1.0 / 3.0)
+
 
 
 class TestRunEvaluationScores:
     """Tests for score updates in _run_evaluation."""
+
+    @pytest.mark.asyncio
+    async def test_scores_zeroed_and_fail_closed_submitted_when_no_models(
+        self, validator: Validator
+    ) -> None:
+        """No models available should clear stale scores and submit fail-closed weights."""
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
+        validator.scores = np.array([0.2, 0.7, 0.1], dtype=np.float32)
+
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.get_available_models = MagicMock(return_value={})
+        validator._model_scheduler.known_commitments = {}
+
+        validator.set_weights = AsyncMock()
+
+        mock_dataset = MagicMock()
+        mock_dataset.__len__ = MagicMock(return_value=10)
+
+        await validator._run_evaluation(mock_dataset)
+
+        np.testing.assert_array_equal(
+            validator.scores, np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        )
+        validator.set_weights.assert_awaited_once_with(fail_closed=True)
+
+    @pytest.mark.asyncio
+    async def test_scores_zeroed_and_fail_closed_submitted_on_no_valid_models_error(
+        self, validator: Validator
+    ) -> None:
+        """NoValidModelsError should clear stale scores and submit fail-closed weights."""
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
+        validator.scores = np.array([0.2, 0.7, 0.1], dtype=np.float32)
+        validator.metagraph = create_mock_metagraph(validator.hotkeys)
+
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.get_available_models = MagicMock(
+            return_value={"hotkey_0": "/model_0.onnx"}
+        )
+        validator._model_scheduler.known_commitments = {"hotkey_0": MagicMock()}
+
+        validator._orchestrator = MagicMock()
+        validator._orchestrator.run = AsyncMock(
+            side_effect=NoValidModelsError("all models invalid")
+        )
+        validator.set_weights = AsyncMock()
+
+        mock_dataset = MagicMock()
+        mock_dataset.__len__ = MagicMock(return_value=10)
+
+        await validator._run_evaluation(mock_dataset)
+
+        np.testing.assert_array_equal(
+            validator.scores, np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        )
+        validator.set_weights.assert_awaited_once_with(fail_closed=True)
+
+    @pytest.mark.asyncio
+    async def test_scores_zeroed_and_fail_closed_submitted_on_timeout(
+        self, validator: Validator
+    ) -> None:
+        """Timeout during evaluation should clear stale scores and submit fail-closed weights."""
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
+        validator.scores = np.array([0.2, 0.7, 0.1], dtype=np.float32)
+        validator.metagraph = create_mock_metagraph(validator.hotkeys)
+
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.get_available_models = MagicMock(
+            return_value={"hotkey_0": "/model_0.onnx"}
+        )
+        validator._model_scheduler.known_commitments = {"hotkey_0": MagicMock()}
+
+        validator._orchestrator = MagicMock()
+        validator._orchestrator.run = AsyncMock(
+            side_effect=asyncio.TimeoutError("evaluation timed out")
+        )
+        validator.set_weights = AsyncMock()
+
+        mock_dataset = MagicMock()
+        mock_dataset.__len__ = MagicMock(return_value=10)
+
+        await validator._run_evaluation(mock_dataset)
+
+        np.testing.assert_array_equal(
+            validator.scores, np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        )
+        validator.set_weights.assert_awaited_once_with(fail_closed=True)
 
     @pytest.mark.asyncio
     async def test_old_scores_are_zeroed_before_update(

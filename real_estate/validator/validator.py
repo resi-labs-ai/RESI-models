@@ -241,12 +241,16 @@ class Validator:
             return False
         return self.hotkey in self.hotkeys
 
-    async def set_weights(self) -> None:
+    async def set_weights(self, fail_closed: bool = False) -> None:
         """
         Set weights on chain based on current scores.
 
         Logs success/failure internally. Exceptions bubble up for
         critical errors (auth, connection).
+
+        Args:
+            fail_closed: If True and no burn is configured, submit neutral
+                uniform weights instead of skipping submission.
         """
         if self.metagraph is None:
             logger.error("Cannot set weights - metagraph not synced")
@@ -281,8 +285,20 @@ class Validator:
         weights = self._apply_burn(weights)
 
         if not weights:
-            logger.warning("No weights to set (no scores and no burn configured)")
-            return
+            if fail_closed:
+                if not self.hotkeys:
+                    logger.warning(
+                        "Fail-closed weight submission skipped: no hotkeys available"
+                    )
+                    return
+                neutral_weight = 1.0 / len(self.hotkeys)
+                weights = {hotkey: neutral_weight for hotkey in self.hotkeys}
+                logger.warning(
+                    "No scores and no burn configured; submitting neutral fail-closed weights"
+                )
+            else:
+                logger.warning("No weights to set (no scores and no burn configured)")
+                return
 
         logger.info(f"Setting weights for {len(weights)} hotkeys")
 
@@ -355,6 +371,17 @@ class Validator:
         )
 
         return adjusted_weights
+
+    async def _fail_closed_on_evaluation_error(self, reason: str) -> None:
+        """
+        Enter fail-closed mode after evaluation failure.
+
+        Clears scores to prevent stale winners and submits burn-only or neutral
+        weights immediately.
+        """
+        self.scores.fill(0.0)
+        logger.warning(f"Fail-closed evaluation path: {reason}. Scores cleared.")
+        await self.set_weights(fail_closed=True)
 
     def _get_next_eval_time(self) -> datetime:
         """Calculate next scheduled evaluation time based on config."""
@@ -489,6 +516,7 @@ class Validator:
 
         if not model_paths:
             logger.warning("No models available for evaluation")
+            await self._fail_closed_on_evaluation_error("no models available")
             return
 
         # Get cached metadata from scheduler, filtered to models we're evaluating
@@ -535,6 +563,13 @@ class Validator:
 
         except NoValidModelsError as e:
             logger.warning(f"Evaluation skipped: {e}")
+            await self._fail_closed_on_evaluation_error(str(e))
+        except asyncio.TimeoutError as e:
+            logger.warning(f"Evaluation timed out: {e}")
+            await self._fail_closed_on_evaluation_error(str(e))
+        except Exception as e:
+            logger.error(f"Evaluation failed during scoring: {e}", exc_info=True)
+            await self._fail_closed_on_evaluation_error(str(e))
         finally:
             # Always finish WandB run
             self._wandb_logger.finish()
