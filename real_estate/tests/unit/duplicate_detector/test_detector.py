@@ -74,6 +74,20 @@ class TestPioneerDetectorDetectPioneers:
         assert result.pioneer_hotkeys == frozenset({"A", "D"})
         assert result.copier_hotkeys == frozenset({"B", "C"})
 
+    def test_tie_on_block_number_breaks_by_hotkey(self, detector: PioneerDetector) -> None:
+        """When block numbers tie, pioneer is deterministic by hotkey."""
+        groups = [DuplicateGroup(hotkeys=("B", "A", "C"))]
+        metadata = {
+            "A": _create_mock_metadata("A", 100),
+            "B": _create_mock_metadata("B", 100),  # Tie with A
+            "C": _create_mock_metadata("C", 200),
+        }
+
+        result = detector.detect_pioneers(groups, metadata)
+
+        assert result.pioneer_hotkeys == frozenset({"A"})
+        assert result.copier_hotkeys == frozenset({"B", "C"})
+
     def test_empty_groups_returns_empty_result(self, detector: PioneerDetector) -> None:
         """Empty groups list returns empty sets."""
         result = detector.detect_pioneers([], {})
