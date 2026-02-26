@@ -489,6 +489,8 @@ class Validator:
 
         if not model_paths:
             logger.warning("No models available for evaluation")
+            # Prevent stale scores from previous rounds from influencing weights.
+            self.scores.fill(0.0)
             return
 
         # Get cached metadata from scheduler, filtered to models we're evaluating
