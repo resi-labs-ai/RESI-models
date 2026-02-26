@@ -267,11 +267,35 @@ class ModelVerifier:
                 f"Extrinsic {record.extrinsic} is not a commitment call"
             )
 
-        # 7. Extract and verify commitment hash from call_args
+        # 7. Extract and verify commitment hash from call_args (fail closed)
         chain_hash = self._extract_hash_from_call_args(extrinsic_data.call.call_args)
-        if chain_hash and chain_hash != expected_hash:
+        if chain_hash is None:
+            raise ExtrinsicVerificationError(
+                f"Could not extract commitment hash from extrinsic {record.extrinsic}"
+            )
+
+        if chain_hash != expected_hash:
             raise ExtrinsicVerificationError(
                 f"Chain hash {chain_hash} != expected {expected_hash}"
+            )
+
+        # 8. Replay protection: ensure extrinsic block is the miner's current commitment
+        try:
+            current_commitment = await self._chain.get_commitment(hotkey)
+        except Exception as e:
+            raise ExtrinsicVerificationError(
+                f"Failed to fetch current commitment for {hotkey}: {e}"
+            ) from e
+
+        if current_commitment is None:
+            raise ExtrinsicVerificationError(
+                f"No current commitment found on chain for hotkey {hotkey}"
+            )
+
+        if current_commitment.block != extrinsic_data.block_number:
+            raise ExtrinsicVerificationError(
+                f"Extrinsic block {extrinsic_data.block_number} is stale; "
+                f"current commitment block is {current_commitment.block}"
             )
 
         logger.debug(f"Extrinsic record verified for {hotkey}")
