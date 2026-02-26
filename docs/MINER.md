@@ -36,7 +36,7 @@ Your model must accept exactly **79 features** in the order defined in `real_est
 
 ## Prerequisites
 
-- Python 3.11+
+- Python >=3.11, <3.14
 - Bittensor wallet with registered hotkey
 - HuggingFace account
 - TAO for subnet registration
