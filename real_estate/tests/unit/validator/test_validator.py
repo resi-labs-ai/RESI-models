@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from real_estate.chain.models import Metagraph, Neuron
+from real_estate.incentives import NoValidModelsError
 from real_estate.models import DownloadResult
 from real_estate.validator import Validator
 
@@ -365,6 +366,34 @@ class TestSetWeights:
 
 class TestRunEvaluationScores:
     """Tests for score updates in _run_evaluation."""
+
+    @pytest.mark.asyncio
+    async def test_no_valid_models_error_zeros_stale_scores(
+        self, validator: Validator
+    ) -> None:
+        """NoValidModelsError should clear stale scores (fail closed)."""
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
+        validator.scores = np.array([0.6, 0.3, 0.1], dtype=np.float32)
+        validator.metagraph = create_mock_metagraph(validator.hotkeys)
+
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.get_available_models = MagicMock(
+            return_value={"hotkey_0": "/model_0.onnx"}
+        )
+        validator._model_scheduler.known_commitments = {"hotkey_0": MagicMock()}
+
+        validator._orchestrator = MagicMock()
+        validator._orchestrator.run = AsyncMock(
+            side_effect=NoValidModelsError("all models invalid")
+        )
+
+        mock_dataset = MagicMock()
+        mock_dataset.__len__ = MagicMock(return_value=10)
+        await validator._run_evaluation(mock_dataset)
+
+        np.testing.assert_array_equal(
+            validator.scores, np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        )
 
     @pytest.mark.asyncio
     async def test_old_scores_are_zeroed_before_update(
