@@ -88,6 +88,7 @@ def mock_chain_client() -> MagicMock:
     client = MagicMock()
     client.get_all_commitments = AsyncMock(return_value=[])
     client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+    client.get_commitment = AsyncMock(return_value=None)
     client.get_extrinsic = AsyncMock(return_value=None)
     return client
 

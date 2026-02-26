@@ -352,6 +352,8 @@ class TestVerifyExtrinsicRecord:
         self, mock_chain_client: MagicMock
     ) -> None:
         """Passes when extrinsic record is valid."""
+        import json
+
         verifier = ModelVerifier(mock_chain_client)
 
         # Mock HTTP response for extrinsic_record.json
@@ -368,8 +370,25 @@ class TestVerifyExtrinsicRecord:
         mock_extrinsic.address = "5TestHotkey"
         mock_extrinsic.block_number = 12345  # Block from Pylon
         mock_extrinsic.is_commitment_extrinsic.return_value = True
-        mock_extrinsic.call.call_args = []  # No call args to parse
+        mock_extrinsic.call.call_args = [
+            {
+                "name": "info",
+                "value": {
+                    "fields": [
+                        {
+                            "Raw65": "0x"
+                            + json.dumps(
+                                {"h": "abc12345", "r": "user/repo", "v": "1.0"}
+                            ).encode("utf-8").hex()
+                        }
+                    ]
+                },
+            }
+        ]
         mock_chain_client.get_extrinsic = AsyncMock(return_value=mock_extrinsic)
+        mock_chain_client.get_commitment = AsyncMock(
+            return_value=MagicMock(block=12345)
+        )
 
         with patch("httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
@@ -383,6 +402,96 @@ class TestVerifyExtrinsicRecord:
 
         # Returns commit block from Pylon (trusted source)
         assert commit_block == 12345
+
+    @pytest.mark.asyncio
+    async def test_raises_error_when_hash_cannot_be_extracted(
+        self, mock_chain_client: MagicMock
+    ) -> None:
+        """Raises when commitment call args cannot be decoded into a hash."""
+        verifier = ModelVerifier(mock_chain_client)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "extrinsic": "12345-0",
+            "hotkey": "5TestHotkey",
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_extrinsic = MagicMock()
+        mock_extrinsic.address = "5TestHotkey"
+        mock_extrinsic.block_number = 12345
+        mock_extrinsic.is_commitment_extrinsic.return_value = True
+        mock_extrinsic.call.call_args = [
+            {
+                "name": "info",
+                "value": {"fields": [{"Raw65": "not valid hex"}]},
+            }
+        ]
+        mock_chain_client.get_extrinsic = AsyncMock(return_value=mock_extrinsic)
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+                return_value=mock_response
+            )
+            with pytest.raises(
+                ExtrinsicVerificationError, match="Could not extract commitment hash"
+            ):
+                await verifier.verify_extrinsic_record(
+                    hotkey="5TestHotkey",
+                    hf_repo_id="user/repo",
+                    expected_hash="abc12345",
+                )
+
+    @pytest.mark.asyncio
+    async def test_raises_error_when_extrinsic_block_is_stale(
+        self, mock_chain_client: MagicMock
+    ) -> None:
+        """Raises when miner replays an old extrinsic from same hotkey."""
+        import json
+
+        verifier = ModelVerifier(mock_chain_client)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "extrinsic": "12345-0",
+            "hotkey": "5TestHotkey",
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_extrinsic = MagicMock()
+        mock_extrinsic.address = "5TestHotkey"
+        mock_extrinsic.block_number = 12345
+        mock_extrinsic.is_commitment_extrinsic.return_value = True
+        mock_extrinsic.call.call_args = [
+            {
+                "name": "info",
+                "value": {
+                    "fields": [
+                        {
+                            "Raw65": "0x"
+                            + json.dumps({"h": "abc12345"}).encode("utf-8").hex()
+                        }
+                    ]
+                },
+            }
+        ]
+        mock_chain_client.get_extrinsic = AsyncMock(return_value=mock_extrinsic)
+        mock_chain_client.get_commitment = AsyncMock(
+            return_value=MagicMock(block=12346)
+        )
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+                return_value=mock_response
+            )
+            with pytest.raises(ExtrinsicVerificationError, match="is stale"):
+                await verifier.verify_extrinsic_record(
+                    hotkey="5TestHotkey",
+                    hf_repo_id="user/repo",
+                    expected_hash="abc12345",
+                )
 
     @pytest.mark.asyncio
     async def test_raises_error_when_record_not_found(
