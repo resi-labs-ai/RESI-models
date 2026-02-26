@@ -535,6 +535,8 @@ class Validator:
 
         except NoValidModelsError as e:
             logger.warning(f"Evaluation skipped: {e}")
+            # Fail closed: prevent stale scores from previous rounds.
+            self.scores.fill(0.0)
         finally:
             # Always finish WandB run
             self._wandb_logger.finish()
