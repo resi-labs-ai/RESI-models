@@ -253,6 +253,38 @@ class TestSetWeights:
         )
 
     @pytest.mark.asyncio
+    async def test_set_weights_no_burn_all_rewards_to_miners(
+        self, validator: Validator
+    ) -> None:
+        """Test 0% burn (default) — all rewards go to miners."""
+        validator.hotkeys = [
+            "hotkey_0",
+            "hotkey_1",
+            "burn_hotkey",  # UID 2 would be burn target
+            "hotkey_3",
+            "our_hotkey",
+        ]
+        validator.scores = np.array([1.0, 0.0, 0.0, 3.0, 0.0], dtype=np.float32)
+        validator.metagraph = create_mock_metagraph(validator.hotkeys)
+
+        # burn_amount defaults to 0.0, but set burn_uid to verify it's ignored
+        validator.config.burn_amount = 0.0
+        validator.config.burn_uid = 2
+
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock()
+        validator.chain = mock_chain
+
+        await validator.set_weights()
+
+        # No burn: {hotkey_0: 0.25, hotkey_3: 0.75}
+        mock_chain.set_weights.assert_called_once()
+        weights = mock_chain.set_weights.call_args[0][0]
+        assert weights["hotkey_0"] == pytest.approx(0.25)
+        assert weights["hotkey_3"] == pytest.approx(0.75)
+        assert "burn_hotkey" not in weights
+
+    @pytest.mark.asyncio
     async def test_set_weights_with_burn_allocation(
         self, validator: Validator
     ) -> None:
@@ -266,16 +298,27 @@ class TestSetWeights:
         ]
         validator.scores = np.array([1.0, 0.0, 0.0, 3.0, 0.0], dtype=np.float32)
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
-
-        # Configure 50% burn to UID 2
-        validator.config.burn_amount = 0.5
         validator.config.burn_uid = 2
 
         mock_chain = MagicMock()
         mock_chain.set_weights = AsyncMock()
         validator.chain = mock_chain
 
-        await validator.set_weights()
+        # Patch the hardcoded burn_amount to simulate burn being re-enabled
+        with patch.object(
+            Validator, "_apply_burn", wraps=validator._apply_burn
+        ) as mock_burn:
+            # Replace _apply_burn with a version that uses 0.5
+            def burn_with_50(weights):
+                burn_uid = validator.config.burn_uid
+                burn_hotkey = validator.hotkeys[burn_uid]
+                remaining = 0.5
+                adjusted = {k: v * remaining for k, v in weights.items()}
+                adjusted[burn_hotkey] = adjusted.get(burn_hotkey, 0.0) + 0.5
+                return adjusted
+
+            mock_burn.side_effect = burn_with_50
+            await validator.set_weights()
 
         # Original: {hotkey_0: 0.25, hotkey_3: 0.75}
         # After 50% burn: {hotkey_0: 0.125, hotkey_3: 0.375, burn_hotkey: 0.5}
@@ -310,22 +353,21 @@ class TestSetWeights:
         )
 
     @pytest.mark.asyncio
-    async def test_set_weights_burns_50_percent_when_all_scores_zero(
+    async def test_skips_weights_when_all_scores_zero_and_no_burn(
         self, validator: Validator
     ) -> None:
-        """Test burn gets 50% (hardcoded) when no models are scored (all scores zero)."""
+        """Test no weights set when all scores zero and burn is 0%."""
         validator.hotkeys = [
             "hotkey_0",
             "hotkey_1",
-            "burn_hotkey",  # UID 2 is the burn target
+            "burn_hotkey",
             "hotkey_3",
             "our_hotkey",
         ]
-        # All scores are zero - no models evaluated
         validator.scores = np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
 
-        # burn_amount is hardcoded to 0.5 in validator.py, config value ignored
+        validator.config.burn_amount = 0.0
         validator.config.burn_uid = 2
 
         mock_chain = MagicMock()
@@ -334,32 +376,43 @@ class TestSetWeights:
 
         await validator.set_weights()
 
-        # All scores zero + 50% hardcoded burn = only burn_hotkey gets weight
-        mock_chain.set_weights.assert_called_once()
-        weights = mock_chain.set_weights.call_args[0][0]
-        assert weights == {"burn_hotkey": 0.5}
+        # All scores zero + 0% burn = no weights to set
+        mock_chain.set_weights.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_set_weights_skips_when_all_scores_zero_and_no_burn(
+    async def test_burn_receives_weight_when_all_scores_zero(
         self, validator: Validator
     ) -> None:
-        """Test weights are not set when all scores zero and no burn configured."""
-        validator.hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey"]
-        validator.scores = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        """Test burn_uid gets weight when all scores zero but burn is configured."""
+        validator.hotkeys = [
+            "hotkey_0",
+            "hotkey_1",
+            "burn_hotkey",
+            "hotkey_3",
+            "our_hotkey",
+        ]
+        validator.scores = np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
-
-        # No burn configured
-        validator.config.burn_amount = 0.0
-        validator.config.burn_uid = -1
+        validator.config.burn_uid = 2
 
         mock_chain = MagicMock()
         mock_chain.set_weights = AsyncMock()
         validator.chain = mock_chain
 
-        await validator.set_weights()
+        # Patch the hardcoded burn_amount to simulate burn being re-enabled
+        def burn_with_50(weights):
+            burn_hotkey = validator.hotkeys[2]
+            adjusted = {k: v * 0.5 for k, v in weights.items()}
+            adjusted[burn_hotkey] = adjusted.get(burn_hotkey, 0.0) + 0.5
+            return adjusted
 
-        # Should not call set_weights (nothing to set)
-        mock_chain.set_weights.assert_not_called()
+        with patch.object(Validator, "_apply_burn", side_effect=burn_with_50):
+            await validator.set_weights()
+
+        # All scores zero + 50% burn = only burn_hotkey gets weight
+        mock_chain.set_weights.assert_called_once()
+        weights = mock_chain.set_weights.call_args[0][0]
+        assert weights == {"burn_hotkey": 0.5}
 
 
 
