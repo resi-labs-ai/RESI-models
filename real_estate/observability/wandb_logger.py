@@ -139,6 +139,16 @@ class WandbLogger:
                 },
                 mode=mode,
                 resume="allow",  # Allow resuming if run exists
+                save_code=False,
+                settings=wandb.Settings(
+                    program_relpath=None,
+                    x_save_requirements=False,
+                    x_disable_machine_info=True,
+                    x_disable_meta=True,
+                    x_disable_stats=True,
+                    disable_git=True,
+                    disable_code=True,
+                ),
             )
 
             logger.info(f"WandB run started: {self._run.name} ({self._run.url})")
