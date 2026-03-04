@@ -19,7 +19,7 @@ import pytest
 
 # Mock pylon_client module before importing Validator
 sys.modules["pylon_client"] = MagicMock()
-sys.modules["pylon_client.v1"] = MagicMock()
+sys.modules["pylon_client.artanis"] = MagicMock()
 
 
 @pytest.fixture
