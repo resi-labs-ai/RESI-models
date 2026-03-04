@@ -1807,7 +1807,7 @@ dev = [
 requires-dist = [
     { name = "apscheduler", specifier = ">=3.11.1" },
     { name = "bittensor", specifier = ">=8.0.0" },
-    { name = "bittensor-pylon-client", specifier = ">=1.8.0" },
+    { name = "bittensor-pylon-client", specifier = ">=1.8.0,<1.9.0" },
     { name = "bittensor-wallet", specifier = ">=4.0.1" },
     { name = "httpx", specifier = ">=0.26.0" },
     { name = "huggingface-hub", specifier = ">=0.20.0" },
