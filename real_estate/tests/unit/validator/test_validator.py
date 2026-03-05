@@ -12,7 +12,12 @@ from real_estate.models import DownloadResult
 from real_estate.validator import Validator
 
 
-def create_mock_neuron(uid: int, hotkey: str, validator_permit: bool = True) -> Neuron:
+def create_mock_neuron(
+    uid: int,
+    hotkey: str,
+    validator_permit: bool = True,
+    incentive: float = 0.1,
+) -> Neuron:
     """Create a mock Neuron for testing."""
     return Neuron(
         uid=uid,
@@ -21,7 +26,7 @@ def create_mock_neuron(uid: int, hotkey: str, validator_permit: bool = True) -> 
         stake=100.0,
         trust=0.5,
         consensus=0.5,
-        incentive=0.1,
+        incentive=incentive,
         dividends=0.1,
         emission=0.1,
         is_active=True,
@@ -1135,3 +1140,252 @@ class TestWeightSettingLoopConnectionError:
 
         assert call_count == 2
 
+
+class TestBootstrapWeights:
+    """Tests for _bootstrap_weights method."""
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_populates_scores_from_incentive(
+        self, validator: Validator
+    ) -> None:
+        """Scores array is filled from metagraph neuron incentive values."""
+        hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey", "hotkey_3"]
+        neurons = [
+            create_mock_neuron(0, "hotkey_0", incentive=0.5),
+            create_mock_neuron(1, "hotkey_1", incentive=0.3),
+            create_mock_neuron(2, "our_hotkey", incentive=0.0),
+            create_mock_neuron(3, "hotkey_3", incentive=0.2),
+        ]
+        validator.metagraph = Metagraph(
+            block=1000, neurons=neurons, timestamp=datetime.now()
+        )
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+
+        # Mock set_weights to avoid chain calls
+        validator.set_weights = AsyncMock()
+
+        await validator._bootstrap_weights()
+
+        assert validator.scores[0] == pytest.approx(0.5)
+        assert validator.scores[1] == pytest.approx(0.3)
+        assert validator.scores[2] == pytest.approx(0.0)  # zero incentive unchanged
+        assert validator.scores[3] == pytest.approx(0.2)
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_sets_weights_on_chain(
+        self, validator: Validator
+    ) -> None:
+        """set_weights() is called after populating scores from incentive."""
+        hotkeys = ["hotkey_0", "our_hotkey"]
+        neurons = [
+            create_mock_neuron(0, "hotkey_0", incentive=0.8),
+            create_mock_neuron(1, "our_hotkey", incentive=0.2),
+        ]
+        validator.metagraph = Metagraph(
+            block=1000, neurons=neurons, timestamp=datetime.now()
+        )
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+
+        validator.set_weights = AsyncMock()
+
+        await validator._bootstrap_weights()
+
+        validator.set_weights.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_delegates_to_burn_when_no_incentive(
+        self, validator: Validator
+    ) -> None:
+        """When all neurons have zero incentive, delegates to _set_burn_weights."""
+        hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey"]
+        neurons = [
+            create_mock_neuron(0, "hotkey_0", incentive=0.0),
+            create_mock_neuron(1, "hotkey_1", incentive=0.0),
+            create_mock_neuron(2, "our_hotkey", incentive=0.0),
+        ]
+        validator.metagraph = Metagraph(
+            block=1000, neurons=neurons, timestamp=datetime.now()
+        )
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+
+        validator._set_burn_weights = AsyncMock()
+
+        await validator._bootstrap_weights()
+
+        validator._set_burn_weights.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_skips_when_weights_disabled(
+        self, validator: Validator
+    ) -> None:
+        """_startup() skips bootstrap when disable_set_weights is True."""
+        validator.config.disable_set_weights = True
+
+        hotkeys = ["hotkey_0", "our_hotkey"]
+        neurons = [
+            create_mock_neuron(0, "hotkey_0", incentive=0.5),
+            create_mock_neuron(1, "our_hotkey", incentive=0.5),
+        ]
+        validator.metagraph = Metagraph(
+            block=1000, neurons=neurons, timestamp=datetime.now()
+        )
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+
+        validator.set_weights = AsyncMock()
+
+        # Simulate what _startup does: only call bootstrap if not disabled
+        if not validator.config.disable_set_weights:
+            await validator._bootstrap_weights()
+
+        validator.set_weights.assert_not_awaited()
+        np.testing.assert_array_equal(
+            validator.scores, np.zeros(len(hotkeys), dtype=np.float32)
+        )
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_handles_empty_metagraph(
+        self, validator: Validator
+    ) -> None:
+        """Graceful no-op when metagraph has no neurons."""
+        validator.metagraph = Metagraph(
+            block=1000, neurons=[], timestamp=datetime.now()
+        )
+        validator.hotkeys = []
+        validator.scores = np.array([], dtype=np.float32)
+
+        validator.set_weights = AsyncMock()
+
+        await validator._bootstrap_weights()
+
+        validator.set_weights.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_survives_set_weights_failure(
+        self, validator: Validator
+    ) -> None:
+        """Bootstrap doesn't crash the validator if set_weights raises."""
+        hotkeys = ["hotkey_0", "our_hotkey"]
+        neurons = [
+            create_mock_neuron(0, "hotkey_0", incentive=0.7),
+            create_mock_neuron(1, "our_hotkey", incentive=0.3),
+        ]
+        validator.metagraph = Metagraph(
+            block=1000, neurons=neurons, timestamp=datetime.now()
+        )
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+
+        validator.set_weights = AsyncMock(side_effect=Exception("Pylon down"))
+
+        # Should not raise
+        await validator._bootstrap_weights()
+
+        # Scores were still populated even though set_weights failed
+        assert validator.scores[0] == pytest.approx(0.7)
+        assert validator.scores[1] == pytest.approx(0.3)
+
+    @pytest.mark.asyncio
+    async def test_evaluation_overrides_bootstrap_scores(
+        self, validator: Validator
+    ) -> None:
+        """Evaluation wipes bootstrap scores and replaces with real weights."""
+        # Setup: bootstrap scores are present
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
+        validator.scores = np.array(
+            [0.9, 0.08, 0.02], dtype=np.float32
+        )  # Simulated bootstrap values
+        validator.metagraph = create_mock_metagraph(validator.hotkeys)
+
+        validator.download_results = {
+            "hotkey_1": MagicMock(success=True, model_path="/model_1.onnx"),
+        }
+
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.known_commitments = {"hotkey_1": MagicMock()}
+
+        # Evaluation: only hotkey_1 wins
+        mock_weights = MagicMock()
+        mock_weights.weights = {"hotkey_1": 0.99}
+        mock_winner = MagicMock()
+        mock_winner.winner_hotkey = "hotkey_1"
+        mock_winner.winner_score = 0.85
+        mock_result = MagicMock()
+        mock_result.weights = mock_weights
+        mock_result.winner = mock_winner
+
+        validator._orchestrator = MagicMock()
+        validator._orchestrator.run = AsyncMock(return_value=mock_result)
+
+        mock_dataset = MagicMock()
+        mock_dataset.__len__ = MagicMock(return_value=10)
+        await validator._run_evaluation(mock_dataset)
+
+        # Bootstrap scores (0.9, 0.08, 0.02) are completely replaced
+        assert validator.scores[0] == 0.0  # was 0.9 from bootstrap
+        assert validator.scores[1] == 0.99  # evaluation winner
+        assert validator.scores[2] == 0.0  # was 0.02 from bootstrap
+
+
+class TestSetBurnWeights:
+    """Tests for _set_burn_weights method."""
+
+    @pytest.mark.asyncio
+    async def test_sets_100_pct_to_burn_uid(self, validator: Validator) -> None:
+        """100% weight is set to the burn UID hotkey."""
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey"]
+        validator.config.burn_uid = 0
+
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock()
+        validator.chain = mock_chain
+
+        await validator._set_burn_weights()
+
+        mock_chain.set_weights.assert_awaited_once_with({"hotkey_0": 1.0})
+
+    @pytest.mark.asyncio
+    async def test_skips_when_burn_uid_negative(self, validator: Validator) -> None:
+        """No weights set when burn_uid is -1 (not configured)."""
+        validator.hotkeys = ["hotkey_0", "our_hotkey"]
+        validator.config.burn_uid = -1
+
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock()
+        validator.chain = mock_chain
+
+        await validator._set_burn_weights()
+
+        mock_chain.set_weights.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_when_burn_uid_out_of_range(
+        self, validator: Validator
+    ) -> None:
+        """No weights set when burn_uid exceeds hotkeys length."""
+        validator.hotkeys = ["hotkey_0", "our_hotkey"]
+        validator.config.burn_uid = 999
+
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock()
+        validator.chain = mock_chain
+
+        await validator._set_burn_weights()
+
+        mock_chain.set_weights.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_survives_chain_failure(self, validator: Validator) -> None:
+        """Doesn't crash if chain set_weights raises."""
+        validator.hotkeys = ["hotkey_0", "our_hotkey"]
+        validator.config.burn_uid = 0
+
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock(side_effect=Exception("Pylon down"))
+        validator.chain = mock_chain
+
+        # Should not raise
+        await validator._set_burn_weights()

@@ -285,6 +285,8 @@ class Validator:
             return
 
         logger.info(f"Setting weights for {len(weights)} hotkeys")
+        for hotkey, weight in sorted(weights.items(), key=lambda x: -x[1]):
+            logger.debug(f"  Weight {hotkey}: {weight:.6f}")
 
         try:
             await self._ensure_chain().set_weights(weights)
@@ -682,6 +684,75 @@ class Validator:
             finally:
                 validation_scheduler.shutdown()
 
+    async def _set_burn_weights(self) -> None:
+        """
+        Set 100% weight to the burn UID.
+
+        Used as a fallback when no other weight data is available,
+        so the validator keeps setting weights on chain rather than going dark.
+        """
+        burn_uid: int = self.config.burn_uid
+        if burn_uid < 0 or burn_uid >= len(self.hotkeys):
+            logger.warning(
+                "No valid burn_uid configured, "
+                "cannot set weights until first evaluation"
+            )
+            return
+
+        burn_hotkey = self.hotkeys[burn_uid]
+        logger.info(
+            f"Setting 100% weight to burn UID {burn_uid} ({burn_hotkey[:8]}...)"
+        )
+        try:
+            await self._ensure_chain().set_weights({burn_hotkey: 1.0})
+            self._last_weight_set_block = self.block
+        except Exception as e:
+            logger.warning(f"Burn weight setting failed: {e}")
+
+    async def _bootstrap_weights(self) -> None:
+        """
+        Bootstrap weights from current chain consensus (incentive values).
+
+        Sets weights immediately on startup to avoid the "burn period" between
+        restart and first evaluation. Uses Yuma consensus incentive values.
+        Falls back to 100% burn if no incentive data is available.
+        """
+        if self.metagraph is None or not self.hotkeys:
+            logger.warning("Cannot bootstrap weights: metagraph not available")
+            return
+
+        # Populate scores from chain incentive values
+        bootstrap_count = 0
+        for neuron in self.metagraph.neurons:
+            if neuron.uid < len(self.scores) and neuron.incentive > 0:
+                self.scores[neuron.uid] = float(neuron.incentive)
+                bootstrap_count += 1
+
+        if bootstrap_count == 0:
+            logger.info("No incentive data for bootstrap (new subnet or all zeros)")
+            await self._set_burn_weights()
+            return
+
+        logger.info(
+            f"Bootstrapping weights from chain consensus: "
+            f"{bootstrap_count} neurons with incentive > 0"
+        )
+
+        # Log individual bootstrapped scores
+        for uid, score in enumerate(self.scores):
+            if score > 0:
+                logger.debug(
+                    f"  Bootstrap UID {uid} ({self.hotkeys[uid][:12]}...): "
+                    f"incentive={score:.6f}"
+                )
+
+        # Set weights immediately (bypass epoch check)
+        try:
+            await self.set_weights()
+        except Exception as e:
+            logger.warning(f"Bootstrap weight setting failed: {e}")
+            # Non-fatal: validator will set weights on next epoch
+
     async def _startup(self) -> None:
         """Run startup tasks: metagraph, models, initial data fetch."""
         # Initial metagraph fetch - required for startup
@@ -705,6 +776,10 @@ class Validator:
             )
 
         self._last_weight_set_block = self.block
+
+        # Bootstrap weights from consensus to avoid burn period after restart
+        if not self.config.disable_set_weights:
+            await self._bootstrap_weights()
 
         logger.info(f"Validator ready - UID {self.uid}, {len(self.hotkeys)} miners")
 
