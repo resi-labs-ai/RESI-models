@@ -36,7 +36,7 @@ Suggested starting point - adjust based on your load and number of miners on the
 ## Prerequisites
 
 - **Docker** installed and running
-- **Python 3.11+**
+- **Python >=3.11, <3.14**
 - **uv** package manager ([install guide](https://docs.astral.sh/uv/getting-started/installation/))
 - **PM2** process manager (`npm install -g pm2`)
 - **Bittensor wallet** with sufficient TAO for registration
@@ -374,7 +374,7 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | `VALIDATION_DATA_MAX_RETRIES` | `24` | Retry attempts if data not ready (~2 hours) |
 | `VALIDATION_DATA_RETRY_DELAY` | `300` | Seconds between retries |
 | **Burn Configuration** | | |
-| `BURN_AMOUNT` | `0.5` | Fraction of emissions to burn (0.0-1.0) |
+| `BURN_AMOUNT` | `0.0` | Fraction of emissions to burn (0.0-1.0) |
 | `BURN_UID` | `238` | UID receiving burn allocation (subnet owner) |
 | **HuggingFace** | | |
 | `HF_TOKEN` | | HuggingFace API token (higher rate limits) |
@@ -387,7 +387,7 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | `SCHEDULER_CATCH_UP_MINUTES` | `30.0` | Minutes reserved for catch-up downloads |
 | **Weight Setting** | | |
 | `EPOCH_LENGTH` | `361` | Blocks between weight setting |
-| `SCORE_THRESHOLD` | `0.002` | Score threshold for winner selection |
+| `SCORE_THRESHOLD` | `0.003` | Minimum miner score threshold (0.3%) for winner selection |
 | `DISABLE_SET_WEIGHTS` | `false` | Disable weight setting (for testing) |
 | **Docker Execution** | | |
 | `DOCKER_MEMORY` | `2g` | Container memory limit |

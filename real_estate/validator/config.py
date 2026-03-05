@@ -143,7 +143,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--score_threshold",
         type=float,
         help="Score threshold for winner set. Models within this of best are equivalent.",
-        default=float(os.environ.get("SCORE_THRESHOLD", "0.01")),
+        default=float(os.environ.get("SCORE_THRESHOLD", "0.003")),
     )
 
     parser.add_argument(
@@ -323,7 +323,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--burn_amount",
         type=float,
         help="Fraction of emissions to burn (0.0-1.0). Allocated to burn_uid, rest distributed normally.",
-        default=float(os.environ.get("BURN_AMOUNT", "0.5")),
+        default=float(os.environ.get("BURN_AMOUNT", "0.0")),
     )
 
     parser.add_argument(

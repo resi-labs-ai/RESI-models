@@ -81,7 +81,7 @@ def create_mock_validation_result(
 def create_mock_dataset(n_properties: int = 10) -> MagicMock:
     """Helper to create mock validation dataset."""
     properties = [
-        {"zpid": f"zpid-{i}", "price": 300000.0 + i * 10000}
+        {"external_id": f"ext-{i}", "price": 300000.0 + i * 10000}
         for i in range(n_properties)
     ]
 
@@ -387,7 +387,7 @@ class TestWandbLoggerPredictionsTable:
 
         dataset = create_mock_dataset(n_properties=2)
 
-        logger._log_predictions_table(result, dataset, "zpid")
+        logger._log_predictions_table(result, dataset, "external_id")
 
         # Should have 2 miners x 2 properties = 4 rows
         assert mock_table.add_data.call_count == 4
@@ -425,7 +425,7 @@ class TestWandbLoggerPredictionsTable:
 
         dataset = create_mock_dataset(n_properties=2)
 
-        logger._log_predictions_table(result, dataset, "zpid")
+        logger._log_predictions_table(result, dataset, "external_id")
 
         # Should have 3 miners x 2 properties = 6 rows
         assert mock_table.add_data.call_count == 6
@@ -456,13 +456,13 @@ class TestWandbLoggerPredictionsTable:
 
         dataset = create_mock_dataset(n_properties=2)
 
-        logger._log_predictions_table(result, dataset, "zpid")
+        logger._log_predictions_table(result, dataset, "external_id")
 
         # Should have 1 miner x 2 properties = 2 rows
         assert mock_table.add_data.call_count == 2
 
-    def test_uses_fallback_property_id(self) -> None:
-        """Test that fallback property ID is used when zpid missing."""
+    def test_uses_address_fallback_when_external_id_missing(self) -> None:
+        """Test that address is used when external_id is missing."""
         config = WandbConfig(enabled=True, predictions_top_n_miners=None)
         logger = WandbLogger(config, "5FTest", 46)
 
@@ -480,16 +480,44 @@ class TestWandbLoggerPredictionsTable:
         )
         result.eval_batch.results[0].predictions = np.array([300000.0])
 
-        # Dataset without zpid but with address
+        # Dataset without external_id but with address
         dataset = MagicMock()
         dataset.properties = [{"address": "123 Main St", "price": 300000.0}]
         dataset.ground_truth = [300000.0]
 
-        logger._log_predictions_table(result, dataset, "zpid")
+        logger._log_predictions_table(result, dataset, "external_id")
 
-        # Should use address as fallback
         add_data_call = mock_table.add_data.call_args[0]
-        assert add_data_call[0] == "123 Main St"  # property_id
+        assert add_data_call[0] == "123 Main St"
+
+    def test_uses_index_fallback_when_no_id_fields(self) -> None:
+        """Test that index fallback is used when both external_id and address missing."""
+        config = WandbConfig(enabled=True, predictions_top_n_miners=None)
+        logger = WandbLogger(config, "5FTest", 46)
+
+        mock_wandb = MagicMock()
+        mock_table = MagicMock()
+        mock_wandb.Table.return_value = mock_table
+        logger._wandb = mock_wandb
+
+        mock_run = MagicMock()
+        logger._run = mock_run
+
+        result = create_mock_validation_result(
+            miners=[("5FMiner", 0.90, True)],
+            winner_hotkey="5FMiner",
+        )
+        result.eval_batch.results[0].predictions = np.array([300000.0])
+
+        # Dataset without external_id or address
+        dataset = MagicMock()
+        dataset.properties = [{"price": 300000.0}]
+        dataset.ground_truth = [300000.0]
+
+        logger._log_predictions_table(result, dataset, "external_id")
+
+        add_data_call = mock_table.add_data.call_args[0]
+        assert add_data_call[0] == "idx-0"
 
 
 class TestWandbLoggerLogEvaluation:
@@ -629,7 +657,7 @@ class TestWandbLoggerEdgeCases:
         dataset = create_mock_dataset(n_properties=2)
 
         # Should not raise
-        logger._log_predictions_table(result, dataset, "zpid")
+        logger._log_predictions_table(result, dataset, "external_id")
 
 
 class TestCreateWandbLogger:

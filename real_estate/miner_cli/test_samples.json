@@ -2,7 +2,7 @@
   "description": "Test samples for miner CLI local evaluation. Features match feature_config.yaml order (78 features).",
   "samples": [
     {
-      "zpid": "2062240971",
+      "external_id": "2062240971",
       "actual_price": 420000.0,
       "features": {
         "living_area_sqft": 2008.0,
@@ -87,7 +87,7 @@
       }
     },
     {
-      "zpid": "880062",
+      "external_id": "880062",
       "actual_price": 195000.0,
       "features": {
         "living_area_sqft": 1584.0,

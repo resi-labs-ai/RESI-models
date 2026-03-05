@@ -26,7 +26,7 @@ Usage:
 Logged Data:
     - Summary metrics (scalars): winner info, model counts, timing
     - Miner results table: per-miner scores, metrics, errors
-    - Property predictions table: for dashboard joining with zpid/address
+    - Property predictions table: for dashboard joining with external_id
 """
 
 from .models import (

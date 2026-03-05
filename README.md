@@ -109,7 +109,7 @@ See the [Miner Guide](docs/MINER.md) for complete setup instructions.
 
 ### Prerequisites
 
-- Python 3.11+
+- Python >=3.11, <3.14
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) package manager
 - Docker (for validators)
 
