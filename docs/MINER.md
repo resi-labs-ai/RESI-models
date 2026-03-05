@@ -320,8 +320,8 @@ For example, a model with 8.5% average error scores 0.915.
 
 ### Winner Selection
 
-1. **Winner set**: All models scoring within **1% (0.01)** of the best score are grouped into a winner set.
-2. **Earliest commit wins**: Within the winner set, the model with the **earliest on-chain commitment** (lowest block number) wins. This means a newcomer must beat the existing leader by more than 1% to take the top spot.
+1. **Winner set**: All models scoring within **0.3% (0.003)** of the best score are grouped into a winner set.
+2. **Earliest commit wins**: Within the winner set, the model with the **earliest on-chain commitment** (lowest block number) wins. This means a newcomer must beat the existing leader by more than 0.3% to take the top spot.
 3. **Commitment age**: Models must be committed on-chain **~31 hours before evaluation**  to be eligible.
 
 ### Emission Distribution
