@@ -162,11 +162,11 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--wandb.off",
-        dest="wandb_off",
+        "--wandb.enabled",
+        dest="wandb_enabled",
         action="store_true",
-        help="Disable WandB logging.",
-        default=os.environ.get("WANDB_OFF", "true").lower() == "true",
+        help="Enable WandB logging (disabled by default).",
+        default=os.environ.get("WANDB_ENABLED", "false").lower() == "true",
     )
 
     parser.add_argument(
@@ -389,7 +389,7 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "score_threshold": config.score_threshold,
         "disable_set_weights": config.disable_set_weights,
         "log_level": config.log_level,
-        "wandb_off": config.wandb_off,
+        "wandb_enabled": config.wandb_enabled,
         "wandb_project": config.wandb_project,
         "wandb_entity": config.wandb_entity,
         "wandb_api_key": "***" if config.wandb_api_key else "",

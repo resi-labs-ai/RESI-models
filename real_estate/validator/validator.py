@@ -132,7 +132,7 @@ class Validator:
             api_key=self.config.wandb_api_key or None,
             validator_hotkey=self.hotkey,
             netuid=self.config.netuid,
-            enabled=not self.config.wandb_off,
+            enabled=self.config.wandb_enabled,
             offline=self.config.wandb_offline,
             log_predictions_table=self.config.wandb_log_predictions,
             predictions_top_n_miners=self.config.wandb_predictions_top_n,

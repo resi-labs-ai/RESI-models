@@ -96,7 +96,7 @@ NETUID=46
 # WANDB_API_KEY=your_wandb_api_key_here
 # WANDB_PROJECT=subnet-46-evaluations-mainnet
 # WANDB_ENTITY=resi-labs
-WANDB_OFF=true
+WANDB_ENABLED=false
 # WANDB_OFFLINE=false
 ```
 
@@ -108,7 +108,7 @@ To enable WandB logging:
 
 1. Request a WandB API key from subnet owners on Discord
 2. Uncomment and set `WANDB_API_KEY`, `WANDB_PROJECT`, and `WANDB_ENTITY` in your `.env` file
-3. Set `WANDB_OFF=false` in your `.env` file
+3. Set `WANDB_ENABLED=true` in your `.env` file
 
 ## Running the Validator
 
@@ -398,7 +398,7 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | `WANDB_API_KEY` | | WandB API key (request from subnet owners on Discord) |
 | `WANDB_PROJECT` | `subnet-46-evaluations-mainnet` | WandB project name |
 | `WANDB_ENTITY` | `resi-labs` | WandB team/entity |
-| `WANDB_OFF` | `true` | Disable WandB logging |
+| `WANDB_ENABLED` | `false` | Enable WandB logging |
 | `WANDB_OFFLINE` | `false` | Run WandB in offline mode (logs saved locally) |
 
 ## Network Configuration
