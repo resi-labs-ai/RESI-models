@@ -292,7 +292,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--wandb.project",
         dest="wandb_project",
-        default=os.environ.get("WANDB_PROJECT", "subnet-46-evaluations-mainnet"),
+        default=os.environ.get("WANDB_PROJECT", "subnet-46-evaluations-main"),
     )
     parser.add_argument(
         "--wandb.entity",
