@@ -647,7 +647,7 @@ class Validator:
 
         from real_estate.chain import ChainClient
 
-        async with ChainClient(self._pylon_config) as chain:
+        async with ChainClient(self._pylon_config, subtensor=self.subtensor) as chain:
             self.chain = chain
 
             # Initialize model scheduler (requires chain client)

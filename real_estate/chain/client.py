@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -36,6 +37,8 @@ from .models import (
 )
 
 if TYPE_CHECKING:
+    import bittensor as bt
+
     from pylon_client.v1 import Neuron as PylonNeuron
 
 logger = logging.getLogger(__name__)
@@ -54,6 +57,19 @@ def _hex_to_ss58(hex_address: str | None) -> str | None:
         return None
     hex_str = hex_address[2:] if hex_address.startswith("0x") else hex_address
     return ss58_encode(bytes.fromhex(hex_str))
+
+
+def _extract_netuid(identity: str) -> int:
+    """Extract netuid from Pylon identity name (e.g. 'validator-46' -> 46).
+
+    Falls back to 46 (mainnet) if extraction fails.
+    """
+    import re
+
+    match = re.search(r"(\d+)", identity)
+    if match:
+        return int(match.group(1))
+    return 46
 
 
 @dataclass(frozen=True)
@@ -79,12 +95,15 @@ class ChainClient:
     Uses AsyncPylonClient for type-safe, automatically retried requests.
     """
 
-    def __init__(self, config: PylonConfig):
+    def __init__(self, config: PylonConfig, subtensor: bt.Subtensor | None = None):
         """
         Initialize chain client.
 
         Args:
             config: Pylon connection configuration
+            subtensor: Optional bittensor Subtensor instance for direct chain
+                queries (used to fetch RevealedCommitments which Pylon doesn't
+                support).
         """
         self._config = config
         self._pylon_config = AsyncConfig(
@@ -93,6 +112,7 @@ class ChainClient:
             identity_token=config.token,
         )
         self._client: AsyncPylonClient | None = None
+        self._subtensor = subtensor
 
     async def __aenter__(self) -> ChainClient:
         """Async context manager entry."""
@@ -119,6 +139,16 @@ class ChainClient:
         """
         Fetch all commitments from chain.
 
+        Reads from two on-chain storages and merges them:
+        1. CommitmentOf (via Pylon) — from set_commitment() (no commit-reveal)
+        2. RevealedCommitments (via subtensor) — from set_reveal_commitment()
+
+        Miners who used commit-reveal have their commitments stored in
+        RevealedCommitments, not CommitmentOf. Pylon only reads CommitmentOf,
+        so without this merge, commit-reveal miners are invisible to validators.
+
+        CommitmentOf takes priority when a hotkey exists in both storages.
+
         Returns:
             List of ChainModelMetadata for all miners with commitments
 
@@ -132,25 +162,37 @@ class ChainClient:
         try:
             response = await client.identity.get_commitments()
 
-            result = []
+            result_map: dict[str, ChainModelMetadata] = {}
             for hotkey, hex_data in response.commitments.items():
                 try:
-                    # TODO(pylon): Set to actual commit block once Pylon includes it
-                    # in get_commitments response. For now, we get it from get_extrinsic()
-                    # during verification and update via scheduler._update_commitment_block().
                     commitment = Commitment(
                         hotkey=hotkey,
                         data=hex_data,
                         block=0,
                     )
-                    metadata = commitment.to_metadata()
-                    result.append(metadata)
+                    result_map[hotkey] = commitment.to_metadata()
                 except (ValueError, KeyError) as e:
                     logger.warning(f"Failed to parse commitment for {hotkey}: {e}")
                     continue
 
-            logger.debug(f"Fetched {len(result)} valid commitments")
-            return result
+            pylon_count = len(result_map)
+            logger.debug(f"Fetched {pylon_count} commitments from Pylon (CommitmentOf)")
+
+            # Merge RevealedCommitments (commit-reveal miners missed by Pylon)
+            revealed = self._get_revealed_commitments()
+            revealed_only = 0
+            for hotkey, metadata in revealed.items():
+                if hotkey not in result_map:
+                    result_map[hotkey] = metadata
+                    revealed_only += 1
+
+            if revealed_only > 0:
+                logger.info(
+                    f"Added {revealed_only} commitments from RevealedCommitments "
+                    f"(total: {len(result_map)})"
+                )
+
+            return list(result_map.values())
 
         except PylonUnauthorized as e:
             raise AuthenticationError(f"Invalid Pylon credentials: {e}") from e
@@ -161,6 +203,56 @@ class ChainClient:
             ) from e
         except PylonResponseException as e:
             raise ChainConnectionError(f"Failed to fetch commitments: {e}") from e
+
+    def _get_revealed_commitments(self) -> dict[str, ChainModelMetadata]:
+        """
+        Fetch commitments from RevealedCommitments storage via subtensor.
+
+        Miners who submit with set_reveal_commitment() have their data stored
+        in RevealedCommitments (not CommitmentOf). Pylon only reads CommitmentOf,
+        so this method provides the missing commitments.
+
+        Returns:
+            Dict mapping hotkey to ChainModelMetadata.
+            Empty dict if subtensor is not configured or query fails.
+        """
+        if self._subtensor is None:
+            return {}
+
+        try:
+            # Get netuid from pylon config identity name (e.g. "validator-46")
+            # or fall back to querying all revealed commitments for netuid 46
+            netuid = _extract_netuid(self._config.identity)
+            revealed = self._subtensor.get_all_revealed_commitments(netuid=netuid)
+
+            result: dict[str, ChainModelMetadata] = {}
+            for hotkey, entries in revealed.items():
+                if not entries:
+                    continue
+                # Use the latest revealed entry (last in the tuple)
+                latest_block, latest_data = entries[-1]
+                try:
+                    data = json.loads(latest_data)
+                    result[hotkey] = ChainModelMetadata(
+                        hotkey=hotkey,
+                        hf_repo_id=data.get("r", ""),
+                        model_hash=data.get("h", ""),
+                        block_number=latest_block,
+                    )
+                except (json.JSONDecodeError, KeyError) as e:
+                    logger.warning(
+                        f"Failed to parse revealed commitment for {hotkey}: {e}"
+                    )
+                    continue
+
+            logger.debug(
+                f"Fetched {len(result)} revealed commitments from chain"
+            )
+            return result
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch revealed commitments: {e}")
+            return {}
 
     async def get_commitment(self, hotkey: str) -> Commitment | None:
         """
