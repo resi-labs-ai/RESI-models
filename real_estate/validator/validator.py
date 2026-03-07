@@ -515,18 +515,11 @@ class Validator:
         try:
             result = await self._orchestrator.run(dataset, model_paths, chain_metadata)
 
-            # Reset all scores - miners not evaluated get 0
-            self.scores.fill(0.0)
-            self._pending_weights = {}
-
-            # Update scores from weights
-            for hotkey, weight in result.weights.weights.items():
-                # Store by hotkey (race-free, used by set_weights)
-                self._pending_weights[hotkey] = weight
-                # Also store by UID for backward compatibility
-                if hotkey in self.hotkeys:
-                    uid = self.hotkeys.index(hotkey)
-                    self.scores[uid] = weight
+            # Store weights keyed by hotkey (race-free, used by set_weights)
+            self._pending_weights = {
+                hotkey: weight
+                for hotkey, weight in result.weights.weights.items()
+            }
 
             logger.info(
                 f"Evaluation complete: winner={result.winner.winner_hotkey}, "

@@ -471,12 +471,7 @@ class TestRunEvaluationScores:
         mock_dataset.__len__ = MagicMock(return_value=10)
         await validator._run_evaluation(mock_dataset)
 
-        # Verify: hotkey_1's old score (0.5) should be zeroed, not preserved
-        assert validator.scores[0] == 0.99  # hotkey_0 - from weights
-        assert validator.scores[1] == 0.0  # hotkey_1 - zeroed (was 0.5)
-        assert validator.scores[2] == 0.01  # hotkey_2 - from weights
-        assert validator.scores[3] == 0.0  # hotkey_3 - zeroed
-        # _pending_weights stores by hotkey (race-free)
+        # _pending_weights stores by hotkey (race-free), no UID-indexed scores
         assert validator._pending_weights == {"hotkey_0": 0.99, "hotkey_2": 0.01}
 
     @pytest.mark.asyncio
@@ -514,11 +509,8 @@ class TestRunEvaluationScores:
         mock_dataset.__len__ = MagicMock(return_value=10)
         await validator._run_evaluation(mock_dataset)
 
-        # All old scores replaced
+        # All weights stored by hotkey only
         assert validator._pending_weights == {"hotkey_0": 1.0}
-        np.testing.assert_array_equal(
-            validator.scores, np.array([1.0, 0.0, 0.0], dtype=np.float32)
-        )
 
 
 class TestPendingWeightsRaceCondition:
@@ -576,7 +568,7 @@ class TestPendingWeightsRaceCondition:
     async def test_pending_weights_populated_by_evaluation(
         self, validator: Validator
     ) -> None:
-        """_run_evaluation stores weights in both scores array and _pending_weights."""
+        """_run_evaluation stores weights in _pending_weights."""
         validator.hotkeys = ["hotkey_0", "hotkey_1"]
         validator.scores = np.array([0.0, 0.0], dtype=np.float32)
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
@@ -602,10 +594,8 @@ class TestPendingWeightsRaceCondition:
         mock_dataset.__len__ = MagicMock(return_value=5)
         await validator._run_evaluation(mock_dataset)
 
-        # Both representations should be populated
+        # Weights stored by hotkey
         assert validator._pending_weights == {"hotkey_0": 0.99, "hotkey_1": 0.01}
-        assert validator.scores[0] == pytest.approx(0.99)
-        assert validator.scores[1] == pytest.approx(0.01)
 
     @pytest.mark.asyncio
     async def test_set_weights_filters_deregistered_from_pending(
@@ -614,7 +604,6 @@ class TestPendingWeightsRaceCondition:
         """set_weights excludes hotkeys that are no longer registered."""
         validator.hotkeys = ["hotkey_0", "our_hotkey"]  # hotkey_1 deregistered
         validator._pending_weights = {"hotkey_0": 0.99, "hotkey_1": 0.01}
-        validator.scores = np.array([0.99, 0.0], dtype=np.float32)
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
 
         mock_chain = MagicMock()
