@@ -152,6 +152,7 @@ class WandbLogger:
                     x_disable_stats=True,
                     disable_git=True,
                     disable_code=True,
+                    console="off",
                 ),
             )
 
