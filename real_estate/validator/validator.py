@@ -28,11 +28,13 @@ from real_estate.chain.models import Metagraph
 
 if TYPE_CHECKING:
     from real_estate.chain import ChainClient
+    from real_estate.orchestration.models import ValidationResult
 
 from real_estate.data import (
+    ATHRecord,
+    ValidationClient,
+    ValidationClientConfig,
     ValidationDataset,
-    ValidationDatasetClient,
-    ValidationDatasetClientConfig,
 )
 from real_estate.incentives import NoValidModelsError
 from real_estate.models import (
@@ -100,8 +102,8 @@ class Validator:
         logger.info(f"Loaded wallet: {self.wallet.name}/{self.wallet.hotkey_str}")
 
         # Validation data client for fetching validation data from dashboard API
-        self.validation_client = ValidationDatasetClient(
-            ValidationDatasetClientConfig(
+        self.validation_client = ValidationClient(
+            ValidationClientConfig(
                 url=self.config.validation_data_url,
                 max_retries=self.config.validation_data_max_retries,
                 retry_delay_seconds=self.config.validation_data_retry_delay,
@@ -502,20 +504,23 @@ class Validator:
 
         logger.info(f"Running evaluation with {len(model_paths)} models")
 
+        # Fetch ATH before evaluation (fallback if post-eval fetch fails)
+        pre_eval_ath = await self.validation_client.fetch_ath()
+        if pre_eval_ath:
+            logger.info(
+                f"Pre-eval ATH fetched: {pre_eval_ath.hotkey} "
+                f"(score={pre_eval_ath.score:.4f})"
+            )
+        else:
+            logger.warning("Pre-eval ATH fetch failed or no ATH available")
+
         # Start WandB run to measure evaluation time
         self._wandb_logger.start_run()
 
         try:
             result = await self._orchestrator.run(dataset, model_paths, chain_metadata)
 
-            # Reset all scores - miners not evaluated get 0
-            self.scores.fill(0.0)
-
-            # Update scores from weights
-            for hotkey, weight in result.weights.weights.items():
-                if hotkey in self.hotkeys:
-                    uid = self.hotkeys.index(hotkey)
-                    self.scores[uid] = weight
+            await self._resolve_weights_with_ath(result, pre_eval_ath)
 
             logger.info(
                 f"Evaluation complete: winner={result.winner.winner_hotkey}, "
@@ -709,49 +714,171 @@ class Validator:
         except Exception as e:
             logger.warning(f"Burn weight setting failed: {e}")
 
+    async def _resolve_weights_with_ath(
+        self,
+        result: ValidationResult,
+        pre_eval_ath: ATHRecord | None,
+    ) -> None:
+        """
+        Decide weights based on ATH comparison after evaluation.
+
+        Fetches fresh ATH (with pre-eval fallback), compares eval winner
+        against ATH, and applies either ATH-based or standard weights.
+        """
+        post_eval_ath = await self.validation_client.fetch_ath()
+        if post_eval_ath:
+            logger.info(
+                f"Post-eval ATH fetched: {post_eval_ath.hotkey} "
+                f"(score={post_eval_ath.score:.4f})"
+            )
+        elif pre_eval_ath:
+            logger.warning(
+                "Post-eval ATH fetch failed, using pre-eval ATH as fallback"
+            )
+        else:
+            logger.warning(
+                "Both ATH fetches failed, falling back to standard evaluation weights"
+            )
+        ath = post_eval_ath or pre_eval_ath
+
+        if (
+            ath
+            and ath.hotkey in self.hotkeys
+            and result.winner.winner_score <= ath.score
+        ):
+            logger.info(
+                f"ATH not beaten: eval winner {result.winner.winner_score:.4f} "
+                f"<= ATH {ath.score:.4f} ({ath.hotkey})"
+            )
+            self._apply_ath_weights(ath, result)
+        else:
+            if ath and ath.hotkey not in self.hotkeys:
+                logger.warning(
+                    f"ATH hotkey {ath.hotkey} not found in metagraph, "
+                    f"rewarding local evaluation winner instead"
+                )
+            elif ath and result.winner.winner_score > ath.score:
+                logger.info(
+                    f"New ATH! {result.winner.winner_hotkey} "
+                    f"score={result.winner.winner_score:.4f} > ATH {ath.score:.4f}"
+                )
+            elif not ath:
+                logger.info(
+                    "No ATH available, rewarding local evaluation winner instead"
+                )
+            self._apply_evaluation_weights(result)
+
+    def _apply_evaluation_weights(self, result: ValidationResult) -> None:
+        """Apply standard evaluation weights (existing behavior)."""
+        self.scores.fill(0.0)
+        for hotkey, weight in result.weights.weights.items():
+            if hotkey in self.hotkeys:
+                uid = self.hotkeys.index(hotkey)
+                self.scores[uid] = weight
+
+    def _apply_ath_weights(self, ath: ATHRecord, result: ValidationResult) -> None:
+        """
+        Apply ATH-based weights: 99% to ATH winner, 1% distributed to rest.
+
+        Uses evaluation results for the 1% proportional distribution among
+        non-ATH, non-copier successful miners.
+        """
+        self.scores.fill(0.0)
+
+        copiers = result.duplicate_result.copier_hotkeys
+
+        # Collect non-ATH, non-copier successful results for 1% distribution
+        others = [
+            r
+            for r in result.eval_batch.successful_results
+            if r.hotkey != ath.hotkey and r.hotkey not in copiers
+        ]
+
+        # ATH winner gets 99%
+        ath_uid = self.hotkeys.index(ath.hotkey)
+        self.scores[ath_uid] = 0.99
+
+        # Distribute 1% proportionally by score
+        if others:
+            total_score = sum(r.score for r in others)
+            if total_score > 0:
+                for r in others:
+                    if r.hotkey in self.hotkeys:
+                        uid = self.hotkeys.index(r.hotkey)
+                        self.scores[uid] = (r.score / total_score) * 0.01
+            else:
+                equal_share = 0.01 / len(others)
+                for r in others:
+                    if r.hotkey in self.hotkeys:
+                        uid = self.hotkeys.index(r.hotkey)
+                        self.scores[uid] = equal_share
+
+        logger.info(
+            f"ATH weights: {ath.hotkey} = 99%, "
+            f"{len(others)} miners share 1%"
+        )
+
     async def _bootstrap_weights(self) -> None:
         """
-        Bootstrap weights from current chain consensus (incentive values).
+        Bootstrap weights on startup.
 
-        Sets weights immediately on startup to avoid the "burn period" between
-        restart and first evaluation. Uses Yuma consensus incentive values.
-        Falls back to 100% burn if no incentive data is available.
+        Priority:
+        1. ATH winner from dashboard -> 100% to ATH (with burn rules)
+        2. Chain consensus incentive values
+        3. 100% to burn UID
         """
         if self.metagraph is None or not self.hotkeys:
             logger.warning("Cannot bootstrap weights: metagraph not available")
             return
 
-        # Populate scores from chain incentive values
+        # 1. Try ATH bootstrap
+        ath = await self.validation_client.fetch_ath()
+        if not ath:
+            logger.warning(
+                "ATH fetch failed or no ATH available, "
+                "falling back to consensus bootstrap"
+            )
+        if ath and ath.hotkey in self.hotkeys:
+            uid = self.hotkeys.index(ath.hotkey)
+            self.scores.fill(0.0)
+            self.scores[uid] = 1.0
+            logger.info(
+                f"Bootstrapping from ATH winner: {ath.hotkey} "
+                f"(score={ath.score:.4f}, achieved={ath.achieved_at})"
+            )
+            try:
+                await self.set_weights()
+            except Exception as e:
+                logger.warning(f"ATH bootstrap weight setting failed: {e}")
+            return
+
+        if ath:
+            logger.warning(
+                f"ATH hotkey {ath.hotkey} not found in current metagraph, "
+                f"falling back to consensus bootstrap"
+            )
+
+        # 2. Consensus bootstrap (existing logic)
         bootstrap_count = 0
         for neuron in self.metagraph.neurons:
             if neuron.uid < len(self.scores) and neuron.incentive > 0:
                 self.scores[neuron.uid] = float(neuron.incentive)
                 bootstrap_count += 1
 
-        if bootstrap_count == 0:
-            logger.info("No incentive data for bootstrap (new subnet or all zeros)")
-            await self._set_burn_weights()
+        if bootstrap_count > 0:
+            logger.info(
+                f"Bootstrapping from chain consensus: "
+                f"{bootstrap_count} neurons with incentive > 0"
+            )
+            try:
+                await self.set_weights()
+            except Exception as e:
+                logger.warning(f"Bootstrap weight setting failed: {e}")
             return
 
-        logger.info(
-            f"Bootstrapping weights from chain consensus: "
-            f"{bootstrap_count} neurons with incentive > 0"
-        )
-
-        # Log individual bootstrapped scores
-        for uid, score in enumerate(self.scores):
-            if score > 0:
-                logger.debug(
-                    f"  Bootstrap UID {uid} ({self.hotkeys[uid][:12]}...): "
-                    f"incentive={score:.6f}"
-                )
-
-        # Set weights immediately (bypass epoch check)
-        try:
-            await self.set_weights()
-        except Exception as e:
-            logger.warning(f"Bootstrap weight setting failed: {e}")
-            # Non-fatal: validator will set weights on next epoch
+        # 3. Burn fallback
+        logger.info("No ATH or incentive data, falling back to burn")
+        await self._set_burn_weights()
 
     async def _startup(self) -> None:
         """Run startup tasks: metagraph, models, initial data fetch."""

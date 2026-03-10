@@ -1,4 +1,4 @@
-"""Tests for ValidationDatasetClient."""
+"""Tests for ValidationClient (dashboard API client)."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,8 +12,8 @@ from real_estate.data import (
     ValidationDataProcessingError,
     ValidationDataRateLimitError,
     ValidationDataRequestError,
-    ValidationDatasetClient,
-    ValidationDatasetClientConfig,
+    ValidationClient,
+    ValidationClientConfig,
     ValidationDatasetResponse,
 )
 
@@ -21,7 +21,7 @@ from real_estate.data import (
 @pytest.fixture
 def config():
     """Create test validation set config."""
-    return ValidationDatasetClientConfig(
+    return ValidationClientConfig(
         url="https://dashboard.example.com",
         timeout=30.0,
         max_retries=2,
@@ -41,7 +41,7 @@ def mock_keypair():
 @pytest.fixture
 def client(config, mock_keypair):
     """Create validation client with mocked keypair."""
-    return ValidationDatasetClient(config, mock_keypair)
+    return ValidationClient(config, mock_keypair)
 
 
 @pytest.fixture
@@ -622,12 +622,12 @@ class TestFetchWithRetry:
 
     async def test_retries_on_request_error(self, mock_keypair):
         """Retries on ValidationDataRequestError until success."""
-        config = ValidationDatasetClientConfig(
+        config = ValidationClientConfig(
             url="https://dashboard.example.com",
             max_retries=3,
             retry_delay_seconds=0,
         )
-        client = ValidationDatasetClient(config, mock_keypair)
+        client = ValidationClient(config, mock_keypair)
 
         call_count = 0
 
@@ -648,12 +648,12 @@ class TestFetchWithRetry:
 
     async def test_does_not_retry_on_auth_error(self, mock_keypair):
         """Does not retry on ValidationDataAuthError."""
-        config = ValidationDatasetClientConfig(
+        config = ValidationClientConfig(
             url="https://dashboard.example.com",
             max_retries=3,
             retry_delay_seconds=0,
         )
-        client = ValidationDatasetClient(config, mock_keypair)
+        client = ValidationClient(config, mock_keypair)
 
         client.download_validation_set = AsyncMock(
             side_effect=ValidationDataAuthError("bad key")
@@ -666,12 +666,12 @@ class TestFetchWithRetry:
 
     async def test_does_not_retry_on_not_found_error(self, mock_keypair):
         """Does not retry on ValidationDataNotFoundError."""
-        config = ValidationDatasetClientConfig(
+        config = ValidationClientConfig(
             url="https://dashboard.example.com",
             max_retries=3,
             retry_delay_seconds=0,
         )
-        client = ValidationDatasetClient(config, mock_keypair)
+        client = ValidationClient(config, mock_keypair)
 
         client.download_validation_set = AsyncMock(
             side_effect=ValidationDataNotFoundError("no data")
@@ -684,12 +684,12 @@ class TestFetchWithRetry:
 
     async def test_retries_on_rate_limit_error(self, mock_keypair):
         """Retries on ValidationDataRateLimitError."""
-        config = ValidationDatasetClientConfig(
+        config = ValidationClientConfig(
             url="https://dashboard.example.com",
             max_retries=3,
             retry_delay_seconds=0,
         )
-        client = ValidationDatasetClient(config, mock_keypair)
+        client = ValidationClient(config, mock_keypair)
 
         call_count = 0
 
@@ -709,12 +709,12 @@ class TestFetchWithRetry:
 
     async def test_retries_on_processing_error(self, mock_keypair):
         """Retries on ValidationDataProcessingError (data still being processed)."""
-        config = ValidationDatasetClientConfig(
+        config = ValidationClientConfig(
             url="https://dashboard.example.com",
             max_retries=3,
             retry_delay_seconds=0,
         )
-        client = ValidationDatasetClient(config, mock_keypair)
+        client = ValidationClient(config, mock_keypair)
 
         call_count = 0
 
@@ -739,12 +739,12 @@ class TestFetchWithRetry:
 
     async def test_download_validation_only(self, mock_keypair):
         """Downloads only validation set when download_raw=False."""
-        config = ValidationDatasetClientConfig(
+        config = ValidationClientConfig(
             url="https://dashboard.example.com",
             max_retries=1,
             retry_delay_seconds=0,
         )
-        client = ValidationDatasetClient(config, mock_keypair)
+        client = ValidationClient(config, mock_keypair)
 
         validation_data = [{"id": 1}]
         client.download_validation_set = AsyncMock(return_value=validation_data)
@@ -759,12 +759,12 @@ class TestFetchWithRetry:
 
     async def test_download_raw_only(self, mock_keypair):
         """Downloads only raw files when download_validation=False."""
-        config = ValidationDatasetClientConfig(
+        config = ValidationClientConfig(
             url="https://dashboard.example.com",
             max_retries=1,
             retry_delay_seconds=0,
         )
-        client = ValidationDatasetClient(config, mock_keypair)
+        client = ValidationClient(config, mock_keypair)
 
         raw_data = {"AL": {}}
         client.download_validation_set = AsyncMock(return_value=[{"id": 1}])
@@ -779,12 +779,12 @@ class TestFetchWithRetry:
 
     async def test_download_both(self, mock_keypair):
         """Downloads both validation set and raw files."""
-        config = ValidationDatasetClientConfig(
+        config = ValidationClientConfig(
             url="https://dashboard.example.com",
             max_retries=1,
             retry_delay_seconds=0,
         )
-        client = ValidationDatasetClient(config, mock_keypair)
+        client = ValidationClient(config, mock_keypair)
 
         validation_data = [{"id": 1}]
         raw_data = {"AL": {}}
@@ -800,12 +800,12 @@ class TestFetchWithRetry:
 
     async def test_download_neither_returns_none(self, mock_keypair):
         """Returns (None, None) when both flags are False."""
-        config = ValidationDatasetClientConfig(
+        config = ValidationClientConfig(
             url="https://dashboard.example.com",
             max_retries=1,
             retry_delay_seconds=0,
         )
-        client = ValidationDatasetClient(config, mock_keypair)
+        client = ValidationClient(config, mock_keypair)
 
         client.download_validation_set = AsyncMock(return_value=[{"id": 1}])
         client.download_raw_files = AsyncMock(return_value={"AL": {}})
@@ -1059,12 +1059,12 @@ class TestStartScheduled:
 
     async def test_scheduled_job_retries_exhausted_then_calls_callback(self, mock_keypair):
         """Callback only called after retries exhausted, not during retries."""
-        config = ValidationDatasetClientConfig(
+        config = ValidationClientConfig(
             url="https://api.example.com",
             max_retries=3,
             retry_delay_seconds=0,  # No delay for test speed
         )
-        client = ValidationDatasetClient(config, mock_keypair)
+        client = ValidationClient(config, mock_keypair)
 
         with patch(
             "real_estate.data.validation_dataset_client.AsyncIOScheduler"

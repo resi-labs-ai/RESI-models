@@ -1,4 +1,4 @@
-"""Validation set client with hotkey-signed authentication."""
+"""Dashboard API client for validation data and stats."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from tenacity import (
     AsyncRetrying,
     retry_if_exception_type,
     stop_after_attempt,
+    wait_exponential,
     wait_fixed,
 )
 
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class ValidationDatasetClientConfig:
+class ValidationClientConfig:
     """Configuration for validation dataset client."""
 
     url: str
@@ -72,7 +73,16 @@ class ValidationDatasetResponse:
     raw_files: list[RawFileInfo]
 
 
-class ValidationDatasetClient:
+@dataclass
+class ATHRecord:
+    """All-Time High record from dashboard."""
+
+    hotkey: str
+    score: float
+    achieved_at: str
+
+
+class ValidationClient:
     """
     Client for fetching validation data from dashboard API.
 
@@ -82,7 +92,7 @@ class ValidationDatasetClient:
     - Returns presigned S3 URLs for data access
     """
 
-    def __init__(self, config: ValidationDatasetClientConfig, keypair: Keypair):
+    def __init__(self, config: ValidationClientConfig, keypair: Keypair):
         """
         Initialize validation dataset client.
 
@@ -97,6 +107,41 @@ class ValidationDatasetClient:
 
         if self._use_test_data:
             logger.info(f"TEST DATA: Will load data from {config.test_data_path}")
+
+    async def fetch_ath(self) -> ATHRecord | None:
+        """Fetch ATH winner from dashboard /api/stats endpoint.
+
+        Retries up to 3 times with exponential backoff (5s, 10s, 20s).
+        """
+        try:
+            async for attempt in AsyncRetrying(
+                stop=stop_after_attempt(3),
+                wait=wait_exponential(multiplier=5, min=5, max=20),
+                retry=retry_if_exception_type(Exception),
+                reraise=True,
+            ):
+                with attempt:
+                    if attempt.retry_state.attempt_number > 1:
+                        logger.info(
+                            f"Retrying ATH fetch "
+                            f"(attempt {attempt.retry_state.attempt_number}/3)"
+                        )
+                    url = f"{self._base_url}/api/stats"
+                    async with httpx.AsyncClient(timeout=30) as client:
+                        response = await client.get(url)
+                        response.raise_for_status()
+                        stats = response.json().get("stats", {})
+                        hotkey = stats.get("allTimeHighHotkey")
+                        score = stats.get("allTimeHighScore")
+                        if hotkey and score is not None:
+                            return ATHRecord(
+                                hotkey=hotkey,
+                                score=float(score),
+                                achieved_at=stats.get("allTimeHighAchievedAt", ""),
+                            )
+        except Exception as e:
+            logger.warning(f"Failed to fetch ATH from dashboard after retries: {e}")
+        return None
 
     def _sign_request(self, method: str, url: str, nonce: str) -> dict[str, str]:
         """

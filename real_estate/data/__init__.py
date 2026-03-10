@@ -22,9 +22,10 @@ from .feature_transforms import (
 )
 from .models import PropertyData, ValidationDataset
 from .validation_dataset_client import (
+    ATHRecord,
     RawFileInfo,
-    ValidationDatasetClient,
-    ValidationDatasetClientConfig,
+    ValidationClient,
+    ValidationClientConfig,
     ValidationDatasetResponse,
 )
 
@@ -51,9 +52,10 @@ __all__ = [
     # Models
     "PropertyData",
     "ValidationDataset",
-    # Validation Dataset Client
-    "ValidationDatasetClient",
-    "ValidationDatasetClientConfig",
+    # Validation Client
+    "ATHRecord",
+    "ValidationClient",
+    "ValidationClientConfig",
     "ValidationDatasetResponse",
     "RawFileInfo",
 ]
