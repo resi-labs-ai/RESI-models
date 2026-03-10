@@ -105,11 +105,14 @@ class WandbLogger:
             return
 
         try:
+            import os
+
             # Set API key if provided (wandb also checks WANDB_API_KEY env var)
             if self._config.api_key:
-                import os
-
                 os.environ["WANDB_API_KEY"] = self._config.api_key
+
+            # Redirect wandb data/artifact staging to /tmp
+            os.environ.setdefault("WANDB_DATA_DIR", "/tmp/wandb")
 
             wandb = self._import_wandb()
 
@@ -142,6 +145,7 @@ class WandbLogger:
                 save_code=False,
                 settings=wandb.Settings(
                     program_relpath=None,
+                    root_dir="/tmp/wandb",
                     x_save_requirements=False,
                     x_disable_machine_info=True,
                     x_disable_meta=True,
