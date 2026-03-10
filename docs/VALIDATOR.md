@@ -94,7 +94,7 @@ NETUID=46
 # WandB Logging (Recommended, disabled by default)
 # =============================================================================
 # WANDB_API_KEY=your_wandb_api_key_here
-# WANDB_PROJECT=subnet-46-evaluations-mainnet
+# WANDB_PROJECT=subnet-46-evaluations-main
 # WANDB_ENTITY=resi-labs
 WANDB_OFF=true
 # WANDB_OFFLINE=false
@@ -396,7 +396,7 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | `LOG_LEVEL` | `DEBUG` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 | **WandB** | | |
 | `WANDB_API_KEY` | | WandB API key (request from subnet owners on Discord) |
-| `WANDB_PROJECT` | `subnet-46-evaluations-mainnet` | WandB project name |
+| `WANDB_PROJECT` | `subnet-46-evaluations-main` | WandB project name |
 | `WANDB_ENTITY` | `resi-labs` | WandB team/entity |
 | `WANDB_OFF` | `true` | Disable WandB logging |
 | `WANDB_OFFLINE` | `false` | Run WandB in offline mode (logs saved locally) |
