@@ -503,7 +503,7 @@ ls -la ~/.bittensor/wallets/$WALLET_NAME/hotkeys/
 │  ┌────────────────────┐       ┌────────────────────────────┐│
 │  │    PM2 managed     │       │     Docker container       ││
 │  │                    │ HTTP  │                            ││
-│  │  validator.py      │──────►│   Pylon 1.0.0              ││
+│  │  validator.py      │──────►│   Pylon 1.2.0              ││
 │  │                    │ :8000 │                            ││
 │  │  (auto-updates)    │       │   (chain interactions)     ││
 │  └────────────────────┘       └───────────┬────────────────┘│

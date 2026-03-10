@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from pylon_client.v1 import (
+from pylon_client.artanis import (
     AsyncConfig,
     AsyncPylonClient,
     CommitmentDataHex,
@@ -36,7 +36,7 @@ from .models import (
 )
 
 if TYPE_CHECKING:
-    from pylon_client.v1 import Neuron as PylonNeuron
+    from pylon_client.artanis import Neuron as PylonNeuron
 
 logger = logging.getLogger(__name__)
 
@@ -117,41 +117,19 @@ class ChainClient:
 
     async def get_all_commitments(self) -> list[ChainModelMetadata]:
         """
-        Fetch all commitments from chain.
+        Fetch all commitments from chain with actual commit block numbers.
+
+        Uses the unstable Pylon API which returns per-commitment
+        block numbers in a single request.
 
         Returns:
-            List of ChainModelMetadata for all miners with commitments
-
-        Note:
-            block_number is set to 0 because Pylon doesn't yet include the actual
-            commit block. We get the real block from get_extrinsic() during verification
-            and update it via scheduler._update_commitment_block().
+            List of ChainModelMetadata for all miners with commitments.
+            Pylon filters to registered hotkeys only.
         """
         client = self._ensure_client()
 
         try:
-            response = await client.identity.get_commitments()
-
-            result = []
-            for hotkey, hex_data in response.commitments.items():
-                try:
-                    # TODO(pylon): Set to actual commit block once Pylon includes it
-                    # in get_commitments response. For now, we get it from get_extrinsic()
-                    # during verification and update via scheduler._update_commitment_block().
-                    commitment = Commitment(
-                        hotkey=hotkey,
-                        data=hex_data,
-                        block=0,
-                    )
-                    metadata = commitment.to_metadata()
-                    result.append(metadata)
-                except (ValueError, KeyError) as e:
-                    logger.warning(f"Failed to parse commitment for {hotkey}: {e}")
-                    continue
-
-            logger.debug(f"Fetched {len(result)} valid commitments")
-            return result
-
+            response = await client.unstable.identity.get_commitments()
         except PylonUnauthorized as e:
             raise AuthenticationError(f"Invalid Pylon credentials: {e}") from e
         except PylonRequestException as e:
@@ -161,6 +139,22 @@ class ChainClient:
             ) from e
         except PylonResponseException as e:
             raise ChainConnectionError(f"Failed to fetch commitments: {e}") from e
+
+        result = []
+        for hotkey, commitment in response.commitments.items():
+            try:
+                metadata = ChainModelMetadata.from_hex(
+                    hotkey=hotkey,
+                    hex_data=commitment.commitment,
+                    block_number=commitment.commitment_block_number,
+                )
+                result.append(metadata)
+            except Exception as e:
+                logger.warning(f"Failed to parse commitment for {hotkey}: {e}")
+                continue
+
+        logger.debug(f"Fetched {len(result)} commitments")
+        return result
 
     async def get_commitment(self, hotkey: str) -> Commitment | None:
         """
@@ -175,7 +169,7 @@ class ChainClient:
         client = self._ensure_client()
 
         try:
-            response = await client.identity.get_commitment(Hotkey(hotkey))
+            response = await client.unstable.identity.get_commitment(Hotkey(hotkey))
 
             if response.commitment is None:
                 logger.debug(f"No commitment found for hotkey {hotkey}")
@@ -247,7 +241,7 @@ class ChainClient:
             hex_data = data
 
         try:
-            await client.identity.set_commitment(CommitmentDataHex(hex_data))
+            await client.unstable.identity.set_commitment(CommitmentDataHex(hex_data))
             logger.info("Commitment set successfully")
             return True
 
@@ -273,7 +267,7 @@ class ChainClient:
         client = self._ensure_client()
 
         try:
-            response = await client.identity.get_latest_neurons()
+            response = await client.unstable.identity.get_latest_neurons()
 
             neurons = [
                 self._convert_neuron(hotkey, neuron)
@@ -353,7 +347,7 @@ class ChainClient:
         }
 
         try:
-            await client.identity.put_weights(pylon_weights)
+            await client.unstable.identity.put_weights(pylon_weights)
             logger.info(f"Weights submitted to Pylon for {len(weights)} miners")
 
         except PylonUnauthorized as e:
@@ -388,7 +382,7 @@ class ChainClient:
         client = self._ensure_client()
 
         try:
-            response = await client.identity.get_extrinsic(
+            response = await client.unstable.identity.get_extrinsic(
                 block_number, extrinsic_index
             )
 
@@ -401,7 +395,10 @@ class ChainClient:
                 call=ExtrinsicCall(
                     call_module=response.call.call_module,
                     call_function=response.call.call_function,
-                    call_args=response.call.call_args,
+                    call_args=[
+                        arg if isinstance(arg, dict) else arg.model_dump()
+                        for arg in response.call.call_args
+                    ],
                 ),
             )
 
@@ -429,7 +426,7 @@ class ChainClient:
         try:
             # Try to fetch neurons as a health check
             client = self._ensure_client()
-            await client.identity.get_latest_neurons()
+            await client.unstable.identity.get_latest_neurons()
             return True
         except Exception as e:
             logger.warning(f"Health check failed: {e}")

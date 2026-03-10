@@ -4,7 +4,7 @@
 
 services:
   pylon:
-    image: backenddevelopersltd/bittensor-pylon:1.0.0
+    image: backenddevelopersltd/bittensor-pylon:1.2.0
     container_name: resi_pylon
     command: >
       pylon_service/.venv/bin/python -m uvicorn pylon_service.main:app

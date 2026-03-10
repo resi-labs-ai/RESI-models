@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 # This must happen before any imports that require pylon_client
 if "pylon_client" not in sys.modules:
     mock_pylon_client = MagicMock()
-    mock_pylon_client.v1 = MagicMock()
+    mock_pylon_client.artanis = MagicMock()
 
     sys.modules["pylon_client"] = mock_pylon_client
-    sys.modules["pylon_client.v1"] = mock_pylon_client.v1
+    sys.modules["pylon_client.artanis"] = mock_pylon_client.artanis
