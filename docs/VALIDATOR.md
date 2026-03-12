@@ -376,6 +376,8 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | **Burn Configuration** | | |
 | `BURN_AMOUNT` | `0.0` | Fraction of emissions to burn (0.0-1.0) |
 | `BURN_UID` | `238` | UID receiving burn allocation (subnet owner) |
+| **HuggingFace** | | |
+| `HF_TOKEN` | | HuggingFace API token (higher rate limits) |
 | **Model Settings** | | |
 | `MODEL_CACHE_PATH` | `./model_cache` | Path to cache downloaded models |
 | `MODEL_MAX_SIZE_MB` | `200` | Maximum model size in MB |
@@ -385,7 +387,7 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | `SCHEDULER_CATCH_UP_MINUTES` | `30.0` | Minutes reserved for catch-up downloads |
 | **Weight Setting** | | |
 | `EPOCH_LENGTH` | `361` | Blocks between weight setting |
-| `SCORE_THRESHOLD` | `0.01` | Minimum miner score threshold (1%) for winner selection |
+| `SCORE_THRESHOLD` | `0.003` | Minimum miner score threshold (0.3%) for winner selection |
 | `DISABLE_SET_WEIGHTS` | `false` | Disable weight setting (for testing) |
 | **Docker Execution** | | |
 | `DOCKER_MEMORY` | `2g` | Container memory limit |
