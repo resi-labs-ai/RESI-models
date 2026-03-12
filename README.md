@@ -1,6 +1,6 @@
 # RESI - Real Estate Price Prediction Subnet
 
-**Subnet 46** on Bittensor Mainnet | [Dashboard](https://dashboard.resilabs.ai) | [Validator Guide](docs/VALIDATOR.md) | [Miner Guide](docs/MINER.md) | [Twitter](https://x.com/resilabsai)
+**Subnet 46** on Bittensor Mainnet | [Dashboard](https://dashboard.resilabs.ai) | [Validator Guide](docs/VALIDATOR.md) | [Miner Guide](docs/MINER.md) | [Wandb](https://wandb.ai/resi-labs/subnet-46-evaluations-main) | [Twitter](https://x.com/resilabsai) 
 
 ---
 
