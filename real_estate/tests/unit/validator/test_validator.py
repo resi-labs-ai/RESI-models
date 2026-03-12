@@ -12,7 +12,12 @@ from real_estate.models import DownloadResult
 from real_estate.validator import Validator
 
 
-def create_mock_neuron(uid: int, hotkey: str, validator_permit: bool = True) -> Neuron:
+def create_mock_neuron(
+    uid: int,
+    hotkey: str,
+    validator_permit: bool = True,
+    incentive: float = 0.1,
+) -> Neuron:
     """Create a mock Neuron for testing."""
     return Neuron(
         uid=uid,
@@ -21,7 +26,7 @@ def create_mock_neuron(uid: int, hotkey: str, validator_permit: bool = True) -> 
         stake=100.0,
         trust=0.5,
         consensus=0.5,
-        incentive=0.1,
+        incentive=incentive,
         dividends=0.1,
         emission=0.1,
         is_active=True,
@@ -73,7 +78,7 @@ def validator(mock_config: MagicMock) -> Validator:
         patch("real_estate.validator.validator.check_config"),
         patch("real_estate.validator.validator.bt.subtensor") as mock_subtensor,
         patch("real_estate.validator.validator.bt.wallet") as mock_wallet,
-        patch("real_estate.validator.validator.ValidationDatasetClient"),
+        patch("real_estate.validator.validator.ValidationClient"),
         patch("real_estate.validator.validator.ValidationOrchestrator"),
     ):
         mock_subtensor.return_value = MagicMock(chain_endpoint="mock_endpoint")
@@ -83,6 +88,8 @@ def validator(mock_config: MagicMock) -> Validator:
         v = Validator(mock_config)
         # Set recent evaluation to avoid staleness check in tests
         v._last_successful_evaluation = datetime.now(UTC)
+        # Default fetch_ath to return None (tests override as needed)
+        v.validation_client.fetch_ath = AsyncMock(return_value=None)
         return v
 
 
@@ -1135,3 +1142,629 @@ class TestWeightSettingLoopConnectionError:
 
         assert call_count == 2
 
+
+class TestBootstrapWeights:
+    """Tests for _bootstrap_weights method."""
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_populates_scores_from_incentive(
+        self, validator: Validator
+    ) -> None:
+        """Scores array is filled from metagraph neuron incentive values."""
+        hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey", "hotkey_3"]
+        neurons = [
+            create_mock_neuron(0, "hotkey_0", incentive=0.5),
+            create_mock_neuron(1, "hotkey_1", incentive=0.3),
+            create_mock_neuron(2, "our_hotkey", incentive=0.0),
+            create_mock_neuron(3, "hotkey_3", incentive=0.2),
+        ]
+        validator.metagraph = Metagraph(
+            block=1000, neurons=neurons, timestamp=datetime.now()
+        )
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+
+        # Mock set_weights to avoid chain calls
+        validator.set_weights = AsyncMock()
+
+        await validator._bootstrap_weights()
+
+        assert validator.scores[0] == pytest.approx(0.5)
+        assert validator.scores[1] == pytest.approx(0.3)
+        assert validator.scores[2] == pytest.approx(0.0)  # zero incentive unchanged
+        assert validator.scores[3] == pytest.approx(0.2)
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_sets_weights_on_chain(
+        self, validator: Validator
+    ) -> None:
+        """set_weights() is called after populating scores from incentive."""
+        hotkeys = ["hotkey_0", "our_hotkey"]
+        neurons = [
+            create_mock_neuron(0, "hotkey_0", incentive=0.8),
+            create_mock_neuron(1, "our_hotkey", incentive=0.2),
+        ]
+        validator.metagraph = Metagraph(
+            block=1000, neurons=neurons, timestamp=datetime.now()
+        )
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+
+        validator.set_weights = AsyncMock()
+
+        await validator._bootstrap_weights()
+
+        validator.set_weights.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_delegates_to_burn_when_no_incentive(
+        self, validator: Validator
+    ) -> None:
+        """When all neurons have zero incentive, delegates to _set_burn_weights."""
+        hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey"]
+        neurons = [
+            create_mock_neuron(0, "hotkey_0", incentive=0.0),
+            create_mock_neuron(1, "hotkey_1", incentive=0.0),
+            create_mock_neuron(2, "our_hotkey", incentive=0.0),
+        ]
+        validator.metagraph = Metagraph(
+            block=1000, neurons=neurons, timestamp=datetime.now()
+        )
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+
+        validator._set_burn_weights = AsyncMock()
+
+        await validator._bootstrap_weights()
+
+        validator._set_burn_weights.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_skips_when_weights_disabled(
+        self, validator: Validator
+    ) -> None:
+        """_startup() skips bootstrap when disable_set_weights is True."""
+        validator.config.disable_set_weights = True
+
+        hotkeys = ["hotkey_0", "our_hotkey"]
+        neurons = [
+            create_mock_neuron(0, "hotkey_0", incentive=0.5),
+            create_mock_neuron(1, "our_hotkey", incentive=0.5),
+        ]
+        validator.metagraph = Metagraph(
+            block=1000, neurons=neurons, timestamp=datetime.now()
+        )
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+
+        validator.set_weights = AsyncMock()
+
+        # Simulate what _startup does: only call bootstrap if not disabled
+        if not validator.config.disable_set_weights:
+            await validator._bootstrap_weights()
+
+        validator.set_weights.assert_not_awaited()
+        np.testing.assert_array_equal(
+            validator.scores, np.zeros(len(hotkeys), dtype=np.float32)
+        )
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_handles_empty_metagraph(
+        self, validator: Validator
+    ) -> None:
+        """Graceful no-op when metagraph has no neurons."""
+        validator.metagraph = Metagraph(
+            block=1000, neurons=[], timestamp=datetime.now()
+        )
+        validator.hotkeys = []
+        validator.scores = np.array([], dtype=np.float32)
+
+        validator.set_weights = AsyncMock()
+
+        await validator._bootstrap_weights()
+
+        validator.set_weights.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_survives_set_weights_failure(
+        self, validator: Validator
+    ) -> None:
+        """Bootstrap doesn't crash the validator if set_weights raises."""
+        hotkeys = ["hotkey_0", "our_hotkey"]
+        neurons = [
+            create_mock_neuron(0, "hotkey_0", incentive=0.7),
+            create_mock_neuron(1, "our_hotkey", incentive=0.3),
+        ]
+        validator.metagraph = Metagraph(
+            block=1000, neurons=neurons, timestamp=datetime.now()
+        )
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+
+        validator.set_weights = AsyncMock(side_effect=Exception("Pylon down"))
+
+        # Should not raise
+        await validator._bootstrap_weights()
+
+        # Scores were still populated even though set_weights failed
+        assert validator.scores[0] == pytest.approx(0.7)
+        assert validator.scores[1] == pytest.approx(0.3)
+
+    @pytest.mark.asyncio
+    async def test_evaluation_overrides_bootstrap_scores(
+        self, validator: Validator
+    ) -> None:
+        """Evaluation wipes bootstrap scores and replaces with real weights."""
+        # Setup: bootstrap scores are present
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
+        validator.scores = np.array(
+            [0.9, 0.08, 0.02], dtype=np.float32
+        )  # Simulated bootstrap values
+        validator.metagraph = create_mock_metagraph(validator.hotkeys)
+
+        validator.download_results = {
+            "hotkey_1": MagicMock(success=True, model_path="/model_1.onnx"),
+        }
+
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.known_commitments = {"hotkey_1": MagicMock()}
+
+        # Evaluation: only hotkey_1 wins
+        mock_weights = MagicMock()
+        mock_weights.weights = {"hotkey_1": 0.99}
+        mock_winner = MagicMock()
+        mock_winner.winner_hotkey = "hotkey_1"
+        mock_winner.winner_score = 0.85
+        mock_result = MagicMock()
+        mock_result.weights = mock_weights
+        mock_result.winner = mock_winner
+
+        validator._orchestrator = MagicMock()
+        validator._orchestrator.run = AsyncMock(return_value=mock_result)
+
+        mock_dataset = MagicMock()
+        mock_dataset.__len__ = MagicMock(return_value=10)
+        await validator._run_evaluation(mock_dataset)
+
+        # Bootstrap scores (0.9, 0.08, 0.02) are completely replaced
+        assert validator.scores[0] == 0.0  # was 0.9 from bootstrap
+        assert validator.scores[1] == 0.99  # evaluation winner
+        assert validator.scores[2] == 0.0  # was 0.02 from bootstrap
+
+
+class TestSetBurnWeights:
+    """Tests for _set_burn_weights method."""
+
+    @pytest.mark.asyncio
+    async def test_sets_100_pct_to_burn_uid(self, validator: Validator) -> None:
+        """100% weight is set to the burn UID hotkey."""
+        validator.hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey"]
+        validator.config.burn_uid = 0
+
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock()
+        validator.chain = mock_chain
+
+        await validator._set_burn_weights()
+
+        mock_chain.set_weights.assert_awaited_once_with({"hotkey_0": 1.0})
+
+    @pytest.mark.asyncio
+    async def test_skips_when_burn_uid_negative(self, validator: Validator) -> None:
+        """No weights set when burn_uid is -1 (not configured)."""
+        validator.hotkeys = ["hotkey_0", "our_hotkey"]
+        validator.config.burn_uid = -1
+
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock()
+        validator.chain = mock_chain
+
+        await validator._set_burn_weights()
+
+        mock_chain.set_weights.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_when_burn_uid_out_of_range(
+        self, validator: Validator
+    ) -> None:
+        """No weights set when burn_uid exceeds hotkeys length."""
+        validator.hotkeys = ["hotkey_0", "our_hotkey"]
+        validator.config.burn_uid = 999
+
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock()
+        validator.chain = mock_chain
+
+        await validator._set_burn_weights()
+
+        mock_chain.set_weights.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_survives_chain_failure(self, validator: Validator) -> None:
+        """Doesn't crash if chain set_weights raises."""
+        validator.hotkeys = ["hotkey_0", "our_hotkey"]
+        validator.config.burn_uid = 0
+
+        mock_chain = MagicMock()
+        mock_chain.set_weights = AsyncMock(side_effect=Exception("Pylon down"))
+        validator.chain = mock_chain
+
+        # Should not raise
+        await validator._set_burn_weights()
+
+
+class TestFetchATH:
+    """Tests for ValidationClient.fetch_ath."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_ath_success(self) -> None:
+        """Returns ATHRecord when dashboard responds correctly."""
+        from real_estate.data import ATHRecord, ValidationClient, ValidationClientConfig
+
+        config = ValidationClientConfig(url="http://test.dashboard")
+        client = ValidationClient(config, MagicMock())
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "stats": {
+                "allTimeHighHotkey": "ath_hotkey",
+                "allTimeHighScore": 0.95,
+                "allTimeHighAchievedAt": "2025-01-15",
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch(
+            "real_estate.data.validation_dataset_client.httpx.AsyncClient"
+        ) as mock_http:
+            mock_instance = AsyncMock()
+            mock_instance.get = AsyncMock(return_value=mock_response)
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_instance)
+            mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await client.fetch_ath()
+
+        assert result is not None
+        assert isinstance(result, ATHRecord)
+        assert result.hotkey == "ath_hotkey"
+        assert result.score == 0.95
+        assert result.achieved_at == "2025-01-15"
+
+    @pytest.mark.asyncio
+    async def test_fetch_ath_failure(self) -> None:
+        """Returns None on network error without crashing."""
+        from real_estate.data import ValidationClient, ValidationClientConfig
+
+        config = ValidationClientConfig(url="http://test.dashboard")
+        client = ValidationClient(config, MagicMock())
+
+        with patch(
+            "real_estate.data.validation_dataset_client.httpx.AsyncClient"
+        ) as mock_http:
+            mock_instance = AsyncMock()
+            mock_instance.get = AsyncMock(side_effect=Exception("Connection refused"))
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_instance)
+            mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await client.fetch_ath()
+
+        assert result is None
+
+
+class TestBootstrapATH:
+    """Tests for ATH-based bootstrap in _bootstrap_weights."""
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_uses_ath_when_available(
+        self, validator: Validator
+    ) -> None:
+        """ATH fetched -> 100% to ATH UID."""
+        from real_estate.data import ATHRecord
+
+        hotkeys = ["hotkey_0", "ath_hotkey", "our_hotkey"]
+        neurons = [
+            create_mock_neuron(0, "hotkey_0", incentive=0.5),
+            create_mock_neuron(1, "ath_hotkey", incentive=0.3),
+            create_mock_neuron(2, "our_hotkey", incentive=0.2),
+        ]
+        validator.metagraph = Metagraph(
+            block=1000, neurons=neurons, timestamp=datetime.now()
+        )
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+        validator.set_weights = AsyncMock()
+
+        ath = ATHRecord(hotkey="ath_hotkey", score=0.95, achieved_at="2025-01-15")
+        validator.validation_client.fetch_ath = AsyncMock(return_value=ath)
+
+        await validator._bootstrap_weights()
+
+        # ATH winner gets 100%
+        assert validator.scores[0] == 0.0
+        assert validator.scores[1] == 1.0
+        assert validator.scores[2] == 0.0
+        validator.set_weights.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_falls_back_to_consensus_when_no_ath(
+        self, validator: Validator
+    ) -> None:
+        """ATH unavailable -> consensus bootstrap."""
+        hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey"]
+        neurons = [
+            create_mock_neuron(0, "hotkey_0", incentive=0.5),
+            create_mock_neuron(1, "hotkey_1", incentive=0.3),
+            create_mock_neuron(2, "our_hotkey", incentive=0.2),
+        ]
+        validator.metagraph = Metagraph(
+            block=1000, neurons=neurons, timestamp=datetime.now()
+        )
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+        validator.set_weights = AsyncMock()
+
+        validator.validation_client.fetch_ath = AsyncMock(return_value=None)
+
+        await validator._bootstrap_weights()
+
+        # Falls back to consensus incentive values
+        assert validator.scores[0] == pytest.approx(0.5)
+        assert validator.scores[1] == pytest.approx(0.3)
+        assert validator.scores[2] == pytest.approx(0.2)
+        validator.set_weights.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_falls_back_when_ath_hotkey_not_in_metagraph(
+        self, validator: Validator
+    ) -> None:
+        """ATH hotkey deregistered -> consensus bootstrap."""
+        from real_estate.data import ATHRecord
+
+        hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey"]
+        neurons = [
+            create_mock_neuron(0, "hotkey_0", incentive=0.5),
+            create_mock_neuron(1, "hotkey_1", incentive=0.3),
+            create_mock_neuron(2, "our_hotkey", incentive=0.2),
+        ]
+        validator.metagraph = Metagraph(
+            block=1000, neurons=neurons, timestamp=datetime.now()
+        )
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+        validator.set_weights = AsyncMock()
+
+        # ATH hotkey not in metagraph
+        ath = ATHRecord(
+            hotkey="deregistered_hotkey", score=0.95, achieved_at="2025-01-15"
+        )
+        validator.validation_client.fetch_ath = AsyncMock(return_value=ath)
+
+        await validator._bootstrap_weights()
+
+        # Falls back to consensus
+        assert validator.scores[0] == pytest.approx(0.5)
+        assert validator.scores[1] == pytest.approx(0.3)
+        validator.set_weights.assert_awaited_once()
+
+
+class TestEvalATHComparison:
+    """Tests for ATH comparison in _run_evaluation."""
+
+    def _setup_eval(self, validator, hotkeys, eval_weights, winner_hotkey, winner_score):
+        """Common setup for evaluation tests."""
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+        validator.metagraph = create_mock_metagraph(hotkeys)
+        validator.download_results = {
+            hk: MagicMock(success=True) for hk in hotkeys
+        }
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.known_commitments = {hk: MagicMock() for hk in hotkeys}
+
+        mock_weights = MagicMock()
+        mock_weights.weights = eval_weights
+
+        mock_winner = MagicMock()
+        mock_winner.winner_hotkey = winner_hotkey
+        mock_winner.winner_score = winner_score
+
+        # Create successful evaluation results for proportional distribution
+        successful_results = []
+        for hk in hotkeys:
+            r = MagicMock()
+            r.hotkey = hk
+            r.score = eval_weights.get(hk, 0.0)
+            r.success = True
+            successful_results.append(r)
+
+        mock_eval_batch = MagicMock()
+        mock_eval_batch.successful_results = successful_results
+
+        mock_duplicate = MagicMock()
+        mock_duplicate.copier_hotkeys = frozenset()
+
+        mock_result = MagicMock()
+        mock_result.weights = mock_weights
+        mock_result.winner = mock_winner
+        mock_result.eval_batch = mock_eval_batch
+        mock_result.duplicate_result = mock_duplicate
+
+        validator._orchestrator = MagicMock()
+        validator._orchestrator.run = AsyncMock(return_value=mock_result)
+
+        return mock_result
+
+    @pytest.mark.asyncio
+    async def test_eval_ath_not_beaten_keeps_ath_weights(
+        self, validator: Validator
+    ) -> None:
+        """Eval score < ATH -> 99% to ATH, 1% to rest."""
+        from real_estate.data import ATHRecord
+
+        hotkeys = ["ath_hotkey", "hotkey_1", "hotkey_2"]
+        self._setup_eval(
+            validator, hotkeys,
+            {"hotkey_1": 0.99, "hotkey_2": 0.01},
+            winner_hotkey="hotkey_1", winner_score=0.80,
+        )
+
+        ath = ATHRecord(hotkey="ath_hotkey", score=0.95, achieved_at="2025-01-15")
+        validator.validation_client.fetch_ath = AsyncMock(return_value=ath)
+
+        mock_dataset = MagicMock()
+        mock_dataset.__len__ = MagicMock(return_value=10)
+        await validator._run_evaluation(mock_dataset)
+
+        # ATH winner gets 99%
+        assert validator.scores[0] == pytest.approx(0.99)
+        # Rest share 1% proportionally by score (hotkey_1=0.99, hotkey_2=0.01)
+        assert validator.scores[1] == pytest.approx((0.99 / 1.0) * 0.01, abs=1e-6)
+        assert validator.scores[2] == pytest.approx((0.01 / 1.0) * 0.01, abs=1e-6)
+        assert validator.scores[1] + validator.scores[2] == pytest.approx(0.01, abs=1e-6)
+
+    @pytest.mark.asyncio
+    async def test_eval_ath_beaten_uses_eval_weights(
+        self, validator: Validator
+    ) -> None:
+        """Eval score > ATH -> standard 99/1 to eval winner."""
+        from real_estate.data import ATHRecord
+
+        hotkeys = ["ath_hotkey", "hotkey_1", "hotkey_2"]
+        self._setup_eval(
+            validator, hotkeys,
+            {"hotkey_1": 0.99, "hotkey_2": 0.01},
+            winner_hotkey="hotkey_1", winner_score=0.98,
+        )
+
+        ath = ATHRecord(hotkey="ath_hotkey", score=0.95, achieved_at="2025-01-15")
+        validator.validation_client.fetch_ath = AsyncMock(return_value=ath)
+
+        mock_dataset = MagicMock()
+        mock_dataset.__len__ = MagicMock(return_value=10)
+        await validator._run_evaluation(mock_dataset)
+
+        # Standard evaluation weights used (ATH beaten)
+        assert validator.scores[0] == 0.0  # ath_hotkey not in eval weights
+        assert validator.scores[1] == pytest.approx(0.99)
+        assert validator.scores[2] == pytest.approx(0.01)
+
+    @pytest.mark.asyncio
+    async def test_eval_no_ath_uses_eval_weights(
+        self, validator: Validator
+    ) -> None:
+        """No ATH -> standard evaluation weights."""
+        hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
+        self._setup_eval(
+            validator, hotkeys,
+            {"hotkey_0": 0.99, "hotkey_1": 0.01},
+            winner_hotkey="hotkey_0", winner_score=0.90,
+        )
+
+        validator.validation_client.fetch_ath = AsyncMock(return_value=None)
+
+        mock_dataset = MagicMock()
+        mock_dataset.__len__ = MagicMock(return_value=10)
+        await validator._run_evaluation(mock_dataset)
+
+        # Standard evaluation weights
+        assert validator.scores[0] == pytest.approx(0.99)
+        assert validator.scores[1] == pytest.approx(0.01)
+        assert validator.scores[2] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_eval_uses_pre_eval_ath_as_fallback(
+        self, validator: Validator
+    ) -> None:
+        """Post-eval fetch fails -> uses pre-eval ATH."""
+        from real_estate.data import ATHRecord
+
+        hotkeys = ["ath_hotkey", "hotkey_1", "hotkey_2"]
+        self._setup_eval(
+            validator, hotkeys,
+            {"hotkey_1": 0.99, "hotkey_2": 0.01},
+            winner_hotkey="hotkey_1", winner_score=0.80,
+        )
+
+        ath = ATHRecord(hotkey="ath_hotkey", score=0.95, achieved_at="2025-01-15")
+        # First call (pre-eval) returns ATH, second call (post-eval) returns None
+        validator.validation_client.fetch_ath = AsyncMock(side_effect=[ath, None])
+
+        mock_dataset = MagicMock()
+        mock_dataset.__len__ = MagicMock(return_value=10)
+        await validator._run_evaluation(mock_dataset)
+
+        # ATH weights applied using pre-eval ATH as fallback
+        assert validator.scores[0] == pytest.approx(0.99)
+
+    @pytest.mark.asyncio
+    async def test_apply_ath_weights_excludes_copiers(
+        self, validator: Validator
+    ) -> None:
+        """Copiers get 0 in ATH 1% distribution."""
+        from real_estate.data import ATHRecord
+
+        hotkeys = ["ath_hotkey", "hotkey_1", "copier_hotkey", "hotkey_3"]
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+        validator.metagraph = create_mock_metagraph(hotkeys)
+        validator.download_results = {
+            hk: MagicMock(success=True) for hk in hotkeys
+        }
+        validator._model_scheduler = MagicMock()
+        validator._model_scheduler.known_commitments = {
+            hk: MagicMock() for hk in hotkeys
+        }
+
+        # Create eval result with copier
+        mock_weights = MagicMock()
+        mock_weights.weights = {"hotkey_1": 0.99, "hotkey_3": 0.01}
+
+        mock_winner = MagicMock()
+        mock_winner.winner_hotkey = "hotkey_1"
+        mock_winner.winner_score = 0.80
+
+        # Successful results for non-copiers
+        successful_results = []
+        for hk, score in [
+            ("ath_hotkey", 0.70),
+            ("hotkey_1", 0.80),
+            ("copier_hotkey", 0.75),
+            ("hotkey_3", 0.60),
+        ]:
+            r = MagicMock()
+            r.hotkey = hk
+            r.score = score
+            r.success = True
+            successful_results.append(r)
+
+        mock_eval_batch = MagicMock()
+        mock_eval_batch.successful_results = successful_results
+
+        mock_duplicate = MagicMock()
+        mock_duplicate.copier_hotkeys = frozenset({"copier_hotkey"})
+
+        mock_result = MagicMock()
+        mock_result.weights = mock_weights
+        mock_result.winner = mock_winner
+        mock_result.eval_batch = mock_eval_batch
+        mock_result.duplicate_result = mock_duplicate
+
+        validator._orchestrator = MagicMock()
+        validator._orchestrator.run = AsyncMock(return_value=mock_result)
+
+        ath = ATHRecord(hotkey="ath_hotkey", score=0.95, achieved_at="2025-01-15")
+        validator.validation_client.fetch_ath = AsyncMock(return_value=ath)
+
+        mock_dataset = MagicMock()
+        mock_dataset.__len__ = MagicMock(return_value=10)
+        await validator._run_evaluation(mock_dataset)
+
+        # ATH winner gets 99%
+        assert validator.scores[0] == pytest.approx(0.99)
+        # Copier gets 0
+        assert validator.scores[2] == 0.0
+        # Non-copier non-ATH miners share 1% proportionally by score
+        # hotkey_1 score=0.80, hotkey_3 score=0.60, total=1.40
+        assert validator.scores[1] == pytest.approx((0.80 / 1.40) * 0.01, abs=1e-6)
+        assert validator.scores[3] == pytest.approx((0.60 / 1.40) * 0.01, abs=1e-6)
+        assert validator.scores[1] + validator.scores[3] == pytest.approx(0.01, abs=1e-6)
