@@ -29,6 +29,7 @@ class MinerResultLog:
     # Metadata
     model_hash: str | None = None
     hf_repo_id: str | None = None
+    commit_block: int | None = None  # Block number when committed on-chain
     inference_time_ms: float | None = None
     is_winner: bool = False
     is_copier: bool = False
@@ -51,6 +52,7 @@ class MinerResultLog:
             ),
             "model_hash": self.model_hash,
             "hf_repo_id": self.hf_repo_id,
+            "commit_block": self.commit_block,
             "inference_time_ms": (
                 round(self.inference_time_ms, 2)
                 if self.inference_time_ms is not None

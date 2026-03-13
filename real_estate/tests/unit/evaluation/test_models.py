@@ -39,6 +39,42 @@ class TestPredictionMetrics:
         assert result["accuracy"]["10%"] == 0.6
 
 
+class TestEvaluationResult:
+    """Tests for EvaluationResult dataclass."""
+
+    def test_to_dict_includes_commit_block(self) -> None:
+        """to_dict includes commit_block when set."""
+        result = EvaluationResult(
+            hotkey="5FTest",
+            predictions=np.array([100000.0]),
+            metrics=PredictionMetrics(
+                mae=5000, mape=0.05, rmse=6000, mdape=0.04,
+                accuracy={}, r2=0.98, n_samples=1,
+            ),
+            model_hash="abc123",
+            commit_block=5000,
+        )
+
+        result_dict = result.to_dict()
+
+        assert result_dict["commit_block"] == 5000
+
+    def test_to_dict_excludes_commit_block_when_none(self) -> None:
+        """to_dict omits commit_block when not set."""
+        result = EvaluationResult(
+            hotkey="5FTest",
+            predictions=np.array([100000.0]),
+            metrics=PredictionMetrics(
+                mae=5000, mape=0.05, rmse=6000, mdape=0.04,
+                accuracy={}, r2=0.98, n_samples=1,
+            ),
+        )
+
+        result_dict = result.to_dict()
+
+        assert "commit_block" not in result_dict
+
+
 class TestEvaluationBatch:
     """Tests for EvaluationBatch dataclass."""
 

@@ -340,6 +340,7 @@ class TestWandbLoggerMinerTable:
         assert "mape" in columns
         assert "is_winner" in columns
         assert "is_copier" in columns
+        assert "commit_block" in columns
 
         # Check data was added
         assert mock_table.add_data.call_count == 2
