@@ -78,7 +78,7 @@ class ValidationOrchestrator:
         score_threshold: float = 0.01,
         winner_share: float = 0.99,
         docker_timeout: int = 300,
-        docker_memory: str = "2g",
+        docker_memory: str = "4g",
         docker_cpu: float = 1.0,
         docker_max_concurrent: int = 4,
     ) -> ValidationOrchestrator:
@@ -92,7 +92,7 @@ class ValidationOrchestrator:
             score_threshold: Score threshold for winner selection.
             winner_share: Share of emissions allocated to winner (default 99%).
             docker_timeout: Docker inference timeout in seconds.
-            docker_memory: Docker memory limit (e.g., '2g').
+            docker_memory: Docker memory limit (e.g., '4g').
             docker_cpu: Docker CPU limit (1.0 = 1 core).
             docker_max_concurrent: Maximum concurrent Docker evaluations.
 

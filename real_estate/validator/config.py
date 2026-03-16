@@ -249,7 +249,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="docker_memory",
         type=str,
         help="Docker container memory limit (e.g., '2g', '4g').",
-        default=os.environ.get("DOCKER_MEMORY", "2g"),
+        default=os.environ.get("DOCKER_MEMORY", "4g"),
     )
 
     parser.add_argument(
