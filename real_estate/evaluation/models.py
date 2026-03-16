@@ -82,6 +82,7 @@ class EvaluationResult:
     # Model metadata (for context)
     model_hash: str | None = None
     hf_repo_id: str | None = None
+    commit_block: int | None = None  # Block number when committed on-chain
 
     @property
     def success(self) -> bool:
@@ -128,6 +129,8 @@ class EvaluationResult:
 
         if self.model_hash:
             result["model_hash"] = self.model_hash
+        if self.commit_block is not None:
+            result["commit_block"] = self.commit_block
 
         return result
 

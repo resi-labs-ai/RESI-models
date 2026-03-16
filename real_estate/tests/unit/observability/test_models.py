@@ -92,6 +92,7 @@ class TestMinerResultLog:
             r2=0.85,
             accuracy=0.75,
             model_hash="abc123",
+            commit_block=5000,
             inference_time_ms=1500.0,
             is_winner=True,
             is_copier=False,
@@ -106,6 +107,7 @@ class TestMinerResultLog:
         assert result["accuracy"] == 0.75
         assert result["is_winner"] is True
         assert result["is_copier"] is False
+        assert result["commit_block"] == 5000
 
     def test_to_dict_failed_miner_has_error(self) -> None:
         """Test that failed miner includes error message."""
