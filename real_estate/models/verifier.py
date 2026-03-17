@@ -43,6 +43,7 @@ class ModelVerifier:
         self,
         chain_client: ChainClient,
         http_timeout: float = 30.0,
+        hf_token: str | None = None,
     ):
         """
         Initialize verifier.
@@ -50,9 +51,18 @@ class ModelVerifier:
         Args:
             chain_client: Client for chain queries
             http_timeout: Timeout for HF API requests
+            hf_token: Optional HuggingFace API token for authenticated requests
         """
         self._chain = chain_client
         self._http_timeout = http_timeout
+        self._hf_token = hf_token
+
+    @property
+    def _http_headers(self) -> dict[str, str]:
+        """HTTP headers for HuggingFace API requests."""
+        if self._hf_token:
+            return {"Authorization": f"Bearer {self._hf_token}"}
+        return {}
 
     async def check_license(self, hf_repo_id: str) -> None:
         """
@@ -70,7 +80,7 @@ class ModelVerifier:
         url = HF_API_URL.format(repo_id=hf_repo_id)
 
         async with httpx.AsyncClient(
-            timeout=self._http_timeout, follow_redirects=True
+            timeout=self._http_timeout, follow_redirects=True, headers=self._http_headers
         ) as client:
             try:
                 response = await client.get(url)
@@ -116,7 +126,7 @@ class ModelVerifier:
         api_url = f"https://huggingface.co/api/models/{hf_repo_id}/tree/main"
 
         async with httpx.AsyncClient(
-            timeout=self._http_timeout, follow_redirects=True
+            timeout=self._http_timeout, follow_redirects=True, headers=self._http_headers
         ) as client:
             try:
                 response = await client.get(api_url)
@@ -203,7 +213,7 @@ class ModelVerifier:
         url = HF_RAW_URL.format(repo_id=hf_repo_id, filename="extrinsic_record.json")
 
         async with httpx.AsyncClient(
-            timeout=self._http_timeout, follow_redirects=True
+            timeout=self._http_timeout, follow_redirects=True, headers=self._http_headers
         ) as client:
             try:
                 response = await client.get(url)

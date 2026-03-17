@@ -143,7 +143,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--score_threshold",
         type=float,
         help="Score threshold for winner set. Models within this of best are equivalent.",
-        default=float(os.environ.get("SCORE_THRESHOLD", "0.01")),
+        default=float(os.environ.get("SCORE_THRESHOLD", "0.003")),
     )
 
     parser.add_argument(
@@ -241,6 +241,14 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         type=int,
         help="Minimum age in blocks for commitments to be eligible (~28h = 8400 blocks at 12s/block).",
         default=int(os.environ.get("MODEL_MIN_COMMITMENT_AGE_BLOCKS", "8400")),
+    )
+
+    parser.add_argument(
+        "--hf.token",
+        dest="hf_token",
+        type=str,
+        help="HuggingFace API token for authenticated downloads (higher rate limits).",
+        default=os.environ.get("HF_TOKEN", ""),
     )
 
     # Docker execution settings
@@ -395,6 +403,7 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "wandb_api_key": "***" if config.wandb_api_key else "",
         "wandb_offline": config.wandb_offline,
         "wandb_log_predictions": config.wandb_log_predictions,
+        "hf_token": "***" if config.hf_token else "",
         "wandb_predictions_top_n": config.wandb_predictions_top_n,
         "model_cache_path": str(config.model_cache_path),
         "model_max_size_mb": config.model_max_size_mb,
