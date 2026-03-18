@@ -80,7 +80,9 @@ class ModelVerifier:
         url = HF_API_URL.format(repo_id=hf_repo_id)
 
         async with httpx.AsyncClient(
-            timeout=self._http_timeout, follow_redirects=True, headers=self._http_headers
+            timeout=self._http_timeout,
+            follow_redirects=True,
+            headers=self._http_headers,
         ) as client:
             try:
                 response = await client.get(url)
@@ -126,7 +128,9 @@ class ModelVerifier:
         api_url = f"https://huggingface.co/api/models/{hf_repo_id}/tree/main"
 
         async with httpx.AsyncClient(
-            timeout=self._http_timeout, follow_redirects=True, headers=self._http_headers
+            timeout=self._http_timeout,
+            follow_redirects=True,
+            headers=self._http_headers,
         ) as client:
             try:
                 response = await client.get(api_url)
@@ -213,7 +217,9 @@ class ModelVerifier:
         url = HF_RAW_URL.format(repo_id=hf_repo_id, filename="extrinsic_record.json")
 
         async with httpx.AsyncClient(
-            timeout=self._http_timeout, follow_redirects=True, headers=self._http_headers
+            timeout=self._http_timeout,
+            follow_redirects=True,
+            headers=self._http_headers,
         ) as client:
             try:
                 response = await client.get(url)
