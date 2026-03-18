@@ -274,6 +274,7 @@ class WandbLogger:
                 ),
                 model_hash=eval_result.model_hash,
                 hf_repo_id=eval_result.hf_repo_id,
+                commit_block=eval_result.commit_block,
                 inference_time_ms=eval_result.inference_time_ms,
                 is_winner=(eval_result.hotkey == result.winner.winner_hotkey),
                 is_copier=(eval_result.hotkey in copiers),
@@ -329,6 +330,7 @@ class WandbLogger:
             "is_copier",
             "model_hash",
             "hf_repo_id",
+            "commit_block",
             "error",
         ]
 
@@ -349,6 +351,7 @@ class WandbLogger:
                 miner.is_copier,
                 miner.model_hash,
                 miner.hf_repo_id,
+                miner.commit_block,
                 miner.error,
             )
 

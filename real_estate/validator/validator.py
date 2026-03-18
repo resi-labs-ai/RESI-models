@@ -671,6 +671,7 @@ class Validator:
                     pre_download_hours=self.config.scheduler_pre_download_hours,
                     catch_up_minutes=self.config.scheduler_catch_up_minutes,
                 ),
+                hf_token=self.config.hf_token or None,
             )
 
             await self._startup()
@@ -734,9 +735,7 @@ class Validator:
                 f"(score={post_eval_ath.score:.4f})"
             )
         elif pre_eval_ath:
-            logger.warning(
-                "Post-eval ATH fetch failed, using pre-eval ATH as fallback"
-            )
+            logger.warning("Post-eval ATH fetch failed, using pre-eval ATH as fallback")
         else:
             logger.warning(
                 "Both ATH fetches failed, falling back to standard evaluation weights"
@@ -815,10 +814,7 @@ class Validator:
                         uid = self.hotkeys.index(r.hotkey)
                         self.scores[uid] = equal_share
 
-        logger.info(
-            f"ATH weights: {ath.hotkey} = 99%, "
-            f"{len(others)} miners share 1%"
-        )
+        logger.info(f"ATH weights: {ath.hotkey} = 99%, {len(others)} miners share 1%")
 
     async def _bootstrap_weights(self) -> None:
         """
