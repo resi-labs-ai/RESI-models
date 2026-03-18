@@ -225,7 +225,7 @@ class EvaluationOrchestrator:
 
 def create_orchestrator(
     max_concurrent: int = 4,
-    docker_memory: str = "4g",
+    docker_memory: str = "2g",
     docker_cpu: float = 1.0,
     docker_timeout: int = 300,
     metrics_config: MetricsConfig | None = None,

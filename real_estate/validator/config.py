@@ -143,7 +143,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--score_threshold",
         type=float,
         help="Score threshold for winner set. Models within this of best are equivalent.",
-        default=float(os.environ.get("SCORE_THRESHOLD", "0.003")),
+        default=float(os.environ.get("SCORE_THRESHOLD", "0.01")),
     )
 
     parser.add_argument(
@@ -257,7 +257,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="docker_memory",
         type=str,
         help="Docker container memory limit (e.g., '2g', '4g').",
-        default=os.environ.get("DOCKER_MEMORY", "4g"),
+        default=os.environ.get("DOCKER_MEMORY", "2g"),
     )
 
     parser.add_argument(

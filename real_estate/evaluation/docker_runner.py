@@ -39,8 +39,8 @@ class DockerConfig:
     image: str = "resi-onnx-runner:latest"
     """Docker image to use. Must have Python, numpy, and onnxruntime."""
 
-    memory_limit: str = "4g"
-    """Memory limit for container (e.g., '4g', '512m')."""
+    memory_limit: str = "2g"
+    """Memory limit for container (e.g., '2g', '512m')."""
 
     cpu_limit: float = 1.0
     """CPU limit (1.0 = 1 core, 0.5 = half core)."""

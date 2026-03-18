@@ -387,10 +387,10 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | `SCHEDULER_CATCH_UP_MINUTES` | `30.0` | Minutes reserved for catch-up downloads |
 | **Weight Setting** | | |
 | `EPOCH_LENGTH` | `361` | Blocks between weight setting |
-| `SCORE_THRESHOLD` | `0.003` | Minimum miner score threshold (0.3%) for winner selection |
+| `SCORE_THRESHOLD` | `0.01` | Minimum miner score threshold (1%) for winner selection |
 | `DISABLE_SET_WEIGHTS` | `false` | Disable weight setting (for testing) |
 | **Docker Execution** | | |
-| `DOCKER_MEMORY` | `4g` | Container memory limit |
+| `DOCKER_MEMORY` | `2g` | Container memory limit |
 | `DOCKER_CPU` | `1.0` | Container CPU limit (cores) |
 | `DOCKER_TIMEOUT` | `300` | Inference timeout (seconds) |
 | `DOCKER_MAX_CONCURRENT` | `4` | Max concurrent evaluations |
