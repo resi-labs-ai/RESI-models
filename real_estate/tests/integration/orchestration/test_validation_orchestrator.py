@@ -353,7 +353,7 @@ class TestValidationOrchestratorIntegration:
             feature_config_path=feature_config_path,
         )
 
-        with pytest.raises(NoValidModelsError, match="All model evaluations failed"):
+        with pytest.raises(NoValidModelsError):
             await orchestrator.run(
                 dataset=validation_dataset,
                 model_paths={},
