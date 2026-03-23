@@ -8,7 +8,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from real_estate.duplicate_detector import DuplicateDetectionResult
     from real_estate.evaluation import EvaluationBatch
+    from real_estate.generalization_detector import GeneralizationDetectionResult
     from real_estate.incentives import IncentiveWeights, WinnerSelectionResult
+    from real_estate.model_inspector import InspectionBatchResult
 
 
 @dataclass
@@ -27,6 +29,12 @@ class ValidationResult:
     duplicate_result: DuplicateDetectionResult
     """Duplicate detection results."""
 
+    generalization_result: GeneralizationDetectionResult | None = None
+    """Generalization detection results."""
+
+    inspection_result: InspectionBatchResult | None = None
+    """Pre-flight inspection results."""
+
     def to_dict(self) -> dict:
         """
         Serialize for state persistence.
@@ -34,7 +42,7 @@ class ValidationResult:
         Returns:
             Dictionary suitable for JSON serialization.
         """
-        return {
+        result = {
             "winner_hotkey": self.winner.winner_hotkey,
             "winner_score": round(self.winner.winner_score, 6),
             "results": {
@@ -52,3 +60,11 @@ class ValidationResult:
                 for hotkey, weight in self.weights.weights.items()
             },
         }
+
+        if self.generalization_result is not None:
+            result["memorizers"] = sorted(self.generalization_result.memorizer_hotkeys)
+
+        if self.inspection_result is not None:
+            result["rejected"] = sorted(self.inspection_result.rejected_hotkeys)
+
+        return result
