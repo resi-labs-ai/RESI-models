@@ -8,7 +8,17 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from real_estate.evaluation.models import EvaluationBatch, EvaluationResult, PredictionMetrics
+from real_estate.evaluation.models import (
+    EvaluationBatch,
+    EvaluationResult,
+    PredictionMetrics,
+)
+from real_estate.generalization_detector.models import GeneralizationDetectionResult
+from real_estate.model_inspector.models import (
+    InspectionBatchResult,
+    ModelInspectionResult,
+    RejectionReason,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -168,6 +178,50 @@ def create_weights(
     # get_weight returns the weight for the given hotkey, defaulting to highest
     result.get_weight = lambda hk: weights.get(hk, max(weights.values()) if weights else 0)
     return result
+
+
+def create_generalization_result(
+    memorizer_hotkeys: frozenset[str] | None = None,
+) -> GeneralizationDetectionResult:
+    """
+    Create a GeneralizationDetectionResult for testing.
+
+    Args:
+        memorizer_hotkeys: Set of hotkeys flagged as memorizers.
+
+    Returns:
+        GeneralizationDetectionResult.
+    """
+    return GeneralizationDetectionResult(
+        memorizer_hotkeys=memorizer_hotkeys or frozenset(),
+    )
+
+
+def create_inspection_result(
+    rejected_hotkeys: frozenset[str] | None = None,
+) -> InspectionBatchResult:
+    """
+    Create an InspectionBatchResult for testing.
+
+    Args:
+        rejected_hotkeys: Set of hotkeys rejected by inspection.
+
+    Returns:
+        InspectionBatchResult.
+    """
+    rejected = rejected_hotkeys or frozenset()
+    results = tuple(
+        ModelInspectionResult(
+            hotkey=hk,
+            has_lookup_pattern=True,
+            has_unused_initializers=False,
+            price_like_values=0,
+            total_params=0,
+            rejection_reason=RejectionReason.LOOKUP_PATTERN,
+        )
+        for hk in rejected
+    )
+    return InspectionBatchResult(results=results)
 
 
 # Pytest fixtures for common mock dependencies
