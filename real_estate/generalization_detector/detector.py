@@ -77,7 +77,7 @@ class GeneralizationDetector:
             perturbed_score = perturbed.score
 
             global_ratio = (
-                perturbed_score / original_score if original_score > 0 else 0.0
+                perturbed_score / original_score if original_score > 0 else 1.0
             )
             is_memorizer = global_ratio < self._config.global_threshold
 

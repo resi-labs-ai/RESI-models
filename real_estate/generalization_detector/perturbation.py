@@ -25,7 +25,7 @@ def perturb_features(
         Copy of features with noise applied to numeric columns.
     """
     rng = np.random.default_rng(config.seed)
-    num_numeric = config.num_numeric_features
+    num_numeric = min(config.num_numeric_features, features.shape[1])
 
     perturbed = features.copy()
     noise = rng.normal(0, config.global_noise_pct, size=(features.shape[0], num_numeric))

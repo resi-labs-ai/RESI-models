@@ -121,15 +121,15 @@ class TestGeneralizationDetector:
         assert len(detection.test_results) == 3  # good1, good2, memorizer (oom skipped)
 
     def test_zero_original_score(self) -> None:
-        """Model with zero original score gets ratio 0."""
+        """Model with zero original score is not a memorizer (can't memorize with score<=0)."""
         detector = GeneralizationDetector(GeneralizationConfig(global_threshold=0.70))
         original = [_make_result("zero", score=0.0)]
         perturbed = [_make_result("zero", score=0.0)]
         detection = detector.detect(original, perturbed)
 
-        # ratio = 0.0 (< threshold) → memorizer
-        assert detection.is_memorizer("zero")
-        assert detection.test_results[0].global_ratio == 0.0
+        # ratio = 1.0 (passes) — model with score<=0 can't be a memorizer
+        assert not detection.is_memorizer("zero")
+        assert detection.test_results[0].global_ratio == 1.0
 
     def test_result_contains_scores(self) -> None:
         """Test results include original and perturbed scores."""

@@ -8,9 +8,17 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from real_estate.evaluation.models import EvaluationBatch, EvaluationResult, PredictionMetrics
+from real_estate.evaluation.models import (
+    EvaluationBatch,
+    EvaluationResult,
+    PredictionMetrics,
+)
 from real_estate.generalization_detector.models import GeneralizationDetectionResult
-from real_estate.model_inspector.models import InspectionBatchResult, ModelInspectionResult, RejectionReason
+from real_estate.model_inspector.models import (
+    InspectionBatchResult,
+    ModelInspectionResult,
+    RejectionReason,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
