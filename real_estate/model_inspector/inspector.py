@@ -11,7 +11,12 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .models import InspectionBatchResult, InspectionConfig, ModelInspectionResult, RejectionReason
+from .models import (
+    InspectionBatchResult,
+    InspectionConfig,
+    ModelInspectionResult,
+    RejectionReason,
+)
 
 if TYPE_CHECKING:
     import docker
@@ -100,7 +105,7 @@ class ModelInspector:
         for result in results:
             if result.is_rejected:
                 logger.warning(
-                    f"Model rejected: {result.hotkey} — {result.rejection_reason}"
+                    f"Model rejected: {result.hotkey} — {result.rejection_reason.value}"
                 )
 
         rejected_count = sum(1 for r in results if r.is_rejected)

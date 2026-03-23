@@ -28,14 +28,17 @@ def _make_inspector_with_mock(
         model_paths: Mapping of hotkey -> model path.
         inspection_results: Mapping of hotkey -> container JSON output.
     """
-    hotkeys = list(model_paths.keys())
-    call_count = 0
+    # Build reverse lookup: model file content -> hotkey
+    content_to_hotkey = {
+        model_path.read_bytes(): hotkey
+        for hotkey, model_path in model_paths.items()
+    }
 
     def fake_run(*args, **kwargs):
-        nonlocal call_count
-        hotkey = hotkeys[call_count]
-        call_count += 1
         workspace = list(kwargs["volumes"].keys())[0]
+        # Identify hotkey by matching the copied model file content
+        model_bytes = Path(workspace, "model.onnx").read_bytes()
+        hotkey = content_to_hotkey[model_bytes]
         Path(workspace, "inspection_results.json").write_text(
             json.dumps(inspection_results[hotkey])
         )
@@ -162,9 +165,9 @@ class TestModelInspector:
     async def test_mixed_models(self, inspector: ModelInspector, tmp_path: Path) -> None:
         """Mix of clean and rejected models."""
         clean_path = tmp_path / "clean.onnx"
-        clean_path.write_bytes(b"fake")
+        clean_path.write_bytes(b"clean_model")
         bad_path = tmp_path / "bad.onnx"
-        bad_path.write_bytes(b"fake")
+        bad_path.write_bytes(b"bad_model")
 
         paths = {"clean": clean_path, "bad": bad_path}
         _make_inspector_with_mock(inspector, paths, {

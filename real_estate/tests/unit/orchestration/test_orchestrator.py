@@ -674,3 +674,92 @@ class TestGeneralizationDetection:
         assert gen_call[0][1] == perturbed_batch.results
 
 
+class TestPerturbedEvalFiltering:
+    """Tests for filtering failed models from perturbed evaluation."""
+
+    @pytest.mark.asyncio
+    async def test_failed_models_excluded_from_perturbed_eval(
+        self,
+        orchestrator: ValidationOrchestrator,
+        mock_evaluator: AsyncMock,
+        mock_detector: MagicMock,
+        mock_selector: MagicMock,
+        mock_distributor: MagicMock,
+        mock_gen_detector: MagicMock,
+    ) -> None:
+        """Models that failed original eval are not passed to perturbed eval."""
+        dataset = create_dataset()
+        model_paths = {
+            "A": Path("/a.onnx"),
+            "B": Path("/b.onnx"),
+            "C": Path("/c.onnx"),
+        }
+        chain_metadata = {
+            "A": create_chain_metadata("A", 100),
+            "B": create_chain_metadata("B", 200),
+            "C": create_chain_metadata("C", 300),
+        }
+
+        eval_batch = create_eval_batch([
+            create_eval_result("A", score=0.90),
+            create_eval_result("B", success=False),  # fails original
+            create_eval_result("C", score=0.85),
+        ])
+        perturbed_batch = create_eval_batch([
+            create_eval_result("A", score=0.85),
+            create_eval_result("C", score=0.80),
+        ])
+        mock_evaluator.evaluate_all.side_effect = [eval_batch, perturbed_batch]
+        mock_detector.detect.return_value = create_duplicate_result()
+        mock_gen_detector.detect.return_value = create_generalization_result()
+        mock_selector.select_winner.return_value = create_winner_result("A", 0.90, 100)
+        mock_distributor.calculate_weights.return_value = create_weights({"A": 0.99, "C": 0.01})
+
+        await orchestrator.run(dataset, model_paths, chain_metadata)
+
+        # Second evaluate_all call (perturbed) should only have successful models
+        perturbed_call = mock_evaluator.evaluate_all.call_args_list[1]
+        perturbed_models = perturbed_call.kwargs["models"]
+        assert "A" in perturbed_models
+        assert "C" in perturbed_models
+        assert "B" not in perturbed_models
+
+    @pytest.mark.asyncio
+    async def test_all_models_succeed_perturbed_gets_all(
+        self,
+        orchestrator: ValidationOrchestrator,
+        mock_evaluator: AsyncMock,
+        mock_detector: MagicMock,
+        mock_selector: MagicMock,
+        mock_distributor: MagicMock,
+        mock_gen_detector: MagicMock,
+    ) -> None:
+        """When all models succeed, perturbed eval receives all models."""
+        dataset = create_dataset()
+        model_paths = {"A": Path("/a.onnx"), "B": Path("/b.onnx")}
+        chain_metadata = {
+            "A": create_chain_metadata("A", 100),
+            "B": create_chain_metadata("B", 200),
+        }
+
+        eval_batch = create_eval_batch([
+            create_eval_result("A", score=0.90),
+            create_eval_result("B", score=0.85),
+        ])
+        perturbed_batch = create_eval_batch([
+            create_eval_result("A", score=0.85),
+            create_eval_result("B", score=0.80),
+        ])
+        mock_evaluator.evaluate_all.side_effect = [eval_batch, perturbed_batch]
+        mock_detector.detect.return_value = create_duplicate_result()
+        mock_gen_detector.detect.return_value = create_generalization_result()
+        mock_selector.select_winner.return_value = create_winner_result("A", 0.90, 100)
+        mock_distributor.calculate_weights.return_value = create_weights({"A": 0.99, "B": 0.01})
+
+        await orchestrator.run(dataset, model_paths, chain_metadata)
+
+        perturbed_call = mock_evaluator.evaluate_all.call_args_list[1]
+        perturbed_models = perturbed_call.kwargs["models"]
+        assert len(perturbed_models) == 2
+
+

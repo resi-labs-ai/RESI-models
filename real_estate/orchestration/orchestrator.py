@@ -238,11 +238,22 @@ class ValidationOrchestrator:
             )
 
         # 4. Detect memorizers via perturbation
+        # Only run perturbed eval on models that succeeded on original features
+        successful_hotkeys = {r.hotkey for r in eval_batch.successful_results}
+        perturbed_model_paths = {
+            k: v for k, v in model_paths.items() if k in successful_hotkeys
+        }
+        skipped = len(model_paths) - len(perturbed_model_paths)
+        if skipped:
+            logger.info(
+                f"Skipping {skipped} failed models from perturbed evaluation"
+            )
+
         logger.info("Running generalization detection (perturbed evaluation)...")
         perturbed = perturb_features(features, self._generalization_config)
 
         perturbed_batch = await self._evaluator.evaluate_all(
-            models=model_paths,
+            models=perturbed_model_paths,
             features=perturbed,
             ground_truth=ground_truth,
             model_metadata=chain_metadata,

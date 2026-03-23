@@ -13,7 +13,7 @@ class GeneralizationConfig:
     global_noise_pct: float = 0.01
     """Multiplicative noise level for global perturbation (0.01 = +/-1%)."""
 
-    global_threshold: float = 0.70
+    global_threshold: float = 0.60
     """Minimum global robustness ratio to pass."""
 
     seed: int | None = None

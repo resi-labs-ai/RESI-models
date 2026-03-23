@@ -79,13 +79,14 @@ class TestGeneralizationDetector:
         assert len(detection.test_results) == 0
 
     def test_failed_perturbed_skipped(self) -> None:
-        """Models that failed perturbed evaluation are skipped."""
+        """Models that failed perturbed evaluation are skipped (likely OOM)."""
         detector = GeneralizationDetector(GeneralizationConfig())
         original = [_make_result("ok", score=0.9)]
         perturbed = [_make_result("ok", success=False)]
         detection = detector.detect(original, perturbed)
 
         assert len(detection.test_results) == 0
+        assert not detection.is_memorizer("ok")
 
     def test_missing_perturbed_skipped(self) -> None:
         """Models with no perturbed result are skipped."""
@@ -95,26 +96,29 @@ class TestGeneralizationDetector:
         detection = detector.detect(original, perturbed)
 
         assert len(detection.test_results) == 0
+        assert not detection.is_memorizer("alone")
 
     def test_mixed_models(self) -> None:
-        """Mix of memorizers, good models, and skipped."""
+        """Mix of memorizers, good models, failed original, and OOM on perturbed."""
         detector = GeneralizationDetector(GeneralizationConfig(global_threshold=0.70))
         original = [
             _make_result("memorizer", score=0.9),
             _make_result("good1", score=0.9),
             _make_result("good2", score=0.85),
-            _make_result("failed", success=False),
+            _make_result("failed_orig", success=False),
+            _make_result("oom_perturbed", score=0.9),
         ]
         perturbed = [
             _make_result("memorizer", score=0.1),  # 0.1/0.9 ≈ 0.11
             _make_result("good1", score=0.85),  # 0.85/0.9 ≈ 0.94
             _make_result("good2", score=0.80),  # 0.80/0.85 ≈ 0.94
-            _make_result("failed", success=False),
+            _make_result("failed_orig", success=False),
+            _make_result("oom_perturbed", success=False),  # OOM on perturbed — skipped
         ]
         detection = detector.detect(original, perturbed)
 
         assert detection.memorizer_hotkeys == frozenset({"memorizer"})
-        assert len(detection.test_results) == 3
+        assert len(detection.test_results) == 3  # good1, good2, memorizer (oom skipped)
 
     def test_zero_original_score(self) -> None:
         """Model with zero original score gets ratio 0."""

@@ -66,6 +66,11 @@ class GeneralizationDetector:
 
             perturbed = perturbed_by_hotkey.get(original.hotkey)
             if perturbed is None or not perturbed.success:
+                logger.warning(
+                    f"Skipping {original.hotkey}: succeeded on original but "
+                    f"{'missing from' if perturbed is None else 'failed on'} "
+                    f"perturbed evaluation"
+                )
                 continue
 
             original_score = original.score
