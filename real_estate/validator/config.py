@@ -301,6 +301,35 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=float(os.environ.get("SCHEDULER_CATCH_UP_MINUTES", "30.0")),
     )
 
+    # Randomness settings (decentralized seed for generalization detection)
+    parser.add_argument(
+        "--randomness.enabled",
+        dest="randomness_enabled",
+        action="store_true",
+        help="Enable decentralized randomness seed for generalization detection.",
+        default=os.environ.get("RANDOMNESS_ENABLED", "true").lower() == "true",
+    )
+
+    parser.add_argument(
+        "--randomness.commit_hours_before_eval",
+        dest="randomness_commit_hours_before_eval",
+        type=float,
+        help="Hours before evaluation to submit randomness commitment.",
+        default=float(
+            os.environ.get("RANDOMNESS_COMMIT_HOURS_BEFORE_EVAL", "4.0")
+        ),
+    )
+
+    parser.add_argument(
+        "--randomness.blocks_until_reveal",
+        dest="randomness_blocks_until_reveal",
+        type=int,
+        help="Drand timelock duration in blocks (~12s/block). 360 blocks = ~72 min.",
+        default=int(
+            os.environ.get("RANDOMNESS_BLOCKS_UNTIL_REVEAL", "360")
+        ),
+    )
+
     # Test mode settings
     parser.add_argument(
         "--test-data-path",
@@ -428,6 +457,9 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "burn_amount": config.burn_amount,
         "burn_uid": config.burn_uid,
         "ath_enabled": config.ath_enabled,
+        "randomness_enabled": config.randomness_enabled,
+        "randomness_commit_hours_before_eval": config.randomness_commit_hours_before_eval,
+        "randomness_blocks_until_reveal": config.randomness_blocks_until_reveal,
     }
 
 

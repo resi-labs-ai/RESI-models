@@ -86,6 +86,15 @@ class ValidationOrchestrator:
         self._generalization_config = generalization_config
         self._model_inspector = model_inspector
 
+    def set_seed(self, seed: int | None) -> None:
+        """Update the perturbation seed for the next evaluation round."""
+        self._generalization_config = GeneralizationConfig(
+            global_noise_pct=self._generalization_config.global_noise_pct,
+            global_threshold=self._generalization_config.global_threshold,
+            seed=seed,
+            num_numeric_features=self._generalization_config.num_numeric_features,
+        )
+
     @classmethod
     def create(
         cls,

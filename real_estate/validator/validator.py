@@ -45,6 +45,7 @@ from real_estate.models import (
 )
 from real_estate.observability import WandbLogger, create_wandb_logger
 from real_estate.orchestration import ValidationOrchestrator
+from real_estate.randomness import DecentralizedSeedProvider, RandomnessConfig
 from real_estate.utils.misc import ttl_get_block
 
 from .config import check_config, config_to_dict, get_config, setup_logging
@@ -56,9 +57,10 @@ class Validator:
     """
     Real Estate Subnet Validator.
 
-    Runs two concurrent loops:
+    Runs concurrent loops:
     - _evaluation_loop: Waits for validation data, runs evaluation via orchestrator
     - _weight_setting_loop: Periodically sets weights on chain
+    - _randomness_loop: Commits randomness and harvests shared seed before evaluation
 
     Evaluation is triggered when new validation data arrives (daily).
     The ValidationOrchestrator handles the actual evaluation logic.
@@ -117,6 +119,21 @@ class Validator:
 
         # Model scheduler (initialized in run() when chain is available)
         self._model_scheduler = None
+
+        # Decentralized randomness seed provider
+        self._randomness_config = RandomnessConfig(
+            commit_hours_before_eval=self.config.randomness_commit_hours_before_eval,
+            blocks_until_reveal=self.config.randomness_blocks_until_reveal,
+        )
+        self._seed_provider: DecentralizedSeedProvider | None = None
+        if self.config.randomness_enabled:
+            self._seed_provider = DecentralizedSeedProvider(
+                subtensor=self.subtensor,
+                wallet=self.wallet,
+                netuid=self.config.netuid,
+                config=self._randomness_config,
+            )
+        self._current_seed: int | None = None
 
         # Validation orchestrator
         self._orchestrator = ValidationOrchestrator.create(
@@ -485,6 +502,10 @@ class Validator:
 
         Updates self.scores based on orchestrator results.
         """
+        # Update seed for this evaluation round
+        self._orchestrator.set_seed(self._current_seed)
+        logger.info(f"Evaluation seed: {self._current_seed}")
+
         # Get current metagraph hotkeys
         registered_hotkeys = set(self.hotkeys)
 
@@ -541,6 +562,102 @@ class Validator:
         finally:
             # Always finish WandB run
             self._wandb_logger.finish()
+
+    async def _randomness_loop(self) -> None:
+        """
+        Commit random value before each evaluation, harvest seed after reveal.
+
+        Timeline (e.g., 18:00 eval, 4h commit offset, 360 blocks reveal):
+        - 14:00: Submit timelocked commitment
+        - ~15:12: Chain auto-reveals (72 min later)
+        - ~15:30: Harvest revealed values, combine into shared seed
+        - 18:00: Evaluation uses the shared deterministic seed
+
+        Falls back to None seed (random, non-deterministic) on any failure.
+        """
+        if self._seed_provider is None:
+            logger.info("Randomness disabled, skipping randomness loop")
+            return
+
+        while True:
+            try:
+                next_eval = self._get_next_eval_time()
+                commit_time = next_eval - timedelta(
+                    hours=self._randomness_config.commit_hours_before_eval
+                )
+
+                # Wait until commit time
+                now = datetime.now(UTC)
+                if now < commit_time:
+                    wait_seconds = (commit_time - now).total_seconds()
+                    logger.info(
+                        f"Randomness: next commit at {commit_time} "
+                        f"(waiting {wait_seconds / 60:.0f}m)"
+                    )
+                    await asyncio.sleep(wait_seconds)
+
+                # Submit commitment
+                logger.info("Submitting randomness commitment...")
+                reveal_round = self._seed_provider.commit()
+                if reveal_round is None:
+                    logger.warning(
+                        "Randomness commitment failed, "
+                        "falling back to non-deterministic seed"
+                    )
+                    self._current_seed = None
+                    # Wait until after eval before next cycle
+                    await self._sleep_until_after_eval(next_eval)
+                    continue
+
+                # Wait for reveal (~72 min for 360 blocks at 12s/block)
+                reveal_wait_seconds = (
+                    self._randomness_config.blocks_until_reveal * 12 + 60
+                )
+                logger.info(
+                    f"Waiting {reveal_wait_seconds / 60:.0f}m for reveals "
+                    f"(reveal_round={reveal_round})"
+                )
+                await asyncio.sleep(reveal_wait_seconds)
+
+                # Harvest seed from all validator reveals
+                if self.metagraph is not None:
+                    validator_hotkeys = {
+                        n.hotkey
+                        for n in self.metagraph.neurons
+                        if n.validator_permit
+                    }
+                else:
+                    validator_hotkeys = set()
+
+                seed_result = self._seed_provider.harvest(validator_hotkeys)
+                if seed_result is not None:
+                    self._current_seed = seed_result.seed
+                    logger.info(
+                        f"Randomness seed harvested: {seed_result.seed} "
+                        f"({seed_result.num_reveals} validators)"
+                    )
+                else:
+                    self._current_seed = None
+                    logger.warning(
+                        "No reveals harvested, "
+                        "falling back to non-deterministic seed"
+                    )
+
+                # Wait until after eval before next cycle
+                await self._sleep_until_after_eval(next_eval)
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"Randomness loop error: {e}", exc_info=True)
+                self._current_seed = None
+                await asyncio.sleep(300)  # Back off 5 min on unexpected error
+
+    async def _sleep_until_after_eval(self, eval_time: datetime) -> None:
+        """Sleep until after the given evaluation time + 1 min buffer."""
+        now = datetime.now(UTC)
+        if now < eval_time:
+            await asyncio.sleep((eval_time - now).total_seconds() + 60)
 
     async def _evaluation_loop(self) -> None:
         """Loop that waits for evaluation events and runs evaluation."""
@@ -680,6 +797,7 @@ class Validator:
                     self._evaluation_loop(),
                     self._weight_setting_loop(),
                     self._pre_download_loop(),
+                    self._randomness_loop(),
                 )
             except asyncio.CancelledError:
                 logger.info("Validator stopped")
