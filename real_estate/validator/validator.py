@@ -328,7 +328,7 @@ class Validator:
             Adjusted weights with burn allocation (sums to 1.0)
         """
         burn_amount: float = (
-            0.99  # Hardcoded: 99% burn. Autoupdater picks this up.
+            0.0  # Hardcoded: 0% burn. Autoupdater picks this up.
         )
         burn_uid: int = self.config.burn_uid
 
@@ -506,23 +506,17 @@ class Validator:
 
         logger.info(f"Running evaluation with {len(model_paths)} models")
 
-        # Fetch ATH before evaluation (fallback if post-eval fetch fails)
-        pre_eval_ath = await self.validation_client.fetch_ath()
-        if pre_eval_ath:
-            logger.info(
-                f"Pre-eval ATH fetched: {pre_eval_ath.hotkey} "
-                f"(score={pre_eval_ath.score:.4f})"
-            )
-        else:
-            logger.warning("Pre-eval ATH fetch failed or no ATH available")
-
         # Start WandB run to measure evaluation time
         self._wandb_logger.start_run()
 
         try:
             result = await self._orchestrator.run(dataset, model_paths, chain_metadata)
 
-            await self._resolve_weights_with_ath(result, pre_eval_ath)
+            if self.config.ath_enabled:
+                pre_eval_ath = await self.validation_client.fetch_ath()
+                await self._resolve_weights_with_ath(result, pre_eval_ath)
+            else:
+                self._apply_evaluation_weights(result)
 
             logger.info(
                 f"Evaluation complete: winner={result.winner.winner_hotkey}, "
@@ -820,43 +814,48 @@ class Validator:
         """
         Bootstrap weights on startup.
 
-        Priority:
-        1. ATH winner from dashboard -> 100% to ATH (with burn rules)
+        Priority (when ATH enabled):
+        1. ATH winner from dashboard -> 100% to ATH
         2. Chain consensus incentive values
-        3. 100% to burn UID
+        3. 100% to burn UID (fallback)
+
+        Priority (when ATH disabled):
+        1. Chain consensus incentive values
+        2. 100% to burn UID (fallback)
         """
         if self.metagraph is None or not self.hotkeys:
             logger.warning("Cannot bootstrap weights: metagraph not available")
             return
 
-        # 1. Try ATH bootstrap
-        ath = await self.validation_client.fetch_ath()
-        if not ath:
-            logger.warning(
-                "ATH fetch failed or no ATH available, "
-                "falling back to consensus bootstrap"
-            )
-        if ath and ath.hotkey in self.hotkeys:
-            uid = self.hotkeys.index(ath.hotkey)
-            self.scores.fill(0.0)
-            self.scores[uid] = 1.0
-            logger.info(
-                f"Bootstrapping from ATH winner: {ath.hotkey} "
-                f"(score={ath.score:.4f}, achieved={ath.achieved_at})"
-            )
-            try:
-                await self.set_weights()
-            except Exception as e:
-                logger.warning(f"ATH bootstrap weight setting failed: {e}")
-            return
+        # ATH bootstrap (only when enabled)
+        if self.config.ath_enabled:
+            ath = await self.validation_client.fetch_ath()
+            if not ath:
+                logger.warning(
+                    "ATH fetch failed or no ATH available, "
+                    "falling back to consensus bootstrap"
+                )
+            if ath and ath.hotkey in self.hotkeys:
+                uid = self.hotkeys.index(ath.hotkey)
+                self.scores.fill(0.0)
+                self.scores[uid] = 1.0
+                logger.info(
+                    f"Bootstrapping from ATH winner: {ath.hotkey} "
+                    f"(score={ath.score:.4f}, achieved={ath.achieved_at})"
+                )
+                try:
+                    await self.set_weights()
+                except Exception as e:
+                    logger.warning(f"ATH bootstrap weight setting failed: {e}")
+                return
 
-        if ath:
-            logger.warning(
-                f"ATH hotkey {ath.hotkey} not found in current metagraph, "
-                f"falling back to consensus bootstrap"
-            )
+            if ath:
+                logger.warning(
+                    f"ATH hotkey {ath.hotkey} not found in current metagraph, "
+                    f"falling back to consensus bootstrap"
+                )
 
-        # 2. Consensus bootstrap (existing logic)
+        # Consensus bootstrap
         bootstrap_count = 0
         for neuron in self.metagraph.neurons:
             if neuron.uid < len(self.scores) and neuron.incentive > 0:
@@ -874,8 +873,8 @@ class Validator:
                 logger.warning(f"Bootstrap weight setting failed: {e}")
             return
 
-        # 3. Burn fallback
-        logger.info("No ATH or incentive data, falling back to burn")
+        # 2. Burn fallback
+        logger.info("No incentive data, falling back to burn")
         await self._set_burn_weights()
 
     async def _startup(self) -> None:
