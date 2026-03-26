@@ -331,6 +331,16 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
+    parser.add_argument(
+        "--randomness.reveal_buffer_seconds",
+        dest="randomness_reveal_buffer_seconds",
+        type=int,
+        help="Extra wait after expected reveal time for chain propagation (seconds).",
+        default=int(
+            os.environ.get("RANDOMNESS_REVEAL_BUFFER_SECONDS", "300")
+        ),
+    )
+
     # Test mode settings
     parser.add_argument(
         "--test-data-path",
@@ -480,6 +490,7 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "randomness_enabled": config.randomness_enabled,
         "randomness_cycle_window_hours": config.randomness_cycle_window_hours,
         "randomness_blocks_until_reveal": config.randomness_blocks_until_reveal,
+        "randomness_reveal_buffer_seconds": config.randomness_reveal_buffer_seconds,
     }
 
 

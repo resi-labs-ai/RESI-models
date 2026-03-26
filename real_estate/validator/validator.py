@@ -130,6 +130,7 @@ class Validator:
         self._randomness_config = RandomnessConfig(
             cycle_window_hours=self.config.randomness_cycle_window_hours,
             blocks_until_reveal=self.config.randomness_blocks_until_reveal,
+            reveal_buffer_seconds=self.config.randomness_reveal_buffer_seconds,
         )
         self._seed_provider: DecentralizedSeedProvider | None = None
         if self.config.randomness_enabled:
