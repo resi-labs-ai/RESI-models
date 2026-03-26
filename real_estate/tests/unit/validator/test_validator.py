@@ -66,6 +66,9 @@ def mock_config() -> MagicMock:
     config.scheduler_catch_up_minutes = 30.0
     config.burn_amount = 0.0
     config.burn_uid = -1
+    config.randomness_enabled = False
+    config.randomness_cycle_window_hours = 4.0
+    config.randomness_blocks_until_reveal = 360
     return config
 
 

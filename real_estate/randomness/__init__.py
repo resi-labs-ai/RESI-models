@@ -15,7 +15,7 @@ Usage:
     provider = DecentralizedSeedProvider(subtensor, wallet, netuid)
     provider.commit()
     # ... wait for reveal ...
-    result = provider.harvest(validator_hotkeys)
+    result = provider.harvest(validator_hotkeys, min_reveal_round, committed_hotkeys)
     seed = result.seed  # Shared deterministic seed
 """
 
