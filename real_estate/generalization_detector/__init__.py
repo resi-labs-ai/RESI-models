@@ -23,7 +23,7 @@ from .models import (
     GeneralizationDetectionResult,
     GeneralizationTestResult,
 )
-from .perturbation import perturb_features
+from .perturbation import perturb_features, perturb_spatial
 
 __all__ = [
     "GeneralizationConfig",
@@ -31,4 +31,5 @@ __all__ = [
     "GeneralizationDetector",
     "GeneralizationTestResult",
     "perturb_features",
+    "perturb_spatial",
 ]
