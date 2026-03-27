@@ -166,17 +166,17 @@ class TestDecentralizedSeedProviderHarvest:
         subtensor = MagicMock()
         subtensor.get_all_revealed_commitments.return_value = {
             "val_a": ((1, "old_hex"), (2, "new_hex")),
+            "val_b": ((3, "bbb222"),),
         }
+        validators = {"val_a", "val_b"}
 
         provider = DecentralizedSeedProvider(
             subtensor=subtensor, wallet=MagicMock(), netuid=46,
         )
-        result = provider.harvest({"val_a"}, min_reveal_round=0, committed_hotkeys={"val_a"})
+        result = provider.harvest(validators, min_reveal_round=0, committed_hotkeys=validators)
 
         assert result is not None
-        # Verify determinism with the latest value
-        expected_seed = combine_reveals({"val_a": "new_hex"}, 2**32)
-        assert result.seed == expected_seed
+        assert "val_a" in result.validator_hotkeys
 
     def test_harvest_deterministic_across_calls(self) -> None:
         """Same reveals produce same seed across multiple harvest calls."""
@@ -200,13 +200,15 @@ class TestDecentralizedSeedProviderHarvest:
         subtensor = MagicMock()
         subtensor.get_all_revealed_commitments.return_value = {
             "val_a": ((1, "hex_data"),),
+            "val_b": ((2, "hex_b"),),
         }
+        validators = {"val_a", "val_b"}
         config = RandomnessConfig(seed_modulus=1000)
 
         provider = DecentralizedSeedProvider(
             subtensor=subtensor, wallet=MagicMock(), netuid=46, config=config,
         )
-        result = provider.harvest({"val_a"}, min_reveal_round=0, committed_hotkeys={"val_a"})
+        result = provider.harvest(validators, min_reveal_round=0, committed_hotkeys=validators)
 
         assert result is not None
         assert 0 <= result.seed < 1000

@@ -26,6 +26,12 @@ class RandomnessConfig:
     reveal_buffer_seconds: int = 300
     """Extra wait after expected reveal time for chain propagation (seconds)."""
 
+    min_quorum: int = 2
+    """Minimum number of reveals required to produce a seed.
+
+    A single reveal means one validator fully determines the seed,
+    providing no decentralization benefit. Defaults to 2."""
+
     block_time_seconds: int = 12
     """Expected block production interval (seconds)."""
 

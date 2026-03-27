@@ -259,6 +259,14 @@ class DecentralizedSeedProvider:
             )
             return None
 
+        if len(reveals) < self._config.min_quorum:
+            logger.warning(
+                f"Quorum not met: {len(reveals)} reveals < "
+                f"min_quorum {self._config.min_quorum}, "
+                f"falling back to non-deterministic seed"
+            )
+            return None
+
         seed = combine_reveals(reveals, self._config.seed_modulus)
 
         result = SeedResult(
@@ -280,7 +288,7 @@ class DecentralizedSeedProvider:
         return result
 
     def get_min_reveal_round(self, max_age_seconds: float) -> int | None:
-        """Compute minimum acceptable drand round for freshness filtering.
+        """Compute minimum acceptable drand reveal round for freshness filtering.
 
         Args:
             max_age_seconds: Maximum age of a reveal in seconds.

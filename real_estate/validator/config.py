@@ -307,7 +307,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="randomness_enabled",
         type=lambda v: v.lower() in ("true", "1", "yes"),
         help="Enable decentralized randomness seed for generalization detection.",
-        default=os.environ.get("RANDOMNESS_ENABLED", "true").lower() == "true",
+        default=os.environ.get("RANDOMNESS_ENABLED", "true").lower() in ("true", "1", "yes"),
     )
 
     parser.add_argument(

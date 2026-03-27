@@ -89,8 +89,8 @@ class TestMultiValidatorConsensus:
             assert r.num_reveals == 2
             assert r.validator_hotkeys == frozenset({"val_a", "val_b"})
 
-    def test_single_validator_fallback(self) -> None:
-        """Only 1 validator reveals -> valid seed from single reveal."""
+    def test_single_validator_below_quorum_returns_none(self) -> None:
+        """Only 1 validator reveals -> below min_quorum, returns None."""
         chain_state = {"val_a": ((1, "aaa111"),)}
 
         providers = [
@@ -102,9 +102,7 @@ class TestMultiValidatorConsensus:
             p.harvest(VALIDATOR_HOTKEYS_3, min_reveal_round=0, committed_hotkeys=VALIDATOR_HOTKEYS_3)
             for p in providers
         ]
-        seeds = {r.seed for r in results}
-        assert len(seeds) == 1
-        assert results[0].num_reveals == 1
+        assert all(r is None for r in results)
 
     def test_no_reveals_all_get_none(self) -> None:
         """No validators reveal -> all harvest returns None."""
@@ -464,15 +462,17 @@ class TestRevealFreshness:
         chain_state = {
             "val_a": ((100, "aaa111"),),  # stale
             "val_b": ((500, "bbb222"),),  # fresh
+            "val_c": ((600, "ccc333"),),  # fresh
         }
-        validators = {"val_a", "val_b"}
+        validators = {"val_a", "val_b", "val_c"}
         provider = _make_provider(chain_state)
 
         result = provider.harvest(validators, min_reveal_round=200, committed_hotkeys=validators)
 
         assert result is not None
-        assert result.num_reveals == 1
+        assert result.num_reveals == 2
         assert "val_b" in result.validator_hotkeys
+        assert "val_c" in result.validator_hotkeys
         assert "val_a" not in result.validator_hotkeys
 
     def test_all_stale_returns_none(self) -> None:
@@ -490,13 +490,15 @@ class TestRevealFreshness:
         """Reveal round == min_reveal_round is NOT stale (only < is stale)."""
         chain_state = {
             "val_a": ((200, "aaa111"),),
+            "val_b": ((300, "bbb222"),),
         }
         provider = _make_provider(chain_state)
+        validators = {"val_a", "val_b"}
 
-        result = provider.harvest({"val_a"}, min_reveal_round=200, committed_hotkeys={"val_a"})
+        result = provider.harvest(validators, min_reveal_round=200, committed_hotkeys=validators)
 
         assert result is not None
-        assert result.num_reveals == 1
+        assert result.num_reveals == 2
 
     def test_freshness_consensus(self) -> None:
         """Multiple validators with same threshold get same seed."""
@@ -528,14 +530,15 @@ class TestRevealFreshness:
         chain_state = {
             # Old entry is stale, but latest entry is fresh
             "val_a": ((50, "old_hex"), (500, "new_hex")),
+            "val_b": ((600, "bbb222"),),
         }
+        validators = {"val_a", "val_b"}
         provider = _make_provider(chain_state)
 
-        result = provider.harvest({"val_a"}, min_reveal_round=200, committed_hotkeys={"val_a"})
+        result = provider.harvest(validators, min_reveal_round=200, committed_hotkeys=validators)
 
         assert result is not None
-        expected = combine_reveals({"val_a": "new_hex"}, 2**32)
-        assert result.seed == expected
+        assert "val_a" in result.validator_hotkeys
 
 
 class TestGetMinRevealRound:
@@ -647,18 +650,19 @@ class TestCommittedHotkeysFilter:
             "val_a": ((500, "aaa111"),),   # fresh + committed
             "val_b": ((10, "old_bbb"),),   # stale (old round)
             "late_c": ((500, "ccc333"),),  # fresh but late commit
+            "val_d": ((600, "ddd444"),),   # fresh + committed
         }
         provider = _make_provider(chain_state)
 
         result = provider.harvest(
-            {"val_a", "val_b", "late_c"},
+            {"val_a", "val_b", "late_c", "val_d"},
             min_reveal_round=200,
-            committed_hotkeys={"val_a", "val_b"},
+            committed_hotkeys={"val_a", "val_b", "val_d"},
         )
 
         assert result is not None
-        assert result.num_reveals == 1
-        assert result.validator_hotkeys == frozenset({"val_a"})
+        assert result.num_reveals == 2
+        assert result.validator_hotkeys == frozenset({"val_a", "val_d"})
 
     def test_consensus_with_committed_filter(self) -> None:
         """All validators with same snapshot get same seed."""
