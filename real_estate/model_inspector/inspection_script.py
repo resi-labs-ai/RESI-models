@@ -71,6 +71,9 @@ def analyze_model(model_path: Path) -> dict:
         results["op_types"][node.op_type] = results["op_types"].get(node.op_type, 0) + 1
 
     # Analyze each initializer
+    zero_initializer_count = 0
+    zero_initializer_bytes = 0
+
     for init in graph.initializer:
         shape = list(init.dims)
         n_params = int(np.prod(shape)) if shape else 0
@@ -88,6 +91,11 @@ def analyze_model(model_path: Path) -> dict:
         tensor = numpy_from_tensor(init)
         if tensor is None or tensor.size == 0:
             continue
+
+        # Track all-zero initializers (zero-padding detection)
+        if np.count_nonzero(tensor) == 0:
+            zero_initializer_count += 1
+            zero_initializer_bytes += tensor.nbytes
 
         flat = tensor.flatten().astype(np.float64)
         price_mask = (np.abs(flat) >= PRICE_MIN) & (np.abs(flat) <= PRICE_MAX)
@@ -120,15 +128,24 @@ def analyze_model(model_path: Path) -> dict:
                 })
                 break
 
+    results["zero_initializer_count"] = zero_initializer_count
+    results["zero_initializer_bytes"] = zero_initializer_bytes
+
     # Detect lookup patterns
     results["has_topk"] = "TopK" in results["op_types"]
     results["has_argmin"] = "ArgMin" in results["op_types"]
     results["has_argmax"] = "ArgMax" in results["op_types"]
     results["has_gather"] = "Gather" in results["op_types"]
-    results["lookup_pattern"] = (
+    results["has_scan"] = "Scan" in results["op_types"]
+    results["has_hardmax"] = "Hardmax" in results["op_types"]
+    results["has_softmax"] = "Softmax" in results["op_types"]
+
+    classic_lookup = (
         (results["has_topk"] or results["has_argmin"] or results["has_argmax"])
         and results["has_gather"]
     )
+    scan_lookup = results["has_scan"] and (results["has_hardmax"] or results["has_softmax"])
+    results["lookup_pattern"] = classic_lookup or scan_lookup
 
     # Classify
     flags = []

@@ -142,3 +142,73 @@ class TestGeneralizationDetector:
         assert tr.original_score == original[0].score
         assert tr.perturbed_score == perturbed[0].score
 
+    def test_spatial_below_threshold_flagged(self) -> None:
+        """Model with spatial ratio below spatial_threshold is flagged."""
+        detector = GeneralizationDetector(
+            GeneralizationConfig(global_threshold=0.60, spatial_threshold=0.90)
+        )
+        original = [_make_result("knn", score=0.9)]
+        perturbed = [_make_result("knn", score=0.9)]  # global passes (ratio=1.0)
+        spatial = [_make_result("knn", score=0.72)]  # spatial ratio=0.80 < 0.90
+
+        detection = detector.detect(original, perturbed, spatial)
+
+        assert detection.is_memorizer("knn")
+        tr = detection.test_results[0]
+        assert tr.spatial_ratio is not None
+        assert tr.spatial_ratio < 0.90
+
+    def test_spatial_above_threshold_passes(self) -> None:
+        """Model with spatial ratio above spatial_threshold passes."""
+        detector = GeneralizationDetector(
+            GeneralizationConfig(global_threshold=0.60, spatial_threshold=0.90)
+        )
+        original = [_make_result("good", score=0.9)]
+        perturbed = [_make_result("good", score=0.88)]  # global ratio ~0.98
+        spatial = [_make_result("good", score=0.89)]  # spatial ratio ~0.99
+
+        detection = detector.detect(original, perturbed, spatial)
+
+        assert not detection.is_memorizer("good")
+        tr = detection.test_results[0]
+        assert tr.spatial_ratio is not None
+        assert tr.spatial_ratio >= 0.90
+
+    def test_global_passes_spatial_fails_flagged(self) -> None:
+        """Either check failing triggers memorizer flag."""
+        detector = GeneralizationDetector(
+            GeneralizationConfig(global_threshold=0.60, spatial_threshold=0.90)
+        )
+        original = [_make_result("sneaky", score=0.9)]
+        perturbed = [_make_result("sneaky", score=0.85)]  # global ratio ~0.94 — passes
+        spatial = [_make_result("sneaky", score=0.70)]  # spatial ratio ~0.78 — fails
+
+        detection = detector.detect(original, perturbed, spatial)
+        assert detection.is_memorizer("sneaky")
+
+    def test_spatial_passes_global_fails_flagged(self) -> None:
+        """Global failing still flags even when spatial passes."""
+        detector = GeneralizationDetector(
+            GeneralizationConfig(global_threshold=0.60, spatial_threshold=0.90)
+        )
+        original = [_make_result("bad", score=0.9)]
+        perturbed = [_make_result("bad", score=0.2)]  # global ratio ~0.22 — fails
+        spatial = [_make_result("bad", score=0.88)]  # spatial ratio ~0.98 — passes
+
+        detection = detector.detect(original, perturbed, spatial)
+        assert detection.is_memorizer("bad")
+
+    def test_no_spatial_results_falls_back_to_global_only(self) -> None:
+        """When spatial_results is None, only global check applies."""
+        detector = GeneralizationDetector(
+            GeneralizationConfig(global_threshold=0.60, spatial_threshold=0.90)
+        )
+        original = [_make_result("model", score=0.9)]
+        perturbed = [_make_result("model", score=0.85)]  # global ratio ~0.94
+
+        detection = detector.detect(original, perturbed)  # no spatial
+
+        assert not detection.is_memorizer("model")
+        tr = detection.test_results[0]
+        assert tr.spatial_ratio is None
+

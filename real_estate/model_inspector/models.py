@@ -12,6 +12,7 @@ class RejectionReason(str, Enum):
 
     LOOKUP_PATTERN = "Lookup pattern detected"
     UNUSED_INITIALIZERS = "Model contains unused initializers"
+    ZERO_PADDING = "Model contains significant zero-valued padding"
     PRICES_IN_WEIGHTS = "Suspicious amount of price-like values found in model weights"
     INSPECTION_FAILED = "Inspection container failed"
 
@@ -25,6 +26,9 @@ class InspectionConfig:
 
     reject_unused_initializers: bool = True
     """Reject models with any unused initializers."""
+
+    zero_padding_bytes_threshold: int = 20_000_000
+    """Reject models with more than this many bytes of all-zero initializers."""
 
     memory_limit: str = "2g"
     """Docker memory limit for inspection container."""
@@ -49,7 +53,9 @@ class ModelInspectionResult:
     hotkey: str
     has_lookup_pattern: bool
     has_unused_initializers: bool
+    has_zero_padding: bool
     price_like_values: int
+    zero_padding_bytes: int
     total_params: int
     rejection_reason: RejectionReason | None = None
     """Why the model was rejected, or None if it passed."""
@@ -77,7 +83,9 @@ class ModelInspectionResult:
             "hotkey": self.hotkey,
             "has_lookup_pattern": self.has_lookup_pattern,
             "has_unused_initializers": self.has_unused_initializers,
+            "has_zero_padding": self.has_zero_padding,
             "price_like_values": self.price_like_values,
+            "zero_padding_bytes": self.zero_padding_bytes,
             "total_params": self.total_params,
             "is_rejected": self.is_rejected,
             "rejection_reason": self.rejection_reason,
