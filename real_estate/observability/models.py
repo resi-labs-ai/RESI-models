@@ -33,6 +33,7 @@ class MinerResultLog:
     inference_time_ms: float | None = None
     is_winner: bool = False
     is_copier: bool = False
+    is_memorizer: bool = False
 
     # Error info (only if failed)
     error: str | None = None
@@ -60,6 +61,7 @@ class MinerResultLog:
             ),
             "is_winner": self.is_winner,
             "is_copier": self.is_copier,
+            "is_memorizer": self.is_memorizer,
             "error": self.error,
         }
 
@@ -143,6 +145,7 @@ class EvaluationLog:
     # Anti-cheat summary
     duplicate_groups_found: int = 0
     copiers_detected: int = 0
+    memorizers_detected: int = 0
 
     # Timing
     total_evaluation_time_ms: float = 0.0
@@ -173,6 +176,7 @@ class EvaluationLog:
             "winner_block": self.winner_block,
             "duplicate_groups_found": self.duplicate_groups_found,
             "copiers_detected": self.copiers_detected,
+            "memorizers_detected": self.memorizers_detected,
             "total_evaluation_time_ms": round(self.total_evaluation_time_ms, 2),
         }
 
