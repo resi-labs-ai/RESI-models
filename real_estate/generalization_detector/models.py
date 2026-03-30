@@ -22,6 +22,18 @@ class GeneralizationConfig:
     num_numeric_features: int = 52
     """Number of numeric features (for global perturbation range)."""
 
+    spatial_noise_std: float = 0.005
+    """Gaussian noise std for spatial perturbation (~500m)."""
+
+    spatial_threshold: float = 0.90
+    """Minimum spatial robustness ratio to pass."""
+
+    lat_index: int = 4
+    """Latitude column index in encoded features."""
+
+    lon_index: int = 5
+    """Longitude column index in encoded features."""
+
 
 @dataclass(frozen=True)
 class GeneralizationTestResult:
@@ -32,16 +44,20 @@ class GeneralizationTestResult:
     perturbed_score: float
     global_ratio: float
     is_memorizer: bool
+    spatial_ratio: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        d: dict[str, Any] = {
             "hotkey": self.hotkey,
             "original_score": round(self.original_score, 4),
             "perturbed_score": round(self.perturbed_score, 4),
             "global_ratio": round(self.global_ratio, 4),
             "is_memorizer": self.is_memorizer,
         }
+        if self.spatial_ratio is not None:
+            d["spatial_ratio"] = round(self.spatial_ratio, 4)
+        return d
 
 
 @dataclass(frozen=True)

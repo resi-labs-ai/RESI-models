@@ -215,7 +215,9 @@ def create_inspection_result(
             hotkey=hk,
             has_lookup_pattern=True,
             has_unused_initializers=False,
+            has_zero_padding=False,
             price_like_values=0,
+            zero_padding_bytes=0,
             total_params=0,
             rejection_reason=RejectionReason.LOOKUP_PATTERN,
         )

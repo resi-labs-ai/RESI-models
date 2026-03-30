@@ -55,6 +55,7 @@ def _make_inspector_with_mock(
 _CLEAN = {
     "lookup_pattern": False,
     "unused_initializer_ratio": 0.0,
+    "zero_initializer_bytes": 0,
     "price_like_values_total": 50,
     "total_params": 5_000_000,
 }
@@ -179,3 +180,60 @@ class TestModelInspector:
         assert not result.is_rejected("clean")
         assert result.is_rejected("bad")
         assert len(result.rejected_hotkeys) == 1
+
+    @pytest.mark.asyncio
+    async def test_scan_hardmax_triggers_lookup_rejection(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
+        """Scan + Hardmax pattern triggers LOOKUP_PATTERN rejection."""
+        paths = {"bad": model_path}
+        _make_inspector_with_mock(inspector, paths, {
+            "bad": {**_CLEAN, "lookup_pattern": True},
+        })
+
+        result = await inspector.inspect_all(paths)
+        assert result.is_rejected("bad")
+        assert result.results[0].rejection_reason == RejectionReason.LOOKUP_PATTERN
+
+    @pytest.mark.asyncio
+    async def test_zero_padding_above_threshold_rejects(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
+        """Zero-padding bytes above threshold triggers ZERO_PADDING rejection."""
+        paths = {"bad": model_path}
+        _make_inspector_with_mock(inspector, paths, {
+            "bad": {**_CLEAN, "zero_initializer_bytes": 135_000_000},
+        })
+
+        result = await inspector.inspect_all(paths)
+        assert result.is_rejected("bad")
+        assert result.results[0].rejection_reason == RejectionReason.ZERO_PADDING
+        assert result.results[0].has_zero_padding is True
+        assert result.results[0].zero_padding_bytes == 135_000_000
+
+    @pytest.mark.asyncio
+    async def test_zero_padding_below_threshold_passes(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
+        """Zero-padding bytes below threshold does not reject."""
+        paths = {"ok": model_path}
+        _make_inspector_with_mock(inspector, paths, {
+            "ok": {**_CLEAN, "zero_initializer_bytes": 10_000_000},
+        })
+
+        result = await inspector.inspect_all(paths)
+        assert not result.is_rejected("ok")
+        assert result.results[0].has_zero_padding is False
+
+    @pytest.mark.asyncio
+    async def test_clean_model_still_passes_with_new_checks(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
+        """Clean model passes all checks including new zero-padding check."""
+        paths = {"good": model_path}
+        _make_inspector_with_mock(inspector, paths, {"good": _CLEAN})
+
+        result = await inspector.inspect_all(paths)
+        assert not result.is_rejected("good")
+        assert result.results[0].has_zero_padding is False
+        assert result.results[0].zero_padding_bytes == 0
