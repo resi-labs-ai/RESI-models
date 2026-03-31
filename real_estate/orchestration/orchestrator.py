@@ -15,6 +15,7 @@ from real_estate.generalization_detector import (
     GeneralizationConfig,
     GeneralizationDetector,
     perturb_features,
+    perturb_spatial,
 )
 from real_estate.incentives import (
     DistributorConfig,
@@ -268,8 +269,17 @@ class ValidationOrchestrator:
             model_metadata=chain_metadata,
         )
 
+        logger.info("Running spatial perturbation pass...")
+        spatial_features = perturb_spatial(features, self._generalization_config)
+        spatial_batch = await self._evaluator.evaluate_all(
+            models=perturbed_model_paths,
+            features=spatial_features,
+            ground_truth=ground_truth,
+            model_metadata=chain_metadata,
+        )
+
         generalization_result = self._generalization_detector.detect(
-            eval_batch.results, perturbed_batch.results
+            eval_batch.results, perturbed_batch.results, spatial_batch.results
         )
         memorizers = generalization_result.memorizer_hotkeys
         if memorizers:

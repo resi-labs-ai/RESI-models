@@ -44,18 +44,26 @@ class GeneralizationDetector:
         self,
         original_results: list[EvaluationResult],
         perturbed_results: list[EvaluationResult],
+        spatial_results: list[EvaluationResult] | None = None,
     ) -> GeneralizationDetectionResult:
         """
         Compare original vs perturbed evaluation results for memorization.
 
+        A model is flagged if global_ratio < global_threshold OR
+        spatial_ratio < spatial_threshold (when spatial results provided).
+
         Args:
             original_results: Evaluation results on original features.
-            perturbed_results: Evaluation results on perturbed features.
+            perturbed_results: Evaluation results on globally perturbed features.
+            spatial_results: Evaluation results on spatially perturbed features.
 
         Returns:
             GeneralizationDetectionResult with memorizer hotkeys.
         """
         perturbed_by_hotkey = {r.hotkey: r for r in perturbed_results}
+        spatial_by_hotkey = (
+            {r.hotkey: r for r in spatial_results} if spatial_results else {}
+        )
 
         memorizers: set[str] = set()
         test_results: list[GeneralizationTestResult] = []
@@ -79,13 +87,26 @@ class GeneralizationDetector:
             global_ratio = (
                 perturbed_score / original_score if original_score > 0 else 1.0
             )
+
+            # Spatial ratio (if spatial results provided)
+            spatial_ratio: float | None = None
+            spatial = spatial_by_hotkey.get(original.hotkey)
+            if spatial is not None and spatial.success and original_score > 0:
+                spatial_ratio = spatial.score / original_score
+
             is_memorizer = global_ratio < self._config.global_threshold
+            if spatial_ratio is not None:
+                is_memorizer = (
+                    is_memorizer
+                    or spatial_ratio < self._config.spatial_threshold
+                )
 
             if is_memorizer:
                 memorizers.add(original.hotkey)
                 logger.warning(
                     f"Memorizer detected: {original.hotkey} "
-                    f"(global_ratio={global_ratio:.3f})"
+                    f"(global_ratio={global_ratio:.3f}"
+                    f"{f', spatial_ratio={spatial_ratio:.3f}' if spatial_ratio is not None else ''})"
                 )
 
             test_results.append(
@@ -95,6 +116,7 @@ class GeneralizationDetector:
                     perturbed_score=perturbed_score,
                     global_ratio=global_ratio,
                     is_memorizer=is_memorizer,
+                    spatial_ratio=spatial_ratio,
                 )
             )
 

@@ -66,7 +66,7 @@ def mock_gen_detector() -> MagicMock:
 
 @pytest.fixture
 def gen_config() -> GeneralizationConfig:
-    return GeneralizationConfig(num_numeric_features=3)
+    return GeneralizationConfig(num_numeric_features=3, lat_index=0, lon_index=1)
 
 
 @pytest.fixture
@@ -100,6 +100,7 @@ def _setup_default_mocks(
     *,
     eval_batch=None,
     perturbed_batch=None,
+    spatial_batch=None,
     duplicates=None,
     winner=None,
     weights=None,
@@ -109,7 +110,9 @@ def _setup_default_mocks(
         eval_batch = create_eval_batch([create_eval_result("A", score=0.90)])
     if perturbed_batch is None:
         perturbed_batch = eval_batch
-    mock_evaluator.evaluate_all.side_effect = [eval_batch, perturbed_batch]
+    if spatial_batch is None:
+        spatial_batch = eval_batch
+    mock_evaluator.evaluate_all.side_effect = [eval_batch, perturbed_batch, spatial_batch]
     mock_detector.detect.return_value = duplicates or create_duplicate_result()
     mock_selector.select_winner.return_value = winner or create_winner_result("A", 0.90, 100)
     mock_distributor.calculate_weights.return_value = weights or create_weights({"A": 1.0})
@@ -273,7 +276,7 @@ class TestValidationOrchestratorRun:
 
         mock_inspector.inspect_all.assert_called_once()
         mock_encoder.encode.assert_called_once()
-        assert mock_evaluator.evaluate_all.call_count == 2  # original + perturbed
+        assert mock_evaluator.evaluate_all.call_count == 3  # original + perturbed + spatial
         mock_detector.detect.assert_called_once()
         mock_gen_detector.detect.assert_called_once()
         mock_selector.select_winner.assert_called_once()
@@ -579,7 +582,7 @@ class TestGeneralizationDetection:
             create_eval_result("good", score=0.75),
             create_eval_result("memorizer", score=0.10),
         ])
-        mock_evaluator.evaluate_all.side_effect = [eval_batch, perturbed_batch]
+        mock_evaluator.evaluate_all.side_effect = [eval_batch, perturbed_batch, eval_batch]
         mock_detector.detect.return_value = create_duplicate_result()
         mock_gen_detector.detect.return_value = create_generalization_result(
             memorizer_hotkeys=frozenset({"memorizer"})
@@ -589,7 +592,7 @@ class TestGeneralizationDetection:
 
         result = await orchestrator.run(dataset, model_paths, chain_metadata)
 
-        assert mock_evaluator.evaluate_all.call_count == 2
+        assert mock_evaluator.evaluate_all.call_count == 3
 
         selector_args = mock_selector.select_winner.call_args[0][0]
         assert len(selector_args) == 1
@@ -628,7 +631,7 @@ class TestGeneralizationDetection:
             create_eval_result("B", score=0.85),
             create_eval_result("C", score=0.10),
         ])
-        mock_evaluator.evaluate_all.side_effect = [eval_batch, perturbed_batch]
+        mock_evaluator.evaluate_all.side_effect = [eval_batch, perturbed_batch, eval_batch]
         mock_detector.detect.return_value = create_duplicate_result(
             frozenset({"B"}), num_groups=1
         )
@@ -662,7 +665,8 @@ class TestGeneralizationDetection:
 
         eval_batch = create_eval_batch([create_eval_result("A", score=0.90)])
         perturbed_batch = create_eval_batch([create_eval_result("A", score=0.85)])
-        mock_evaluator.evaluate_all.side_effect = [eval_batch, perturbed_batch]
+        spatial_batch = create_eval_batch([create_eval_result("A", score=0.89)])
+        mock_evaluator.evaluate_all.side_effect = [eval_batch, perturbed_batch, spatial_batch]
         mock_detector.detect.return_value = create_duplicate_result()
         mock_selector.select_winner.return_value = create_winner_result("A", 0.90, 100)
         mock_distributor.calculate_weights.return_value = create_weights({"A": 1.0})
@@ -672,6 +676,7 @@ class TestGeneralizationDetection:
         gen_call = mock_gen_detector.detect.call_args
         assert gen_call[0][0] == eval_batch.results
         assert gen_call[0][1] == perturbed_batch.results
+        assert gen_call[0][2] == spatial_batch.results
 
 
 class TestPerturbedEvalFiltering:
@@ -709,7 +714,7 @@ class TestPerturbedEvalFiltering:
             create_eval_result("A", score=0.85),
             create_eval_result("C", score=0.80),
         ])
-        mock_evaluator.evaluate_all.side_effect = [eval_batch, perturbed_batch]
+        mock_evaluator.evaluate_all.side_effect = [eval_batch, perturbed_batch, perturbed_batch]
         mock_detector.detect.return_value = create_duplicate_result()
         mock_gen_detector.detect.return_value = create_generalization_result()
         mock_selector.select_winner.return_value = create_winner_result("A", 0.90, 100)
@@ -750,7 +755,7 @@ class TestPerturbedEvalFiltering:
             create_eval_result("A", score=0.85),
             create_eval_result("B", score=0.80),
         ])
-        mock_evaluator.evaluate_all.side_effect = [eval_batch, perturbed_batch]
+        mock_evaluator.evaluate_all.side_effect = [eval_batch, perturbed_batch, eval_batch]
         mock_detector.detect.return_value = create_duplicate_result()
         mock_gen_detector.detect.return_value = create_generalization_result()
         mock_selector.select_winner.return_value = create_winner_result("A", 0.90, 100)

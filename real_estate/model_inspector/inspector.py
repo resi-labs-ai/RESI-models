@@ -36,8 +36,9 @@ class ModelInspector:
     memorization indicators before running expensive evaluation.
 
     Checks:
-    - LOOKUP_PATTERN: TopK/ArgMin/ArgMax + Gather ops (KNN lookup)
+    - LOOKUP_PATTERN: TopK/ArgMin/ArgMax + Gather OR Scan + Hardmax/Softmax (KNN lookup)
     - Any unused initializers (dead weight padding)
+    - ZERO_PADDING: Large all-zero initializer tensors (padding to hide memorization)
     - Price-like values in weights > threshold (memorized listings)
 
     Any check failing → model rejected, not evaluated, gets 0 weight.
@@ -126,7 +127,9 @@ class ModelInspector:
                 hotkey=hotkey,
                 has_lookup_pattern=False,
                 has_unused_initializers=False,
+                has_zero_padding=False,
                 price_like_values=0,
+                zero_padding_bytes=0,
                 total_params=0,
                 rejection_reason=RejectionReason.INSPECTION_FAILED,
                 error=e,
@@ -199,15 +202,20 @@ class ModelInspector:
         """Apply rejection rules to inspection data."""
         has_lookup_pattern = bool(data.get("lookup_pattern", False))
         has_unused_initializers = float(data.get("unused_initializer_ratio", 0.0)) > 0
+        zero_padding_bytes = int(data.get("zero_initializer_bytes", 0))
+        has_zero_padding = zero_padding_bytes > self._config.zero_padding_bytes_threshold
         price_count = int(data.get("price_like_values_total", 0))
         total_params = int(data.get("total_params", 0))
 
         # Pipeline: early exit on first failure
+        # Order: LOOKUP_PATTERN → UNUSED_INITIALIZERS → ZERO_PADDING → PRICES_IN_WEIGHTS
         rejection_reason: RejectionReason | None = None
         if has_lookup_pattern:
             rejection_reason = RejectionReason.LOOKUP_PATTERN
         elif self._config.reject_unused_initializers and has_unused_initializers:
             rejection_reason = RejectionReason.UNUSED_INITIALIZERS
+        elif has_zero_padding:
+            rejection_reason = RejectionReason.ZERO_PADDING
         elif price_count > self._config.price_count_threshold:
             rejection_reason = RejectionReason.PRICES_IN_WEIGHTS
 
@@ -215,7 +223,9 @@ class ModelInspector:
             hotkey=hotkey,
             has_lookup_pattern=has_lookup_pattern,
             has_unused_initializers=has_unused_initializers,
+            has_zero_padding=has_zero_padding,
             price_like_values=price_count,
+            zero_padding_bytes=zero_padding_bytes,
             total_params=total_params,
             rejection_reason=rejection_reason,
         )

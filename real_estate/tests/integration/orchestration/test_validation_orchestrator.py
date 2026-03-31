@@ -26,13 +26,13 @@ def feature_config_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     config_dir = tmp_path_factory.mktemp("config")
     config_path = config_dir / "feature_config.yaml"
 
-    # Simple config with 5 numeric features, no transforms
+    # Config with 7 numeric features (lat/lon at indices 4,5 to match GeneralizationConfig)
     config = {
         "version": "1.0.0",
-        "numeric_fields": ["sqft", "beds", "baths", "lot_size", "year_built"],
+        "numeric_fields": ["sqft", "beds", "baths", "lot_size", "latitude", "longitude", "year_built"],
         "boolean_fields": [],
         "feature_transforms": [],
-        "feature_order": ["sqft", "beds", "baths", "lot_size", "year_built"],
+        "feature_order": ["sqft", "beds", "baths", "lot_size", "latitude", "longitude", "year_built"],
     }
 
     with open(config_path, "w") as f:
@@ -53,6 +53,8 @@ def sample_properties() -> list[dict]:
             "beds": float(np.random.randint(2, 6)),
             "baths": float(np.random.randint(1, 4)),
             "lot_size": float(np.random.uniform(5000, 20000)),
+            "latitude": float(np.random.uniform(25, 48)),
+            "longitude": float(np.random.uniform(-125, -70)),
             "year_built": float(np.random.randint(1960, 2020)),
         })
     return properties
@@ -77,7 +79,7 @@ def create_chain_metadata(hotkey: str, block_number: int) -> ChainModelMetadata:
 def create_models_with_metadata(
     tmp_path: Path,
     configs: list[tuple[int, int]],
-    n_features: int = 5,
+    n_features: int = 7,
 ) -> tuple[dict[str, Path], dict[str, ChainModelMetadata]]:
     """
     Create multiple test models with chain metadata.
@@ -114,7 +116,7 @@ class TestValidationOrchestratorIntegration:
         """Test complete pipeline with a single model."""
         # Create model matching feature count (5 features)
         model_path = tmp_path / "model.onnx"
-        create_test_model(n_features=5, output_path=model_path, seed=42)
+        create_test_model(n_features=7, output_path=model_path, seed=42)
 
         model_paths = {"hotkey_a": model_path}
         chain_metadata = {"hotkey_a": create_chain_metadata("hotkey_a", block_number=1000)}
@@ -192,15 +194,15 @@ class TestValidationOrchestratorIntegration:
         """Test that duplicate models are detected and copiers get zero weight."""
         # Create original model
         original_path = tmp_path / "original.onnx"
-        create_test_model(n_features=5, output_path=original_path, seed=42)
+        create_test_model(n_features=7, output_path=original_path, seed=42)
 
         # Create exact copy
         copy_path = tmp_path / "copy.onnx"
-        create_test_model(n_features=5, output_path=copy_path, seed=42)
+        create_test_model(n_features=7, output_path=copy_path, seed=42)
 
         # Create unique model
         unique_path = tmp_path / "unique.onnx"
-        create_test_model(n_features=5, output_path=unique_path, seed=999)
+        create_test_model(n_features=7, output_path=unique_path, seed=999)
 
         model_paths = {
             "original": original_path,
@@ -246,7 +248,7 @@ class TestValidationOrchestratorIntegration:
         """Test pipeline handles mix of successful and failed models."""
         # Create valid model
         valid_path = tmp_path / "valid.onnx"
-        create_test_model(n_features=5, output_path=valid_path, seed=42)
+        create_test_model(n_features=7, output_path=valid_path, seed=42)
 
         # Create invalid model (wrong number of features)
         invalid_path = tmp_path / "invalid.onnx"
@@ -370,7 +372,7 @@ class TestValidationOrchestratorIntegration:
         """Test that missing chain metadata raises ValueError."""
         # Create valid model
         model_path = tmp_path / "model.onnx"
-        create_test_model(n_features=5, output_path=model_path, seed=42)
+        create_test_model(n_features=7, output_path=model_path, seed=42)
 
         model_paths = {"hotkey_a": model_path}
         # Deliberately omit chain_metadata for hotkey_a
@@ -396,7 +398,7 @@ class TestValidationOrchestratorIntegration:
     ) -> None:
         """Test that ValidationResult can be serialized for logging/export."""
         model_path = tmp_path / "model.onnx"
-        create_test_model(n_features=5, output_path=model_path, seed=42)
+        create_test_model(n_features=7, output_path=model_path, seed=42)
 
         model_paths = {"hotkey_a": model_path}
         chain_metadata = {"hotkey_a": create_chain_metadata("hotkey_a", block_number=1000)}
@@ -457,10 +459,10 @@ class TestValidationOrchestratorIntegration:
 
         # Create two identical models (one will be marked as copier)
         copy_a = tmp_path / "copy_a.onnx"
-        create_test_model(n_features=5, output_path=copy_a, seed=100)
+        create_test_model(n_features=7, output_path=copy_a, seed=100)
 
         copy_b = tmp_path / "copy_b.onnx"
-        create_test_model(n_features=5, output_path=copy_b, seed=100)  # Same seed = identical
+        create_test_model(n_features=7, output_path=copy_b, seed=100)  # Same seed = identical
 
         # Create another failing model to be the "original" for the copies
         # by giving it an even earlier block number
