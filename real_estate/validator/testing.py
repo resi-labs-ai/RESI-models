@@ -33,7 +33,7 @@ class StaticModelScheduler:
 
     def get_available_models(
         self,
-        registered_hotkeys: set[str],
+        registered_hotkeys: set[str],  # noqa: ARG002
         current_block: int,  # noqa: ARG002
     ) -> dict[str, Path]:
         # When test-models-dir is used, ignore registered_hotkeys filter
