@@ -32,7 +32,9 @@ class StaticModelScheduler:
         return self._known_commitments
 
     def get_available_models(
-        self, registered_hotkeys: set[str], current_block: int  # noqa: ARG002
+        self,
+        registered_hotkeys: set[str],
+        current_block: int,  # noqa: ARG002
     ) -> dict[str, Path]:
         # When test-models-dir is used, ignore registered_hotkeys filter
         # (test models have fake hotkeys not on chain)
@@ -42,7 +44,8 @@ class StaticModelScheduler:
         return {}  # Nothing to download
 
     async def run_catch_up(
-        self, failed_hotkeys: set[str] | None = None  # noqa: ARG002
+        self,
+        failed_hotkeys: set[str] | None = None,  # noqa: ARG002
     ) -> dict[str, DownloadResult]:
         return {}
 
@@ -67,7 +70,5 @@ def build_static_scheduler(models_dir: Path) -> StaticModelScheduler:
             block_number=1,
         )
 
-    logger.info(
-        f"Static scheduler loaded {len(model_paths)} models from {models_dir}"
-    )
+    logger.info(f"Static scheduler loaded {len(model_paths)} models from {models_dir}")
     return StaticModelScheduler(model_paths, metadata)

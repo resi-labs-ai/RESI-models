@@ -160,10 +160,12 @@ class ValidationOrchestrator:
             ),
             generalization_detector=GeneralizationDetector(generalization_config),
             generalization_config=generalization_config,
-            model_inspector=ModelInspector(InspectionConfig(
-                price_count_threshold=inspection_price_threshold,
-                reject_unused_initializers=inspection_reject_unused,
-            )),
+            model_inspector=ModelInspector(
+                InspectionConfig(
+                    price_count_threshold=inspection_price_threshold,
+                    reject_unused_initializers=inspection_reject_unused,
+                )
+            ),
         )
 
     async def run(
@@ -196,17 +198,12 @@ class ValidationOrchestrator:
         rejected = inspection_result.rejected_hotkeys
         if rejected:
             logger.info(
-                f"Inspection rejected {len(rejected)} models: "
-                f"{sorted(rejected)}"
+                f"Inspection rejected {len(rejected)} models: {sorted(rejected)}"
             )
-            model_paths = {
-                k: v for k, v in model_paths.items() if k not in rejected
-            }
+            model_paths = {k: v for k, v in model_paths.items() if k not in rejected}
 
         if not model_paths:
-            raise NoValidModelsError(
-                "All models rejected by pre-flight inspection"
-            )
+            raise NoValidModelsError("All models rejected by pre-flight inspection")
 
         # 1. Encode features
         logger.debug("Encoding features...")
@@ -255,9 +252,7 @@ class ValidationOrchestrator:
         }
         skipped = len(model_paths) - len(perturbed_model_paths)
         if skipped:
-            logger.info(
-                f"Skipping {skipped} failed models from perturbed evaluation"
-            )
+            logger.info(f"Skipping {skipped} failed models from perturbed evaluation")
 
         logger.info("Running generalization detection (perturbed evaluation)...")
         perturbed = perturb_features(features, self._generalization_config)

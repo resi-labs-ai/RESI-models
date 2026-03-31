@@ -102,18 +102,14 @@ class DecentralizedSeedProvider:
         try:
             success, reveal_round = self._submit_commitment(value)
         except Exception as e:
-            logger.error(
-                f"Failed to submit randomness commitment: {e}", exc_info=True
-            )
+            logger.error(f"Failed to submit randomness commitment: {e}", exc_info=True)
             return None
 
         if not success:
             logger.error("set_reveal_commitment returned False")
             return None
 
-        logger.info(
-            f"Randomness commitment submitted (reveal_round={reveal_round})"
-        )
+        logger.info(f"Randomness commitment submitted (reveal_round={reveal_round})")
         return reveal_round
 
     @_subtensor_retry
@@ -133,9 +129,7 @@ class DecentralizedSeedProvider:
     def _query_epoch_info(self) -> tuple[int | None, int]:
         """Query tempo and blocks_since_last_step with retries."""
         tempo = self._subtensor.tempo(self._netuid)
-        blocks_since_step = self._subtensor.blocks_since_last_step(
-            self._netuid
-        )
+        blocks_since_step = self._subtensor.blocks_since_last_step(self._netuid)
         return tempo, blocks_since_step
 
     @_subtensor_retry
@@ -166,9 +160,7 @@ class DecentralizedSeedProvider:
         try:
             tempo, blocks_since_step = self._query_epoch_info()
         except Exception as e:
-            logger.error(
-                f"Chain query failed for epoch timing: {e}", exc_info=True
-            )
+            logger.error(f"Chain query failed for epoch timing: {e}", exc_info=True)
             return None
 
         if tempo is None or tempo <= 0:
@@ -223,9 +215,7 @@ class DecentralizedSeedProvider:
         try:
             all_revealed = self._fetch_revealed_commitments()
         except Exception as e:
-            logger.error(
-                f"Failed to fetch revealed commitments: {e}", exc_info=True
-            )
+            logger.error(f"Failed to fetch revealed commitments: {e}", exc_info=True)
             return None
 
         # Filter to validator hotkeys and extract latest reveal per validator
@@ -279,8 +269,7 @@ class DecentralizedSeedProvider:
             skipped.append(f"{late_count} late")
         suffix = f" (skipped: {', '.join(skipped)})" if skipped else ""
         logger.info(
-            f"Harvested seed={seed} from {result.num_reveals} validators"
-            + suffix
+            f"Harvested seed={seed} from {result.num_reveals} validators" + suffix
         )
         return result
 

@@ -307,7 +307,8 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="randomness_enabled",
         type=lambda v: v.lower() in ("true", "1", "yes"),
         help="Enable decentralized randomness seed for generalization detection.",
-        default=os.environ.get("RANDOMNESS_ENABLED", "true").lower() in ("true", "1", "yes"),
+        default=os.environ.get("RANDOMNESS_ENABLED", "true").lower()
+        in ("true", "1", "yes"),
     )
 
     parser.add_argument(
@@ -316,9 +317,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         type=float,
         help="Randomness cycle window (hours before eval). Bounds commit "
         "fallback timing, reveal freshness filter, and snapshot TTL.",
-        default=float(
-            os.environ.get("RANDOMNESS_CYCLE_WINDOW_HOURS", "4.0")
-        ),
+        default=float(os.environ.get("RANDOMNESS_CYCLE_WINDOW_HOURS", "4.0")),
     )
 
     parser.add_argument(
@@ -326,9 +325,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="randomness_blocks_until_reveal",
         type=int,
         help="Drand timelock duration in blocks (~12s/block). 360 blocks = ~72 min.",
-        default=int(
-            os.environ.get("RANDOMNESS_BLOCKS_UNTIL_REVEAL", "360")
-        ),
+        default=int(os.environ.get("RANDOMNESS_BLOCKS_UNTIL_REVEAL", "360")),
     )
 
     parser.add_argument(
@@ -336,9 +333,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="randomness_reveal_buffer_seconds",
         type=int,
         help="Extra wait after expected reveal time for chain propagation (seconds).",
-        default=int(
-            os.environ.get("RANDOMNESS_REVEAL_BUFFER_SECONDS", "300")
-        ),
+        default=int(os.environ.get("RANDOMNESS_REVEAL_BUFFER_SECONDS", "300")),
     )
 
     # Test mode settings
@@ -442,7 +437,9 @@ def check_config(config: argparse.Namespace) -> None:
             raise ValueError("--pylon.token is required (or set PYLON_TOKEN env var)")
 
         if not config.pylon_identity:
-            raise ValueError("--pylon.identity is required (or set PYLON_IDENTITY env var)")
+            raise ValueError(
+                "--pylon.identity is required (or set PYLON_IDENTITY env var)"
+            )
 
     # Validate burn settings
     if config.burn_amount < 0.0 or config.burn_amount > 1.0:

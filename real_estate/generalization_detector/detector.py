@@ -97,8 +97,7 @@ class GeneralizationDetector:
             is_memorizer = global_ratio < self._config.global_threshold
             if spatial_ratio is not None:
                 is_memorizer = (
-                    is_memorizer
-                    or spatial_ratio < self._config.spatial_threshold
+                    is_memorizer or spatial_ratio < self._config.spatial_threshold
                 )
 
             if is_memorizer:

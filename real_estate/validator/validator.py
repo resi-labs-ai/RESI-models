@@ -293,7 +293,9 @@ class Validator:
                     f"validator_permit. Ensure sufficient stake on subnet {self.config.netuid}"
                 )
                 return
-            logger.warning("No validator permit but test_mode=True, setting weights anyway")
+            logger.warning(
+                "No validator permit but test_mode=True, setting weights anyway"
+            )
 
         # In test mode, force all weight on UID 1 to bootstrap vpermit
         if self.config.test_mode and self.uid is not None and len(self.hotkeys) > 1:
@@ -369,9 +371,7 @@ class Validator:
         Returns:
             Adjusted weights with burn allocation (sums to 1.0)
         """
-        burn_amount: float = (
-            0.0  # Hardcoded: 0% burn. Autoupdater picks this up.
-        )
+        burn_amount: float = 0.0  # Hardcoded: 0% burn. Autoupdater picks this up.
         burn_uid: int = self.config.burn_uid
 
         # No burn configured
@@ -618,9 +618,7 @@ class Validator:
                 # Submit commitment (sync RPC — run in thread to avoid
                 # blocking the event loop during chain transaction).
                 logger.info("Submitting randomness commitment...")
-                reveal_round = await asyncio.to_thread(
-                    self._seed_provider.commit
-                )
+                reveal_round = await asyncio.to_thread(self._seed_provider.commit)
                 if reveal_round is None:
                     logger.warning(
                         "Randomness commitment failed, "
@@ -668,14 +666,10 @@ class Validator:
                         f"{len(validator_hotkeys)} vpermit)"
                     )
                 except Exception as e:
-                    logger.warning(
-                        f"Failed to snapshot pending commitments: {e}"
-                    )
+                    logger.warning(f"Failed to snapshot pending commitments: {e}")
                     committed = None
 
-                logger.info(
-                    f"Waiting {remaining_wait / 60:.0f}m for reveals"
-                )
+                logger.info(f"Waiting {remaining_wait / 60:.0f}m for reveals")
                 await asyncio.sleep(remaining_wait)
 
                 # Harvest seed from all validator reveals — reject stale
@@ -762,9 +756,7 @@ class Validator:
                 return None
             data = json.loads(self._snapshot_path.read_text(encoding="utf-8"))
             ts = datetime.fromisoformat(data["timestamp"])
-            max_age = timedelta(
-                hours=self._randomness_config.cycle_window_hours
-            )
+            max_age = timedelta(hours=self._randomness_config.cycle_window_hours)
             if datetime.now(UTC) - ts > max_age:
                 logger.info("Committed snapshot too old, ignoring")
                 return None
@@ -1020,7 +1012,9 @@ class Validator:
                     chain_client=chain,
                     cache_dir=self.config.model_cache_path,
                     download_config=DownloadConfig(
-                        max_model_size_bytes=self.config.model_max_size_mb * 1024 * 1024,
+                        max_model_size_bytes=self.config.model_max_size_mb
+                        * 1024
+                        * 1024,
                     ),
                     scheduler_config=SchedulerConfig(
                         min_commitment_age_blocks=self.config.model_min_commitment_age_blocks,
