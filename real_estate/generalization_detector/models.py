@@ -13,7 +13,7 @@ class GeneralizationConfig:
     global_noise_pct: float = 0.01
     """Multiplicative noise level for global perturbation (0.01 = +/-1%)."""
 
-    global_threshold: float = 0.60
+    global_threshold: float = 0.70
     """Minimum global robustness ratio to pass."""
 
     seed: int | None = None
@@ -25,7 +25,7 @@ class GeneralizationConfig:
     spatial_noise_std: float = 0.005
     """Gaussian noise std for spatial perturbation (~500m)."""
 
-    spatial_threshold: float = 0.90
+    spatial_threshold: float = 0.95
     """Minimum spatial robustness ratio to pass."""
 
     lat_index: int = 4

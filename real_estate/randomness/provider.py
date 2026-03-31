@@ -8,10 +8,10 @@ import secrets
 from typing import TYPE_CHECKING
 
 from tenacity import (
+    before_sleep_log,
     retry,
     stop_after_attempt,
     wait_fixed,
-    before_sleep_log,
 )
 
 from .models import RandomnessConfig, SeedResult

@@ -45,7 +45,7 @@ def patch_subtensor_reconnect(subtensor: bt.Subtensor) -> None:
             except Exception:
                 logger.error("Failed to reconnect subtensor WebSocket", exc_info=True)
                 raise
-            setattr(substrate, "ws", new_ws)
+            substrate.ws = new_ws
             return new_ws
 
     substrate.connect = _reconnecting_connect

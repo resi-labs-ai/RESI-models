@@ -43,6 +43,7 @@ def mock_validator_config() -> MagicMock:
     config.randomness_enabled = False
     config.randomness_cycle_window_hours = 4.0
     config.randomness_blocks_until_reveal = 360
+    config.randomness_reveal_buffer_seconds = 300
     return config
 
 
