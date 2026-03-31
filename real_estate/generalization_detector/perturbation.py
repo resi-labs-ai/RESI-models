@@ -28,7 +28,9 @@ def perturb_features(
     num_numeric = min(config.num_numeric_features, features.shape[1])
 
     perturbed = features.copy()
-    noise = rng.normal(0, config.global_noise_pct, size=(features.shape[0], num_numeric))
+    noise = rng.normal(
+        0, config.global_noise_pct, size=(features.shape[0], num_numeric)
+    )
     perturbed[:, :num_numeric] *= 1.0 + noise
 
     return perturbed
@@ -61,7 +63,11 @@ def perturb_spatial(
 
     perturbed = features.copy()
     n_samples = features.shape[0]
-    perturbed[:, config.lat_index] += rng.normal(0, config.spatial_noise_std, size=n_samples)
-    perturbed[:, config.lon_index] += rng.normal(0, config.spatial_noise_std, size=n_samples)
+    perturbed[:, config.lat_index] += rng.normal(
+        0, config.spatial_noise_std, size=n_samples
+    )
+    perturbed[:, config.lon_index] += rng.normal(
+        0, config.spatial_noise_std, size=n_samples
+    )
 
     return perturbed

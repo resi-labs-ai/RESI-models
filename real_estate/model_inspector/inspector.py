@@ -111,13 +111,14 @@ class ModelInspector:
 
         rejected_count = sum(1 for r in results if r.is_rejected)
         logger.info(
-            f"Inspection complete: {len(results)} inspected, "
-            f"{rejected_count} rejected"
+            f"Inspection complete: {len(results)} inspected, {rejected_count} rejected"
         )
 
         return InspectionBatchResult(results=tuple(results))
 
-    def _inspect_single_safe(self, hotkey: str, model_path: Path) -> ModelInspectionResult:
+    def _inspect_single_safe(
+        self, hotkey: str, model_path: Path
+    ) -> ModelInspectionResult:
         """Inspect a single model, catching exceptions into a rejection result."""
         try:
             return self._inspect_single(hotkey, model_path)
@@ -149,7 +150,10 @@ class ModelInspector:
 
             # Copy model and inspection script to workspace
             shutil.copy(model_path, workspace_path / "model.onnx")
-            shutil.copy(_INSPECTION_SCRIPT_PATH, workspace_path / "inspection_container_script.py")
+            shutil.copy(
+                _INSPECTION_SCRIPT_PATH,
+                workspace_path / "inspection_container_script.py",
+            )
 
             volumes = {
                 str(workspace_path): {"bind": "/workspace", "mode": "rw"},
@@ -179,7 +183,9 @@ class ModelInspector:
                         f"Inspection container failed for {hotkey} "
                         f"(exit={exit_code}): {logs[-500:]}"
                     )
-                    raise RuntimeError(f"Inspection container exited with code {exit_code}")
+                    raise RuntimeError(
+                        f"Inspection container exited with code {exit_code}"
+                    )
 
                 # Read results
                 results_path = workspace_path / "inspection_results.json"
@@ -196,14 +202,14 @@ class ModelInspector:
                     with contextlib.suppress(Exception):
                         container.remove(force=True)
 
-    def _apply_rejection_rules(
-        self, hotkey: str, data: dict
-    ) -> ModelInspectionResult:
+    def _apply_rejection_rules(self, hotkey: str, data: dict) -> ModelInspectionResult:
         """Apply rejection rules to inspection data."""
         has_lookup_pattern = bool(data.get("lookup_pattern", False))
         has_unused_initializers = float(data.get("unused_initializer_ratio", 0.0)) > 0
         zero_padding_bytes = int(data.get("zero_initializer_bytes", 0))
-        has_zero_padding = zero_padding_bytes > self._config.zero_padding_bytes_threshold
+        has_zero_padding = (
+            zero_padding_bytes > self._config.zero_padding_bytes_threshold
+        )
         price_count = int(data.get("price_like_values_total", 0))
         total_params = int(data.get("total_params", 0))
 

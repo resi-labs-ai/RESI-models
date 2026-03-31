@@ -9,8 +9,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
+import os
+import tempfile
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import bittensor as bt
@@ -25,6 +29,7 @@ from tenacity import (
 
 from real_estate.chain.errors import ChainConnectionError
 from real_estate.chain.models import Metagraph
+from real_estate.chain.subtensor import patch_subtensor_reconnect
 
 if TYPE_CHECKING:
     from real_estate.chain import ChainClient
@@ -45,6 +50,7 @@ from real_estate.models import (
 )
 from real_estate.observability import WandbLogger, create_wandb_logger
 from real_estate.orchestration import ValidationOrchestrator
+from real_estate.randomness import DecentralizedSeedProvider, RandomnessConfig
 from real_estate.utils.misc import ttl_get_block
 
 from .config import check_config, config_to_dict, get_config, setup_logging
@@ -56,9 +62,10 @@ class Validator:
     """
     Real Estate Subnet Validator.
 
-    Runs two concurrent loops:
+    Runs concurrent loops:
     - _evaluation_loop: Waits for validation data, runs evaluation via orchestrator
     - _weight_setting_loop: Periodically sets weights on chain
+    - _randomness_loop: Commits randomness and harvests shared seed before evaluation
 
     Evaluation is triggered when new validation data arrives (daily).
     The ValidationOrchestrator handles the actual evaluation logic.
@@ -90,6 +97,7 @@ class Validator:
 
         # Subtensor for block fetching (persistent websocket connection)
         self.subtensor = bt.subtensor(network=self.config.subtensor_network)
+        patch_subtensor_reconnect(self.subtensor)
         logger.info(f"Connected to subtensor: {self.subtensor.chain_endpoint}")
 
         # Wallet for signing
@@ -117,6 +125,29 @@ class Validator:
 
         # Model scheduler (initialized in run() when chain is available)
         self._model_scheduler = None
+
+        # Decentralized randomness seed provider
+        self._randomness_config = RandomnessConfig(
+            cycle_window_hours=self.config.randomness_cycle_window_hours,
+            blocks_until_reveal=self.config.randomness_blocks_until_reveal,
+            reveal_buffer_seconds=self.config.randomness_reveal_buffer_seconds,
+        )
+        self._seed_provider: DecentralizedSeedProvider | None = None
+        if self.config.randomness_enabled:
+            self._seed_provider = DecentralizedSeedProvider(
+                subtensor=self.subtensor,
+                wallet=self.wallet,
+                netuid=self.config.netuid,
+                config=self._randomness_config,
+            )
+        self._current_seed: int | None = None
+        self._snapshot_path = (
+            Path.home()
+            / ".bittensor"
+            / "randomness"
+            / f"netuid_{self.config.netuid}"
+            / "committed_hotkeys.json"
+        )
 
         # Validation orchestrator
         self._orchestrator = ValidationOrchestrator.create(
@@ -256,28 +287,41 @@ class Validator:
 
         # Check validator permit before attempting to set weights
         if not self.metagraph.has_validator_permit(self.hotkey):
-            logger.error(
-                f"Cannot set weights - validator {self.hotkey} does not have "
-                f"validator_permit. Ensure sufficient stake on subnet {self.config.netuid}"
+            if not self.config.test_mode:
+                logger.error(
+                    f"Cannot set weights - validator {self.hotkey} does not have "
+                    f"validator_permit. Ensure sufficient stake on subnet {self.config.netuid}"
+                )
+                return
+            logger.warning(
+                "No validator permit but test_mode=True, setting weights anyway"
             )
-            return
 
-        # Handle NaN values
-        if np.isnan(self.scores).any():
-            logger.warning("Scores contain NaN, replacing with 0")
-            self.scores = np.nan_to_num(self.scores, nan=0)
+        # In test mode, force all weight on UID 1 to bootstrap vpermit
+        if self.config.test_mode and self.uid is not None and len(self.hotkeys) > 1:
+            target_uid = 1
+            target_hotkey = self.hotkeys[target_uid]
+            weights: dict[str, float] = {target_hotkey: 1.0}
+            logger.info(
+                f"[TEST MODE] Forcing weight=1.0 on UID {target_uid} ({target_hotkey})"
+            )
+        else:
+            # Handle NaN values
+            if np.isnan(self.scores).any():
+                logger.warning("Scores contain NaN, replacing with 0")
+                self.scores = np.nan_to_num(self.scores, nan=0)
 
-        # Normalize scores to weights
-        total = np.sum(self.scores)
+            # Normalize scores to weights
+            total = np.sum(self.scores)
 
-        # Build hotkey -> weight mapping for non-zero weights
-        weights: dict[str, float] = {}
-        if total > 0:
-            normalized_weights = self.scores / total
-            for uid, weight in enumerate(normalized_weights):
-                if weight > 0 and uid < len(self.hotkeys):
-                    hotkey = self.hotkeys[uid]
-                    weights[hotkey] = float(weight)
+            # Build hotkey -> weight mapping for non-zero weights
+            weights = {}
+            if total > 0:
+                normalized_weights = self.scores / total
+                for uid, weight in enumerate(normalized_weights):
+                    if weight > 0 and uid < len(self.hotkeys):
+                        hotkey = self.hotkeys[uid]
+                        weights[hotkey] = float(weight)
 
         # Apply burn if configured (works even with empty weights)
         weights = self._apply_burn(weights)
@@ -327,9 +371,7 @@ class Validator:
         Returns:
             Adjusted weights with burn allocation (sums to 1.0)
         """
-        burn_amount: float = (
-            0.0  # Hardcoded: 0% burn. Autoupdater picks this up.
-        )
+        burn_amount: float = 0.0  # Hardcoded: 0% burn. Autoupdater picks this up.
         burn_uid: int = self.config.burn_uid
 
         # No burn configured
@@ -485,6 +527,14 @@ class Validator:
 
         Updates self.scores based on orchestrator results.
         """
+        # Crash recovery: re-harvest if seed is missing but reveals may exist
+        if self._current_seed is None:
+            await self._try_reharvest_seed()
+
+        # Update seed for this evaluation round
+        self._orchestrator.set_seed(self._current_seed)
+        logger.info(f"Evaluation seed: {self._current_seed}")
+
         # Get current metagraph hotkeys
         registered_hotkeys = set(self.hotkeys)
 
@@ -541,6 +591,301 @@ class Validator:
         finally:
             # Always finish WandB run
             self._wandb_logger.finish()
+
+    async def _randomness_loop(self) -> None:
+        """
+        Commit random value before each evaluation, harvest seed after reveal.
+
+        Timeline (360 blocks reveal ≈ 72 min, epoch-aligned commit):
+        1. Wait for target epoch boundary (or wall-clock fallback)
+        2. Submit timelocked commitment
+        3. ~36 min: Mid-epoch snapshot of who committed (anti-gaming)
+        4. ~72 min + buffer: Chain auto-reveals, harvest & combine seed
+        5. Evaluation uses the shared deterministic seed
+
+        Falls back to None seed (random, non-deterministic) on any failure.
+        """
+        if self._seed_provider is None:
+            logger.info("Randomness disabled, skipping randomness loop")
+            return
+
+        while True:
+            try:
+                next_eval = self._get_next_eval_time()
+
+                await self._wait_for_commit_time(next_eval)
+
+                # Submit commitment (sync RPC — run in thread to avoid
+                # blocking the event loop during chain transaction).
+                logger.info("Submitting randomness commitment...")
+                reveal_round = await asyncio.to_thread(self._seed_provider.commit)
+                if reveal_round is None:
+                    logger.warning(
+                        "Randomness commitment failed, "
+                        "falling back to non-deterministic seed"
+                    )
+                    self._current_seed = None
+                    # Wait until after eval before next cycle
+                    await self._sleep_until_after_eval(next_eval)
+                    continue
+
+                # Wait until mid-epoch, then snapshot pending commitments.
+                # All honest validators should have committed by then, but
+                # reveals haven't landed yet (those happen at epoch end).
+                block_time = self._randomness_config.block_time_seconds
+                reveal_total_seconds = (
+                    self._randomness_config.blocks_until_reveal * block_time
+                )
+                snapshot_wait = reveal_total_seconds // 2
+                remaining_wait = (
+                    reveal_total_seconds
+                    - snapshot_wait
+                    + self._randomness_config.reveal_buffer_seconds
+                )
+
+                logger.info(
+                    f"Waiting {snapshot_wait / 60:.0f}m until mid-epoch "
+                    f"snapshot (reveal_round={reveal_round})"
+                )
+                await asyncio.sleep(snapshot_wait)
+
+                # Snapshot which validators have pending commitments BEFORE
+                # reveals land. Only these committed "on time" (before seeing
+                # others' reveals). Late commits are rejected at harvest.
+                validator_hotkeys = self._get_validator_hotkeys()
+                try:
+                    all_pending = await asyncio.to_thread(
+                        self._seed_provider.get_pending_commitment_hotkeys
+                    )
+                    committed = all_pending & validator_hotkeys
+                    self._save_committed_snapshot(committed)
+                    logger.info(
+                        f"Pre-reveal snapshot: {len(committed)} validator "
+                        f"commitments on chain "
+                        f"({len(all_pending)} total pending, "
+                        f"{len(validator_hotkeys)} vpermit)"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to snapshot pending commitments: {e}")
+                    committed = None
+
+                logger.info(f"Waiting {remaining_wait / 60:.0f}m for reveals")
+                await asyncio.sleep(remaining_wait)
+
+                # Harvest seed from all validator reveals — reject stale
+                # reveals from previous cycles and late commits.
+                max_age = self._randomness_config.cycle_window_hours * 3600
+                min_block = await asyncio.to_thread(
+                    self._seed_provider.get_min_reveal_block, max_age
+                )
+
+                if min_block is None or committed is None:
+                    logger.warning(
+                        "Cannot harvest: missing integrity checks "
+                        f"(min_block={min_block is not None}, "
+                        f"committed={committed is not None}), "
+                        "falling back to non-deterministic seed"
+                    )
+                    self._current_seed = None
+                else:
+                    seed_result = await asyncio.to_thread(
+                        self._seed_provider.harvest,
+                        validator_hotkeys,
+                        min_block,
+                        committed,
+                    )
+                    if seed_result is not None:
+                        self._current_seed = seed_result.seed
+                        self._delete_committed_snapshot()
+                    else:
+                        self._current_seed = None
+                        logger.warning(
+                            "No reveals harvested, "
+                            "falling back to non-deterministic seed"
+                        )
+
+                # Wait until after eval before next cycle
+                await self._sleep_until_after_eval(next_eval)
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"Randomness loop error: {e}", exc_info=True)
+                self._current_seed = None
+                await asyncio.sleep(300)  # Back off 5 min on unexpected error
+
+    def _get_validator_hotkeys(self) -> set[str]:
+        """Extract validator hotkeys from metagraph, or empty set if unavailable."""
+        if self.metagraph is None:
+            return set()
+        return {n.hotkey for n in self.metagraph.neurons if n.validator_permit}
+
+    def _save_committed_snapshot(self, hotkeys: set[str]) -> None:
+        """Persist committed hotkeys snapshot to disk for crash recovery.
+
+        Uses atomic write (tmp file + os.replace) to avoid corruption
+        if the process crashes mid-write.
+        """
+        try:
+            self._snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                "hotkeys": sorted(hotkeys),
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+            fd, tmp_path = tempfile.mkstemp(
+                dir=self._snapshot_path.parent, suffix=".tmp"
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(data, f)
+                os.replace(tmp_path, self._snapshot_path)
+            except BaseException:
+                os.unlink(tmp_path)
+                raise
+        except Exception as e:
+            logger.warning(f"Failed to save committed snapshot: {e}")
+
+    def _load_committed_snapshot(self) -> set[str] | None:
+        """Load committed hotkeys snapshot from disk, or None if stale/unavailable.
+
+        Rejects snapshots older than cycle_window_hours to avoid
+        using yesterday's snapshot after a failed cycle.
+        """
+        try:
+            if not self._snapshot_path.exists():
+                return None
+            data = json.loads(self._snapshot_path.read_text(encoding="utf-8"))
+            ts = datetime.fromisoformat(data["timestamp"])
+            max_age = timedelta(hours=self._randomness_config.cycle_window_hours)
+            if datetime.now(UTC) - ts > max_age:
+                logger.info("Committed snapshot too old, ignoring")
+                return None
+            return set(data["hotkeys"])
+        except Exception as e:
+            logger.warning(f"Failed to load committed snapshot: {e}")
+            return None
+
+    def _delete_committed_snapshot(self) -> None:
+        """Remove snapshot file after successful harvest."""
+        try:
+            self._snapshot_path.unlink(missing_ok=True)
+        except Exception as e:
+            logger.warning(f"Failed to delete committed snapshot: {e}")
+
+    async def _try_reharvest_seed(self) -> None:
+        """Attempt to harvest seed from existing on-chain reveals.
+
+        Covers crash, restart, autoupdate — any scenario where the
+        randomness loop missed the harvest window but reveals exist.
+        Uses freshness check to avoid using stale reveals from previous cycles.
+        Loads committed_hotkeys snapshot from disk to maintain late-commit
+        filtering even after restart.
+        """
+        if self._seed_provider is None:
+            return
+
+        try:
+            validator_hotkeys = self._get_validator_hotkeys()
+            if not validator_hotkeys:
+                return
+
+            max_age = self._randomness_config.cycle_window_hours * 3600
+            min_block = await asyncio.to_thread(
+                self._seed_provider.get_min_reveal_block, max_age
+            )
+            committed = self._load_committed_snapshot()
+
+            if min_block is None or committed is None:
+                logger.info(
+                    "Re-harvest skipped: missing integrity checks "
+                    f"(min_block={min_block is not None}, "
+                    f"committed={committed is not None})"
+                )
+                return
+
+            seed_result = await asyncio.to_thread(
+                self._seed_provider.harvest,
+                validator_hotkeys,
+                min_block,
+                committed,
+            )
+            if seed_result is None:
+                return
+
+            self._current_seed = seed_result.seed
+            self._delete_committed_snapshot()
+            logger.info(
+                f"Re-harvested seed at eval start: {seed_result.seed} "
+                f"({seed_result.num_reveals} validators)"
+            )
+        except Exception as e:
+            logger.warning(f"Re-harvest failed (will use seed=None): {e}")
+
+    async def _wait_for_commit_time(self, next_eval: datetime) -> None:
+        """Wait until commit time, preferring epoch-aligned block timing.
+
+        Tries to align the commit to an epoch boundary so all validators
+        converge on the same block. Falls back to wall-clock timing if
+        chain queries fail.
+        """
+        wait_seconds = await self._get_epoch_wait_seconds(next_eval)
+        if wait_seconds is not None:
+            await asyncio.sleep(wait_seconds)
+            return
+
+        # Fallback: wall-clock timing
+        commit_time = next_eval - timedelta(
+            hours=self._randomness_config.cycle_window_hours
+        )
+        now = datetime.now(UTC)
+        if now < commit_time:
+            wait_seconds = (commit_time - now).total_seconds()
+            logger.info(
+                f"Randomness: wall-clock commit at {commit_time} "
+                f"(waiting {wait_seconds / 60:.0f}m, epoch fallback)"
+            )
+            await asyncio.sleep(wait_seconds)
+        else:
+            logger.warning(
+                f"Randomness: already past commit time {commit_time}, "
+                f"committing immediately"
+            )
+
+    async def _get_epoch_wait_seconds(self, next_eval: datetime) -> float | None:
+        """Compute seconds to wait for epoch-aligned commit, or None on failure."""
+        try:
+            current_block = ttl_get_block(self)
+            seconds_until_eval = (next_eval - datetime.now(UTC)).total_seconds()
+            block_time = self._randomness_config.block_time_seconds
+            eval_block_est = current_block + int(seconds_until_eval / block_time)
+            target_block = await asyncio.to_thread(
+                self._seed_provider.get_target_commit_block,
+                eval_block_est,
+                current_block,
+            )
+        except Exception as e:
+            logger.warning(f"Epoch timing query failed: {e}")
+            return None
+
+        if target_block is None:
+            return None
+
+        blocks_to_wait = target_block - current_block
+        if blocks_to_wait <= 0:
+            return None
+
+        wait_seconds = blocks_to_wait * self._randomness_config.block_time_seconds
+        logger.info(
+            f"Randomness: epoch-aligned commit at block {target_block} "
+            f"(waiting {wait_seconds / 60:.0f}m, {blocks_to_wait} blocks)"
+        )
+        return wait_seconds
+
+    async def _sleep_until_after_eval(self, eval_time: datetime) -> None:
+        """Sleep until after the given evaluation time + 1 min buffer."""
+        now = datetime.now(UTC)
+        if now < eval_time:
+            await asyncio.sleep((eval_time - now).total_seconds() + 60)
 
     async def _evaluation_loop(self) -> None:
         """Loop that waits for evaluation events and runs evaluation."""
@@ -648,25 +993,36 @@ class Validator:
         """
         logger.info(f"Starting validator for subnet {self.config.netuid}")
 
+        # Use static scheduler when test-models-dir is set
+        if self.config.test_models_dir:
+            from .testing import build_static_scheduler
+
+            self._model_scheduler = build_static_scheduler(
+                Path(self.config.test_models_dir)
+            )
+
         from real_estate.chain import ChainClient
 
         async with ChainClient(self._pylon_config) as chain:
             self.chain = chain
 
-            # Initialize model scheduler (requires chain client)
-            self._model_scheduler = create_model_scheduler(
-                chain_client=chain,
-                cache_dir=self.config.model_cache_path,
-                download_config=DownloadConfig(
-                    max_model_size_bytes=self.config.model_max_size_mb * 1024 * 1024,
-                ),
-                scheduler_config=SchedulerConfig(
-                    min_commitment_age_blocks=self.config.model_min_commitment_age_blocks,
-                    pre_download_hours=self.config.scheduler_pre_download_hours,
-                    catch_up_minutes=self.config.scheduler_catch_up_minutes,
-                ),
-                hf_token=self.config.hf_token or None,
-            )
+            # Initialize model scheduler (requires chain client) unless static
+            if not self.config.test_models_dir:
+                self._model_scheduler = create_model_scheduler(
+                    chain_client=chain,
+                    cache_dir=self.config.model_cache_path,
+                    download_config=DownloadConfig(
+                        max_model_size_bytes=self.config.model_max_size_mb
+                        * 1024
+                        * 1024,
+                    ),
+                    scheduler_config=SchedulerConfig(
+                        min_commitment_age_blocks=self.config.model_min_commitment_age_blocks,
+                        pre_download_hours=self.config.scheduler_pre_download_hours,
+                        catch_up_minutes=self.config.scheduler_catch_up_minutes,
+                    ),
+                    hf_token=self.config.hf_token or None,
+                )
 
             await self._startup()
 
@@ -680,6 +1036,7 @@ class Validator:
                     self._evaluation_loop(),
                     self._weight_setting_loop(),
                     self._pre_download_loop(),
+                    self._randomness_loop(),
                 )
             except asyncio.CancelledError:
                 logger.info("Validator stopped")
@@ -879,6 +1236,13 @@ class Validator:
 
     async def _startup(self) -> None:
         """Run startup tasks: metagraph, models, initial data fetch."""
+        # In local test mode with static models, skip chain-dependent startup
+        if self.config.test_models_dir and self.config.test_mode:
+            logger.info(
+                "Static model mode: skipping registration check and bootstrap weights"
+            )
+            return
+
         # Initial metagraph fetch - required for startup
         try:
             await self.update_metagraph()

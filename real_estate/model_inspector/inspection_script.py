@@ -103,29 +103,33 @@ def analyze_model(model_path: Path) -> dict:
 
         if price_count >= PRICE_COUNT_THRESHOLD:
             price_values = flat[price_mask]
-            results["suspicious_tensors"].append({
-                "name": init.name,
-                "shape": shape,
-                "params": n_params,
-                "unused": is_unused,
-                "price_like_count": price_count,
-                "price_like_pct": round(100.0 * price_count / flat.size, 1),
-                "price_like_min": round(float(np.min(price_values)), 2),
-                "price_like_max": round(float(np.max(price_values)), 2),
-                "price_like_mean": round(float(np.mean(price_values)), 2),
-            })
+            results["suspicious_tensors"].append(
+                {
+                    "name": init.name,
+                    "shape": shape,
+                    "params": n_params,
+                    "unused": is_unused,
+                    "price_like_count": price_count,
+                    "price_like_pct": round(100.0 * price_count / flat.size, 1),
+                    "price_like_min": round(float(np.min(price_values)), 2),
+                    "price_like_max": round(float(np.max(price_values)), 2),
+                    "price_like_mean": round(float(np.mean(price_values)), 2),
+                }
+            )
 
         results["price_like_values_total"] += price_count
 
         for dim in shape:
             if dim >= LARGE_DIM_THRESHOLD and price_count < PRICE_COUNT_THRESHOLD:
-                results["suspicious_tensors"].append({
-                    "name": init.name,
-                    "shape": shape,
-                    "params": n_params,
-                    "unused": is_unused,
-                    "reason": f"large dimension ({dim:,})",
-                })
+                results["suspicious_tensors"].append(
+                    {
+                        "name": init.name,
+                        "shape": shape,
+                        "params": n_params,
+                        "unused": is_unused,
+                        "reason": f"large dimension ({dim:,})",
+                    }
+                )
                 break
 
     results["zero_initializer_count"] = zero_initializer_count
@@ -141,10 +145,11 @@ def analyze_model(model_path: Path) -> dict:
     results["has_softmax"] = "Softmax" in results["op_types"]
 
     classic_lookup = (
-        (results["has_topk"] or results["has_argmin"] or results["has_argmax"])
-        and results["has_gather"]
+        results["has_topk"] or results["has_argmin"] or results["has_argmax"]
+    ) and results["has_gather"]
+    scan_lookup = results["has_scan"] and (
+        results["has_hardmax"] or results["has_softmax"]
     )
-    scan_lookup = results["has_scan"] and (results["has_hardmax"] or results["has_softmax"])
     results["lookup_pattern"] = classic_lookup or scan_lookup
 
     # Classify
@@ -158,7 +163,9 @@ def analyze_model(model_path: Path) -> dict:
     if results["unused_initializers"] > results["total_initializers"] * 0.5:
         flags.append("MANY_UNUSED_INITIALIZERS")
 
-    results["classification"] = ("SUSPICIOUS: " + ", ".join(flags)) if flags else "CLEAN"
+    results["classification"] = (
+        ("SUSPICIOUS: " + ", ".join(flags)) if flags else "CLEAN"
+    )
     results["unused_initializer_ratio"] = (
         round(results["unused_initializers"] / results["total_initializers"], 3)
         if results["total_initializers"] > 0

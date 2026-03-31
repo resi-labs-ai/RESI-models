@@ -16,6 +16,7 @@ from .models import (
     Metagraph,
     Neuron,
 )
+from .subtensor import patch_subtensor_reconnect
 
 
 def __getattr__(name: str):
@@ -45,4 +46,6 @@ __all__ = [
     "ExtrinsicData",
     "Metagraph",
     "Neuron",
+    # Subtensor utilities
+    "patch_subtensor_reconnect",
 ]
