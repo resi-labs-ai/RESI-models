@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "bittensor>=8.0.0",
+    "bittensor==9.12.2",
     "pydantic>=2",
     "numpy>=1",
     "torch>=2",
@@ -138,10 +138,12 @@ addopts = [
     "-v",
     "--tb=short",
     "--strict-markers",
+    "-m", "not localnet and not slow",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
+    "localnet: marks tests requiring localnet infrastructure (Pylon + Docker)",
 ]
 
 # ============================================================================
