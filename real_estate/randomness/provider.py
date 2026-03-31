@@ -30,9 +30,6 @@ _subtensor_retry = retry(
     reraise=True,
 )
 
-# Drand beacon round interval (protocol constant)
-_DRAND_ROUND_SECONDS = 3
-
 
 def combine_reveals(reveals: dict[str, str], modulus: int) -> int:
     """
@@ -206,7 +203,7 @@ class DecentralizedSeedProvider:
     def harvest(
         self,
         validator_hotkeys: set[str],
-        min_reveal_round: int,
+        min_reveal_block: int,
         committed_hotkeys: set[str],
     ) -> SeedResult | None:
         """
@@ -214,7 +211,7 @@ class DecentralizedSeedProvider:
 
         Args:
             validator_hotkeys: Set of hotkeys with validator_permit.
-            min_reveal_round: Discard reveals with drand round below this
+            min_reveal_block: Discard reveals with block number below this
                 value (stale reveals from previous cycles).
             committed_hotkeys: Only accept reveals from validators who had
                 pending commitments before reveals landed — prevents
@@ -240,9 +237,9 @@ class DecentralizedSeedProvider:
                 continue
             if not entries:
                 continue
-            # Each entry is (round, hex_data). Use the latest (last) entry.
-            reveal_round, hex_data = entries[-1]
-            if reveal_round < min_reveal_round:
+            # Each entry is (block_number, hex_data). Use the latest (last) entry.
+            reveal_block, hex_data = entries[-1]
+            if reveal_block < min_reveal_block:
                 stale_count += 1
                 continue
             if hotkey not in committed_hotkeys:
@@ -287,21 +284,24 @@ class DecentralizedSeedProvider:
         )
         return result
 
-    def get_min_reveal_round(self, max_age_seconds: float) -> int | None:
-        """Compute minimum acceptable drand reveal round for freshness filtering.
+    def get_min_reveal_block(self, max_age_seconds: float) -> int | None:
+        """Compute minimum acceptable reveal block for freshness filtering.
+
+        The chain stores revealed commitments keyed by block number (not drand
+        round), so the threshold must also be a block number.
 
         Args:
             max_age_seconds: Maximum age of a reveal in seconds.
-                Reveals from drand rounds older than this are considered stale.
+                Reveals from blocks older than this are considered stale.
 
         Returns:
-            Minimum drand round number, or None if chain query fails.
+            Minimum block number, or None if chain query fails.
         """
         try:
-            current_round = self.last_drand_round()
+            current_block = self._subtensor.block
         except Exception as e:
-            logger.warning(f"Failed to query last drand round: {e}")
+            logger.warning(f"Failed to query current block: {e}")
             return None
 
-        rounds_back = int(max_age_seconds / _DRAND_ROUND_SECONDS)
-        return max(0, current_round - rounds_back)
+        blocks_back = int(max_age_seconds / self._config.block_time_seconds)
+        return max(0, current_block - blocks_back)

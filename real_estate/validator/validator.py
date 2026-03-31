@@ -287,28 +287,39 @@ class Validator:
 
         # Check validator permit before attempting to set weights
         if not self.metagraph.has_validator_permit(self.hotkey):
-            logger.error(
-                f"Cannot set weights - validator {self.hotkey} does not have "
-                f"validator_permit. Ensure sufficient stake on subnet {self.config.netuid}"
+            if not self.config.test_mode:
+                logger.error(
+                    f"Cannot set weights - validator {self.hotkey} does not have "
+                    f"validator_permit. Ensure sufficient stake on subnet {self.config.netuid}"
+                )
+                return
+            logger.warning("No validator permit but test_mode=True, setting weights anyway")
+
+        # In test mode, force all weight on UID 1 to bootstrap vpermit
+        if self.config.test_mode and self.uid is not None and len(self.hotkeys) > 1:
+            target_uid = 1
+            target_hotkey = self.hotkeys[target_uid]
+            weights: dict[str, float] = {target_hotkey: 1.0}
+            logger.info(
+                f"[TEST MODE] Forcing weight=1.0 on UID {target_uid} ({target_hotkey})"
             )
-            return
+        else:
+            # Handle NaN values
+            if np.isnan(self.scores).any():
+                logger.warning("Scores contain NaN, replacing with 0")
+                self.scores = np.nan_to_num(self.scores, nan=0)
 
-        # Handle NaN values
-        if np.isnan(self.scores).any():
-            logger.warning("Scores contain NaN, replacing with 0")
-            self.scores = np.nan_to_num(self.scores, nan=0)
+            # Normalize scores to weights
+            total = np.sum(self.scores)
 
-        # Normalize scores to weights
-        total = np.sum(self.scores)
-
-        # Build hotkey -> weight mapping for non-zero weights
-        weights: dict[str, float] = {}
-        if total > 0:
-            normalized_weights = self.scores / total
-            for uid, weight in enumerate(normalized_weights):
-                if weight > 0 and uid < len(self.hotkeys):
-                    hotkey = self.hotkeys[uid]
-                    weights[hotkey] = float(weight)
+            # Build hotkey -> weight mapping for non-zero weights
+            weights = {}
+            if total > 0:
+                normalized_weights = self.scores / total
+                for uid, weight in enumerate(normalized_weights):
+                    if weight > 0 and uid < len(self.hotkeys):
+                        hotkey = self.hotkeys[uid]
+                        weights[hotkey] = float(weight)
 
         # Apply burn if configured (works even with empty weights)
         weights = self._apply_burn(weights)
@@ -670,14 +681,14 @@ class Validator:
                 # Harvest seed from all validator reveals — reject stale
                 # reveals from previous cycles and late commits.
                 max_age = self._randomness_config.cycle_window_hours * 3600
-                min_round = await asyncio.to_thread(
-                    self._seed_provider.get_min_reveal_round, max_age
+                min_block = await asyncio.to_thread(
+                    self._seed_provider.get_min_reveal_block, max_age
                 )
 
-                if min_round is None or committed is None:
+                if min_block is None or committed is None:
                     logger.warning(
                         "Cannot harvest: missing integrity checks "
-                        f"(min_round={min_round is not None}, "
+                        f"(min_block={min_block is not None}, "
                         f"committed={committed is not None}), "
                         "falling back to non-deterministic seed"
                     )
@@ -686,7 +697,7 @@ class Validator:
                     seed_result = await asyncio.to_thread(
                         self._seed_provider.harvest,
                         validator_hotkeys,
-                        min_round,
+                        min_block,
                         committed,
                     )
                     if seed_result is not None:
@@ -787,15 +798,15 @@ class Validator:
                 return
 
             max_age = self._randomness_config.cycle_window_hours * 3600
-            min_round = await asyncio.to_thread(
-                self._seed_provider.get_min_reveal_round, max_age
+            min_block = await asyncio.to_thread(
+                self._seed_provider.get_min_reveal_block, max_age
             )
             committed = self._load_committed_snapshot()
 
-            if min_round is None or committed is None:
+            if min_block is None or committed is None:
                 logger.info(
                     "Re-harvest skipped: missing integrity checks "
-                    f"(min_round={min_round is not None}, "
+                    f"(min_block={min_block is not None}, "
                     f"committed={committed is not None})"
                 )
                 return
@@ -803,7 +814,7 @@ class Validator:
             seed_result = await asyncio.to_thread(
                 self._seed_provider.harvest,
                 validator_hotkeys,
-                min_round,
+                min_block,
                 committed,
             )
             if seed_result is None:

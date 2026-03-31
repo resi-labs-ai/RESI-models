@@ -69,7 +69,7 @@ class TestRandomnessObservation:
             wallet=bt.wallet(),  # dummy — harvest doesn't sign
             netuid=netuid,
         )
-        result = provider.harvest(validator_hotkeys, min_reveal_round=0, committed_hotkeys=validator_hotkeys)
+        result = provider.harvest(validator_hotkeys, min_reveal_block=0, committed_hotkeys=validator_hotkeys)
 
         if result is None:
             pytest.skip("No validator reveals on chain — nothing to harvest")
@@ -87,8 +87,8 @@ class TestRandomnessObservation:
             wallet=bt.wallet(),
             netuid=netuid,
         )
-        r1 = provider.harvest(validator_hotkeys, min_reveal_round=0, committed_hotkeys=validator_hotkeys)
-        r2 = provider.harvest(validator_hotkeys, min_reveal_round=0, committed_hotkeys=validator_hotkeys)
+        r1 = provider.harvest(validator_hotkeys, min_reveal_block=0, committed_hotkeys=validator_hotkeys)
+        r2 = provider.harvest(validator_hotkeys, min_reveal_block=0, committed_hotkeys=validator_hotkeys)
 
         if r1 is None:
             pytest.skip("No validator reveals on chain")
@@ -129,7 +129,7 @@ class TestRandomnessObservation:
         # Our hotkey should now appear in reveals
         our_hotkey = wallet.hotkey.ss58_address
         all_hotkeys = validator_hotkeys | {our_hotkey}
-        result = provider.harvest(all_hotkeys, min_reveal_round=0, committed_hotkeys=all_hotkeys)
+        result = provider.harvest(all_hotkeys, min_reveal_block=0, committed_hotkeys=all_hotkeys)
 
         assert result is not None, "Harvest returned None after commitment"
         assert our_hotkey in result.validator_hotkeys

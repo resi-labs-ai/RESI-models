@@ -123,7 +123,7 @@ class TestDecentralizedSeedProviderHarvest:
             subtensor=subtensor, wallet=MagicMock(), netuid=46,
         )
         validators = {"validator_a", "validator_b"}
-        result = provider.harvest(validators, min_reveal_round=0, committed_hotkeys=validators)
+        result = provider.harvest(validators, min_reveal_block=0, committed_hotkeys=validators)
 
         assert result is not None
         assert result.num_reveals == 2
@@ -139,7 +139,7 @@ class TestDecentralizedSeedProviderHarvest:
         provider = DecentralizedSeedProvider(
             subtensor=subtensor, wallet=MagicMock(), netuid=46,
         )
-        assert provider.harvest({"validator_x"}, min_reveal_round=0, committed_hotkeys={"validator_x"}) is None
+        assert provider.harvest({"validator_x"}, min_reveal_block=0, committed_hotkeys={"validator_x"}) is None
 
     def test_harvest_empty_reveals_returns_none(self) -> None:
         """Empty reveals dict returns None."""
@@ -149,7 +149,7 @@ class TestDecentralizedSeedProviderHarvest:
         provider = DecentralizedSeedProvider(
             subtensor=subtensor, wallet=MagicMock(), netuid=46,
         )
-        assert provider.harvest({"validator_a"}, min_reveal_round=0, committed_hotkeys={"validator_a"}) is None
+        assert provider.harvest({"validator_a"}, min_reveal_block=0, committed_hotkeys={"validator_a"}) is None
 
     def test_harvest_exception_returns_none(self) -> None:
         """Exception during fetch returns None (after retries exhausted)."""
@@ -159,7 +159,7 @@ class TestDecentralizedSeedProviderHarvest:
         provider._fetch_revealed_commitments = MagicMock(
             side_effect=RuntimeError("fail")
         )
-        assert provider.harvest({"validator_a"}, min_reveal_round=0, committed_hotkeys={"validator_a"}) is None
+        assert provider.harvest({"validator_a"}, min_reveal_block=0, committed_hotkeys={"validator_a"}) is None
 
     def test_harvest_uses_latest_reveal(self) -> None:
         """When a validator has multiple reveals, the latest (last) is used."""
@@ -173,7 +173,7 @@ class TestDecentralizedSeedProviderHarvest:
         provider = DecentralizedSeedProvider(
             subtensor=subtensor, wallet=MagicMock(), netuid=46,
         )
-        result = provider.harvest(validators, min_reveal_round=0, committed_hotkeys=validators)
+        result = provider.harvest(validators, min_reveal_block=0, committed_hotkeys=validators)
 
         assert result is not None
         assert "val_a" in result.validator_hotkeys
@@ -190,8 +190,8 @@ class TestDecentralizedSeedProviderHarvest:
         provider = DecentralizedSeedProvider(
             subtensor=subtensor, wallet=MagicMock(), netuid=46,
         )
-        r1 = provider.harvest(validators, min_reveal_round=0, committed_hotkeys=validators)
-        r2 = provider.harvest(validators, min_reveal_round=0, committed_hotkeys=validators)
+        r1 = provider.harvest(validators, min_reveal_block=0, committed_hotkeys=validators)
+        r2 = provider.harvest(validators, min_reveal_block=0, committed_hotkeys=validators)
 
         assert r1.seed == r2.seed
 
@@ -208,7 +208,7 @@ class TestDecentralizedSeedProviderHarvest:
         provider = DecentralizedSeedProvider(
             subtensor=subtensor, wallet=MagicMock(), netuid=46, config=config,
         )
-        result = provider.harvest(validators, min_reveal_round=0, committed_hotkeys=validators)
+        result = provider.harvest(validators, min_reveal_block=0, committed_hotkeys=validators)
 
         assert result is not None
         assert 0 <= result.seed < 1000

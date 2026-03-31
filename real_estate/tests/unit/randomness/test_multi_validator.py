@@ -54,7 +54,7 @@ class TestMultiValidatorConsensus:
         ]
 
         results = [
-            p.harvest(VALIDATOR_HOTKEYS_3, min_reveal_round=0, committed_hotkeys=VALIDATOR_HOTKEYS_3)
+            p.harvest(VALIDATOR_HOTKEYS_3, min_reveal_block=0, committed_hotkeys=VALIDATOR_HOTKEYS_3)
             for p in providers
         ]
 
@@ -79,7 +79,7 @@ class TestMultiValidatorConsensus:
         ]
 
         results = [
-            p.harvest(VALIDATOR_HOTKEYS_3, min_reveal_round=0, committed_hotkeys=committed)
+            p.harvest(VALIDATOR_HOTKEYS_3, min_reveal_block=0, committed_hotkeys=committed)
             for p in providers
         ]
 
@@ -99,7 +99,7 @@ class TestMultiValidatorConsensus:
         ]
 
         results = [
-            p.harvest(VALIDATOR_HOTKEYS_3, min_reveal_round=0, committed_hotkeys=VALIDATOR_HOTKEYS_3)
+            p.harvest(VALIDATOR_HOTKEYS_3, min_reveal_block=0, committed_hotkeys=VALIDATOR_HOTKEYS_3)
             for p in providers
         ]
         assert all(r is None for r in results)
@@ -111,7 +111,7 @@ class TestMultiValidatorConsensus:
         ]
 
         for p in providers:
-            assert p.harvest(VALIDATOR_HOTKEYS_3, min_reveal_round=0, committed_hotkeys=VALIDATOR_HOTKEYS_3) is None
+            assert p.harvest(VALIDATOR_HOTKEYS_3, min_reveal_block=0, committed_hotkeys=VALIDATOR_HOTKEYS_3) is None
 
     def test_late_joiner_gets_same_seed(self) -> None:
         """Validator that didn't commit can still harvest others' reveals
@@ -125,8 +125,8 @@ class TestMultiValidatorConsensus:
         provider_a = _make_provider(chain_state, hotkey="val_a")
         provider_c = _make_provider(chain_state, hotkey="val_c")  # different validator
 
-        result_a = provider_a.harvest(VALIDATOR_HOTKEYS_3, min_reveal_round=0, committed_hotkeys=committed)
-        result_c = provider_c.harvest(VALIDATOR_HOTKEYS_3, min_reveal_round=0, committed_hotkeys=committed)
+        result_a = provider_a.harvest(VALIDATOR_HOTKEYS_3, min_reveal_block=0, committed_hotkeys=committed)
+        result_c = provider_c.harvest(VALIDATOR_HOTKEYS_3, min_reveal_block=0, committed_hotkeys=committed)
 
         assert result_a is not None
         assert result_c is not None
@@ -149,8 +149,8 @@ class TestMultiValidatorConsensus:
         p_with = _make_provider(chain_with_miner)
         p_without = _make_provider(chain_without_miner)
 
-        r_with = p_with.harvest(validator_set, min_reveal_round=0, committed_hotkeys=validator_set)
-        r_without = p_without.harvest(validator_set, min_reveal_round=0, committed_hotkeys=validator_set)
+        r_with = p_with.harvest(validator_set, min_reveal_block=0, committed_hotkeys=validator_set)
+        r_without = p_without.harvest(validator_set, min_reveal_block=0, committed_hotkeys=validator_set)
 
         assert r_with.seed == r_without.seed
         assert r_with.num_reveals == 2
@@ -163,8 +163,8 @@ class TestMultiValidatorConsensus:
 
         small_set = {"val_a", "val_b"}
         large_set = {"val_a", "val_b", "val_c"}
-        r_small = provider_small.harvest(small_set, min_reveal_round=0, committed_hotkeys=small_set)
-        r_large = provider_large.harvest(large_set, min_reveal_round=0, committed_hotkeys=large_set)
+        r_small = provider_small.harvest(small_set, min_reveal_block=0, committed_hotkeys=small_set)
+        r_large = provider_large.harvest(large_set, min_reveal_block=0, committed_hotkeys=large_set)
 
         assert r_small.seed != r_large.seed
 
@@ -181,7 +181,7 @@ class TestMultiValidatorConsensus:
         ]
 
         results = [
-            p.harvest(validator_set, min_reveal_round=0, committed_hotkeys=validator_set)
+            p.harvest(validator_set, min_reveal_block=0, committed_hotkeys=validator_set)
             for p in providers
         ]
 
@@ -206,7 +206,7 @@ class TestMultiValidatorConsensus:
 
         providers = [make_with_config(hk) for hk in ("val_a", "val_b", "val_c")]
         results = [
-            p.harvest(VALIDATOR_HOTKEYS_3, min_reveal_round=0, committed_hotkeys=VALIDATOR_HOTKEYS_3)
+            p.harvest(VALIDATOR_HOTKEYS_3, min_reveal_block=0, committed_hotkeys=VALIDATOR_HOTKEYS_3)
             for p in providers
         ]
 
@@ -376,7 +376,7 @@ class TestReHarvestRecovery:
         validators = {"val_a", "val_b"}
         # Simulate a freshly created provider (as after restart)
         provider = _make_provider(chain_state, hotkey="val_a")
-        result = provider.harvest(validators, min_reveal_round=0, committed_hotkeys=validators)
+        result = provider.harvest(validators, min_reveal_block=0, committed_hotkeys=validators)
 
         assert result is not None
         assert result.num_reveals == 2
@@ -455,7 +455,7 @@ class TestGetEpochWaitSeconds:
 
 
 class TestRevealFreshness:
-    """Tests for min_reveal_round freshness filtering in harvest()."""
+    """Tests for min_reveal_block freshness filtering in harvest()."""
 
     def test_stale_reveals_filtered_out(self) -> None:
         """Reveals with round below threshold are skipped."""
@@ -467,7 +467,7 @@ class TestRevealFreshness:
         validators = {"val_a", "val_b", "val_c"}
         provider = _make_provider(chain_state)
 
-        result = provider.harvest(validators, min_reveal_round=200, committed_hotkeys=validators)
+        result = provider.harvest(validators, min_reveal_block=200, committed_hotkeys=validators)
 
         assert result is not None
         assert result.num_reveals == 2
@@ -484,10 +484,10 @@ class TestRevealFreshness:
         validators = {"val_a", "val_b"}
         provider = _make_provider(chain_state)
 
-        assert provider.harvest(validators, min_reveal_round=100, committed_hotkeys=validators) is None
+        assert provider.harvest(validators, min_reveal_block=100, committed_hotkeys=validators) is None
 
     def test_exact_threshold_accepted(self) -> None:
-        """Reveal round == min_reveal_round is NOT stale (only < is stale)."""
+        """Reveal block == min_reveal_block is NOT stale (only < is stale)."""
         chain_state = {
             "val_a": ((200, "aaa111"),),
             "val_b": ((300, "bbb222"),),
@@ -495,7 +495,7 @@ class TestRevealFreshness:
         provider = _make_provider(chain_state)
         validators = {"val_a", "val_b"}
 
-        result = provider.harvest(validators, min_reveal_round=200, committed_hotkeys=validators)
+        result = provider.harvest(validators, min_reveal_block=200, committed_hotkeys=validators)
 
         assert result is not None
         assert result.num_reveals == 2
@@ -515,7 +515,7 @@ class TestRevealFreshness:
         ]
 
         results = [
-            p.harvest(validator_set, min_reveal_round=200, committed_hotkeys=validator_set)
+            p.harvest(validator_set, min_reveal_block=200, committed_hotkeys=validator_set)
             for p in providers
         ]
 
@@ -535,51 +535,52 @@ class TestRevealFreshness:
         validators = {"val_a", "val_b"}
         provider = _make_provider(chain_state)
 
-        result = provider.harvest(validators, min_reveal_round=200, committed_hotkeys=validators)
+        result = provider.harvest(validators, min_reveal_block=200, committed_hotkeys=validators)
 
         assert result is not None
         assert "val_a" in result.validator_hotkeys
 
 
-class TestGetMinRevealRound:
-    """Tests for get_min_reveal_round() drand round threshold computation."""
+class TestGetMinRevealBlock:
+    """Tests for get_min_reveal_block() block-based threshold computation."""
 
     def test_basic_computation(self) -> None:
-        """Computes threshold from current drand round and max age."""
+        """Computes threshold from current block and max age."""
         subtensor = MagicMock()
-        subtensor.last_drand_round.return_value = 10000
+        subtensor.block = 10000
         wallet = MagicMock()
         provider = DecentralizedSeedProvider(
             subtensor=subtensor, wallet=wallet, netuid=46,
         )
 
-        # 4320 seconds / 3s per round = 1440 rounds back
-        result = provider.get_min_reveal_round(max_age_seconds=4320)
+        # 4320 seconds / 12s per block = 360 blocks back
+        result = provider.get_min_reveal_block(max_age_seconds=4320)
 
-        assert result == 10000 - 1440
+        assert result == 10000 - 360
 
     def test_returns_none_on_chain_failure(self) -> None:
-        """Returns None when last_drand_round raises (after retries exhausted)."""
-        provider = DecentralizedSeedProvider(
-            subtensor=MagicMock(), wallet=MagicMock(), netuid=46,
+        """Returns None when block query raises."""
+        subtensor = MagicMock()
+        type(subtensor).block = property(
+            lambda self: (_ for _ in ()).throw(Exception("chain down"))
         )
-        provider.last_drand_round = MagicMock(
-            side_effect=Exception("chain down")
+        provider = DecentralizedSeedProvider(
+            subtensor=subtensor, wallet=MagicMock(), netuid=46,
         )
 
-        assert provider.get_min_reveal_round(max_age_seconds=4320) is None
+        assert provider.get_min_reveal_block(max_age_seconds=4320) is None
 
     def test_clamps_to_zero(self) -> None:
-        """Returns 0 when max_age exceeds current drand round."""
+        """Returns 0 when max_age exceeds current block."""
         subtensor = MagicMock()
-        subtensor.last_drand_round.return_value = 100
+        subtensor.block = 100
         wallet = MagicMock()
         provider = DecentralizedSeedProvider(
             subtensor=subtensor, wallet=wallet, netuid=46,
         )
 
-        # 100000 seconds / 3s = 33333 rounds back, but current is only 100
-        result = provider.get_min_reveal_round(max_age_seconds=100000)
+        # 100000 seconds / 12s = 8333 blocks back, but current is only 100
+        result = provider.get_min_reveal_block(max_age_seconds=100000)
 
         assert result == 0
 
@@ -598,7 +599,7 @@ class TestCommittedHotkeysFilter:
 
         result = provider.harvest(
             {"val_a", "val_b", "attacker"},
-            min_reveal_round=0,
+            min_reveal_block=0,
             committed_hotkeys={"val_a", "val_b"},  # attacker not in snapshot
         )
 
@@ -621,7 +622,7 @@ class TestCommittedHotkeysFilter:
 
         result = provider.harvest(
             {"val_a", "val_b"},
-            min_reveal_round=0,
+            min_reveal_block=0,
             committed_hotkeys={"val_a", "val_b"},
         )
 
@@ -638,7 +639,7 @@ class TestCommittedHotkeysFilter:
 
         result = provider.harvest(
             {"attacker_a", "attacker_b"},
-            min_reveal_round=0,
+            min_reveal_block=0,
             committed_hotkeys=set(),  # nobody committed on time
         )
 
@@ -656,7 +657,7 @@ class TestCommittedHotkeysFilter:
 
         result = provider.harvest(
             {"val_a", "val_b", "late_c", "val_d"},
-            min_reveal_round=200,
+            min_reveal_block=200,
             committed_hotkeys={"val_a", "val_b", "val_d"},
         )
 
@@ -680,7 +681,7 @@ class TestCommittedHotkeysFilter:
         ]
 
         results = [
-            p.harvest(validator_set, min_reveal_round=0, committed_hotkeys=committed)
+            p.harvest(validator_set, min_reveal_block=0, committed_hotkeys=committed)
             for p in providers
         ]
 
