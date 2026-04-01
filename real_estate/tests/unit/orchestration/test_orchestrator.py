@@ -1,7 +1,7 @@
 """Unit tests for ValidationOrchestrator."""
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
@@ -756,4 +756,107 @@ class TestPerturbedEvalFiltering:
         perturbed_models = perturbed_call.kwargs["models"]
         assert len(perturbed_models) == 2
 
+
+class TestSlicePerturbed:
+    """Tests for _slice_perturbed helper."""
+
+    def test_slices_correct_columns(self) -> None:
+        """Slicing selects correct columns by feature name."""
+        from real_estate.data.config_encoder import FeatureLayout
+
+        superset_layout = FeatureLayout(
+            feature_names=("a", "b", "c", "d"),
+            numeric_indices=(0, 1, 2, 3),
+            boolean_indices=(),
+            lat_index=-1,
+            lon_index=-1,
+        )
+        superset = np.array([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=np.float32)
+
+        model_layout = FeatureLayout(
+            feature_names=("b", "d"),
+            numeric_indices=(0, 1),
+            boolean_indices=(),
+            lat_index=-1,
+            lon_index=-1,
+        )
+
+        result = ValidationOrchestrator._slice_perturbed(
+            superset, superset_layout, {"m1": model_layout}, {"m1": Path("/m1.onnx")},
+        )
+
+        np.testing.assert_array_equal(result["m1"], np.array([[2, 4], [6, 8]]))
+
+    def test_full_feature_set_returns_all_columns(self) -> None:
+        """Model using all features gets the full array back."""
+        from real_estate.data.config_encoder import FeatureLayout
+
+        names = ("a", "b", "c")
+        layout = FeatureLayout(
+            feature_names=names,
+            numeric_indices=(0, 1, 2),
+            boolean_indices=(),
+            lat_index=-1,
+            lon_index=-1,
+        )
+        superset = np.array([[1, 2, 3]], dtype=np.float32)
+
+        result = ValidationOrchestrator._slice_perturbed(
+            superset, layout, {"m1": layout}, {"m1": Path("/m1.onnx")},
+        )
+
+        np.testing.assert_array_equal(result["m1"], superset)
+
+
+class TestPerturbOnceStrategy:
+    """Tests verifying perturbation is called once on superset, not per-model."""
+
+    @pytest.mark.asyncio
+    @patch("real_estate.orchestration.orchestrator.perturb_spatial")
+    @patch("real_estate.orchestration.orchestrator.perturb_features")
+    async def test_perturbation_called_once_on_superset(
+        self,
+        mock_perturb_features: MagicMock,
+        mock_perturb_spatial: MagicMock,
+        orchestrator: ValidationOrchestrator,
+        mock_evaluator: AsyncMock,
+        mock_detector: MagicMock,
+        mock_selector: MagicMock,
+        mock_distributor: MagicMock,
+    ) -> None:
+        """perturb_features and perturb_spatial are each called once (on superset)."""
+        dataset = create_dataset()
+        model_paths = {"A": Path("/a.onnx"), "B": Path("/b.onnx"), "C": Path("/c.onnx")}
+        chain_metadata = {
+            "A": create_chain_metadata("A", 100),
+            "B": create_chain_metadata("B", 200),
+            "C": create_chain_metadata("C", 300),
+        }
+
+        eval_batch = create_eval_batch([
+            create_eval_result("A", score=0.90),
+            create_eval_result("B", score=0.85),
+            create_eval_result("C", score=0.80),
+        ])
+
+        # Make perturbation mocks return valid arrays
+        # The superset has 79 features (default config)
+        mock_perturb_features.side_effect = lambda f, c, l: f.copy()
+        mock_perturb_spatial.side_effect = lambda f, c, l: f.copy()
+
+        _setup_default_mocks(
+            mock_evaluator, mock_detector, mock_selector, mock_distributor,
+            eval_batch=eval_batch,
+            winner=create_winner_result("A", 0.90, 100),
+        )
+
+        await orchestrator.run(dataset, model_paths, chain_metadata)
+
+        # Each perturbation function called exactly once (on superset), not per-model
+        assert mock_perturb_features.call_count == 1
+        assert mock_perturb_spatial.call_count == 1
+
+        # Verify it was called with the superset (79 features), not a per-model subset
+        superset_features = mock_perturb_features.call_args[0][0]
+        assert superset_features.shape[1] == 79
 

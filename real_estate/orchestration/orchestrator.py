@@ -168,6 +168,36 @@ class ValidationOrchestrator:
         )
 
     @staticmethod
+    def _slice_perturbed(
+        perturbed_superset: np.ndarray,
+        superset_layout: FeatureLayout,
+        per_model_layouts: dict[str, FeatureLayout],
+        hotkeys: dict[str, Path],
+    ) -> dict[str, np.ndarray]:
+        """Slice per-model columns from a perturbed superset array.
+
+        Args:
+            perturbed_superset: Full (N, 79) perturbed feature matrix.
+            superset_layout: Layout of the superset (all features).
+            per_model_layouts: Per-model layouts mapping feature names to indices.
+            hotkeys: Model paths dict (keys used to iterate models).
+
+        Returns:
+            Dict of hotkey -> sliced perturbed array for that model's features.
+        """
+        name_to_idx = {
+            name: i for i, name in enumerate(superset_layout.feature_names)
+        }
+        result: dict[str, np.ndarray] = {}
+        for hk in hotkeys:
+            col_indices = [
+                name_to_idx[name]
+                for name in per_model_layouts[hk].feature_names
+            ]
+            result[hk] = perturbed_superset[:, col_indices]
+        return result
+
+    @staticmethod
     def _encode_models(
         model_paths: dict[str, Path],
         feature_configs: dict[str, FeatureConfig | None],
@@ -298,7 +328,7 @@ class ValidationOrchestrator:
                 f"{len(copiers)} copiers"
             )
 
-        # 4. Detect memorizers via perturbation
+        # 4. Generalization detection (perturbation-based)
         # Only run perturbed eval on models that succeeded on original features
         successful_hotkeys = {r.hotkey for r in eval_batch.successful_results}
         perturbed_model_paths = {
@@ -310,15 +340,28 @@ class ValidationOrchestrator:
                 f"Skipping {skipped} failed models from perturbed evaluation"
             )
 
+        # Encode superset once, perturb once, then slice per-model columns
         logger.info("Running generalization detection (perturbed evaluation)...")
-        per_model_perturbed: dict[str, np.ndarray] = {
-            hk: perturb_features(
-                per_model_features[hk],
-                self._generalization_config,
-                per_model_layouts[hk],
-            )
-            for hk in perturbed_model_paths
-        }
+        default_config = create_default_feature_config()
+        superset_encoder = ConfigEncoder(default_config)
+        superset_features = superset_encoder.encode(dataset.properties)
+        superset_layout = superset_encoder.layout
+
+        perturbed_superset = perturb_features(
+            superset_features, self._generalization_config, superset_layout,
+        )
+        spatial_superset = perturb_spatial(
+            superset_features, self._generalization_config, superset_layout,
+        )
+
+        per_model_perturbed = self._slice_perturbed(
+            perturbed_superset, superset_layout, per_model_layouts,
+            perturbed_model_paths,
+        )
+        per_model_spatial = self._slice_perturbed(
+            spatial_superset, superset_layout, per_model_layouts,
+            perturbed_model_paths,
+        )
 
         perturbed_batch = await self._evaluator.evaluate_all(
             models=perturbed_model_paths,
@@ -328,14 +371,6 @@ class ValidationOrchestrator:
         )
 
         logger.info("Running spatial perturbation pass...")
-        per_model_spatial: dict[str, np.ndarray] = {
-            hk: perturb_spatial(
-                per_model_features[hk],
-                self._generalization_config,
-                per_model_layouts[hk],
-            )
-            for hk in perturbed_model_paths
-        }
         spatial_batch = await self._evaluator.evaluate_all(
             models=perturbed_model_paths,
             features=per_model_spatial,
