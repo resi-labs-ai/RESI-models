@@ -259,6 +259,13 @@ class WandbLogger:
         copiers = result.duplicate_result.copier_hotkeys
         memorizers = result.generalization_result.memorizer_hotkeys
 
+        # Index generalization test results by hotkey for ratio lookup
+        gen_by_hotkey: dict[str, Any] = {}
+        if result.generalization_result:
+            gen_by_hotkey = {
+                r.hotkey: r for r in result.generalization_result.test_results
+            }
+
         cheaters = copiers | memorizers
 
         for eval_result in result.eval_batch.results:
@@ -283,6 +290,21 @@ class WandbLogger:
                 is_winner=(eval_result.hotkey == result.winner.winner_hotkey),
                 is_copier=(eval_result.hotkey in copiers),
                 is_memorizer=(eval_result.hotkey in memorizers),
+                num_features=(
+                    result.per_model_num_features.get(eval_result.hotkey)
+                    if result.per_model_num_features
+                    else None
+                ),
+                global_ratio=(
+                    gen_by_hotkey[eval_result.hotkey].global_ratio
+                    if eval_result.hotkey in gen_by_hotkey
+                    else None
+                ),
+                spatial_ratio=(
+                    gen_by_hotkey[eval_result.hotkey].spatial_ratio
+                    if eval_result.hotkey in gen_by_hotkey
+                    else None
+                ),
                 error=eval_result.error_message if not eval_result.success else None,
             )
             miner_results.append(miner_log)
@@ -335,6 +357,9 @@ class WandbLogger:
             "is_winner",
             "is_copier",
             "is_memorizer",
+            "num_features",
+            "global_ratio",
+            "spatial_ratio",
             "model_hash",
             "hf_repo_id",
             "commit_block",
@@ -357,6 +382,9 @@ class WandbLogger:
                 miner.is_winner,
                 miner.is_copier,
                 miner.is_memorizer,
+                miner.num_features,
+                miner.global_ratio,
+                miner.spatial_ratio,
                 miner.model_hash,
                 miner.hf_repo_id,
                 miner.commit_block,

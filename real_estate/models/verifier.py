@@ -1,4 +1,4 @@
-"""Model verification (extrinsic records, hash, license)."""
+"""Model verification (extrinsic records, hash, license, feature config)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from ..data.config_encoder import FeatureConfig, parse_feature_config
 from .errors import (
     ExtrinsicVerificationError,
     HashMismatchError,
@@ -110,20 +111,17 @@ class ModelVerifier:
                     f"Failed to check license for {hf_repo_id}: {e}"
                 ) from e
 
-    async def find_onnx_file(self, hf_repo_id: str) -> tuple[str, int]:
-        """
-        Find the ONNX model file in a HuggingFace repository.
-
-        Scans the repository root for exactly one .onnx file.
+    async def _fetch_repo_tree(self, hf_repo_id: str) -> list[dict]:
+        """Fetch the file listing from a HuggingFace repository.
 
         Args:
             hf_repo_id: HuggingFace repository ID (user/repo)
 
         Returns:
-            Tuple of (filename, size in bytes)
+            List of file metadata dicts from the HF API.
 
         Raises:
-            ModelDownloadError: If no .onnx file found, multiple found, or API error
+            ModelDownloadError: If API call fails.
         """
         api_url = f"https://huggingface.co/api/models/{hf_repo_id}/tree/main"
 
@@ -135,39 +133,134 @@ class ModelVerifier:
             try:
                 response = await client.get(api_url)
                 response.raise_for_status()
-                files = response.json()
-
-                # Find .onnx files in root only (not subdirectories)
-                onnx_files = [
-                    f
-                    for f in files
-                    if f.get("path", "").endswith(".onnx")
-                    and "/" not in f.get("path", "")
-                ]
-
-                if not onnx_files:
-                    raise ModelDownloadError(
-                        f"No .onnx file found in {hf_repo_id} repository root"
-                    )
-
-                if len(onnx_files) > 1:
-                    names = [f.get("path") for f in onnx_files]
-                    raise ModelDownloadError(
-                        f"Multiple .onnx files found in {hf_repo_id}: {names}. "
-                        f"Repository must contain exactly one .onnx file in root."
-                    )
-
-                onnx_file = onnx_files[0]
-                filename = onnx_file.get("path", "")
-                size = onnx_file.get("size", 0)
-
-                logger.debug(f"Found {filename}: {size} bytes")
-                return filename, size
-
+                return response.json()
             except httpx.HTTPError as e:
                 raise ModelDownloadError(
                     f"Failed to fetch file list from {hf_repo_id}: {e}"
                 ) from e
+
+    async def find_repo_files(
+        self, hf_repo_id: str, feature_config_max_size: int = 50 * 1024
+    ) -> tuple[str, int, tuple[str, int] | None]:
+        """
+        Find ONNX model and optional feature_config.json in one API call.
+
+        Args:
+            hf_repo_id: HuggingFace repository ID (user/repo)
+            feature_config_max_size: Maximum allowed size for feature_config.json.
+
+        Returns:
+            Tuple of (onnx_filename, onnx_size, feature_config_info_or_none).
+            feature_config_info is (filename, size) or None if not found/too large.
+
+        Raises:
+            ModelDownloadError: If no .onnx file found or multiple found.
+        """
+        files = await self._fetch_repo_tree(hf_repo_id)
+
+        # Find .onnx files in root only (not subdirectories)
+        onnx_files = [
+            f
+            for f in files
+            if f.get("path", "").endswith(".onnx")
+            and "/" not in f.get("path", "")
+        ]
+
+        if not onnx_files:
+            raise ModelDownloadError(
+                f"No .onnx file found in {hf_repo_id} repository root"
+            )
+
+        if len(onnx_files) > 1:
+            names = [f.get("path") for f in onnx_files]
+            raise ModelDownloadError(
+                f"Multiple .onnx files found in {hf_repo_id}: {names}. "
+                f"Repository must contain exactly one .onnx file in root."
+            )
+
+        onnx_file = onnx_files[0]
+        onnx_filename = onnx_file.get("path", "")
+        onnx_size = onnx_file.get("size", 0)
+        logger.debug(f"Found {onnx_filename}: {onnx_size} bytes")
+
+        # Find feature_config.json (optional)
+        feature_config_info = None
+        config_files = [
+            f for f in files if f.get("path") == "feature_config.json"
+        ]
+        if config_files:
+            config_size = config_files[0].get("size", 0)
+            if config_size <= feature_config_max_size:
+                feature_config_info = ("feature_config.json", config_size)
+                logger.debug(f"Found feature_config.json: {config_size} bytes")
+            else:
+                logger.warning(
+                    f"feature_config.json too large: {config_size} bytes "
+                    f"(max {feature_config_max_size} bytes), ignoring"
+                )
+
+        return onnx_filename, onnx_size, feature_config_info
+
+    async def find_onnx_file(self, hf_repo_id: str) -> tuple[str, int]:
+        """
+        Find the ONNX model file in a HuggingFace repository.
+
+        Args:
+            hf_repo_id: HuggingFace repository ID (user/repo)
+
+        Returns:
+            Tuple of (filename, size in bytes)
+
+        Raises:
+            ModelDownloadError: If no .onnx file found, multiple found, or API error
+        """
+        onnx_filename, onnx_size, _ = await self.find_repo_files(hf_repo_id)
+        return onnx_filename, onnx_size
+
+    async def find_feature_config(
+        self, hf_repo_id: str, max_size_bytes: int = 50 * 1024
+    ) -> tuple[str, int]:
+        """
+        Find feature_config.json in a HuggingFace repository.
+
+        Args:
+            hf_repo_id: HuggingFace repository ID (user/repo)
+            max_size_bytes: Maximum allowed size (default 50KB)
+
+        Returns:
+            Tuple of (filename, size in bytes)
+
+        Raises:
+            ModelDownloadError: If not found, too large, or API error
+        """
+        _, _, config_info = await self.find_repo_files(
+            hf_repo_id, feature_config_max_size=max_size_bytes
+        )
+        if config_info is None:
+            raise ModelDownloadError(
+                f"feature_config.json not found or too large in {hf_repo_id}"
+            )
+        return config_info
+
+    def validate_feature_config(self, config_data: dict) -> FeatureConfig:
+        """
+        Validate raw JSON dict from feature_config.json.
+
+        Args:
+            config_data: Parsed JSON dict.
+
+        Returns:
+            Validated FeatureConfig.
+
+        Raises:
+            ModelDownloadError: On any validation failure.
+        """
+        try:
+            return parse_feature_config(config_data)
+        except Exception as e:
+            raise ModelDownloadError(
+                f"Invalid feature_config.json: {e}"
+            ) from e
 
     def check_model_size(self, size: int, max_size_bytes: int, filename: str) -> None:
         """

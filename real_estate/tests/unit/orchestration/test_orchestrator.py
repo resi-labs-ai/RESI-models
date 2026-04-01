@@ -24,13 +24,6 @@ from .conftest import (
 
 
 @pytest.fixture
-def mock_encoder() -> MagicMock:
-    encoder = MagicMock()
-    encoder.encode.return_value = np.array([[1.0, 2.0, 3.0]] * 10)
-    return encoder
-
-
-@pytest.fixture
 def mock_evaluator() -> AsyncMock:
     return AsyncMock()
 
@@ -66,12 +59,11 @@ def mock_gen_detector() -> MagicMock:
 
 @pytest.fixture
 def gen_config() -> GeneralizationConfig:
-    return GeneralizationConfig(num_numeric_features=3, lat_index=0, lon_index=1)
+    return GeneralizationConfig()
 
 
 @pytest.fixture
 def orchestrator(
-    mock_encoder: MagicMock,
     mock_evaluator: AsyncMock,
     mock_detector: MagicMock,
     mock_selector: MagicMock,
@@ -81,7 +73,6 @@ def orchestrator(
     gen_config: GeneralizationConfig,
 ) -> ValidationOrchestrator:
     return ValidationOrchestrator(
-        encoder=mock_encoder,
         evaluator=mock_evaluator,
         detector=mock_detector,
         selector=mock_selector,
@@ -255,7 +246,6 @@ class TestValidationOrchestratorRun:
     async def test_pipeline_calls_all_dependencies(
         self,
         orchestrator: ValidationOrchestrator,
-        mock_encoder: MagicMock,
         mock_evaluator: AsyncMock,
         mock_inspector: MagicMock,
         mock_detector: MagicMock,
@@ -275,7 +265,6 @@ class TestValidationOrchestratorRun:
         await orchestrator.run(dataset, model_paths, chain_metadata)
 
         mock_inspector.inspect_all.assert_called_once()
-        mock_encoder.encode.assert_called_once()
         assert mock_evaluator.evaluate_all.call_count == 3  # original + perturbed + spatial
         mock_detector.detect.assert_called_once()
         mock_gen_detector.detect.assert_called_once()
@@ -424,19 +413,15 @@ class TestValidationOrchestratorRun:
     async def test_encoded_features_passed_to_evaluator(
         self,
         orchestrator: ValidationOrchestrator,
-        mock_encoder: MagicMock,
         mock_evaluator: AsyncMock,
         mock_detector: MagicMock,
         mock_selector: MagicMock,
         mock_distributor: MagicMock,
     ) -> None:
-        """Encoded features are passed to first evaluator call."""
+        """Encoded features are passed to first evaluator call as per-model dict."""
         dataset = create_dataset()
         model_paths = {"A": Path("/a.onnx")}
         chain_metadata = {"A": create_chain_metadata("A")}
-
-        expected_features = np.array([[1.0, 2.0, 3.0]] * 10)
-        mock_encoder.encode.return_value = expected_features
 
         _setup_default_mocks(
             mock_evaluator, mock_detector, mock_selector, mock_distributor,
@@ -445,7 +430,11 @@ class TestValidationOrchestratorRun:
         await orchestrator.run(dataset, model_paths, chain_metadata)
 
         first_call_kwargs = mock_evaluator.evaluate_all.call_args_list[0].kwargs
-        np.testing.assert_array_equal(first_call_kwargs["features"], expected_features)
+        features = first_call_kwargs["features"]
+        # Features should be a per-model dict (hotkey -> encoded array)
+        assert isinstance(features, dict)
+        assert "A" in features
+        assert isinstance(features["A"], np.ndarray)
 
 
 class TestInspectionRejection:

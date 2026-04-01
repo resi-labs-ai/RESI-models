@@ -28,6 +28,7 @@ from real_estate.chain.models import Metagraph
 
 if TYPE_CHECKING:
     from real_estate.chain import ChainClient
+    from real_estate.data import FeatureConfig
     from real_estate.orchestration.models import ValidationResult
 
 from real_estate.data import (
@@ -479,6 +480,37 @@ class Validator:
         logger.info(f"Validation data updated: {len(validation_data)} properties")
         self._evaluation_event.set()
 
+    def _load_feature_configs(
+        self, hotkeys: set[str]
+    ) -> dict[str, FeatureConfig | None]:
+        """Load feature configs from cache metadata for each model.
+
+        Args:
+            hotkeys: Set of hotkeys to load configs for.
+
+        Returns:
+            Dict mapping hotkey -> FeatureConfig (None if not available).
+        """
+        from real_estate.data import parse_feature_config
+
+        configs: dict[str, FeatureConfig | None] = {}
+        for hotkey in hotkeys:
+            cached = self._model_scheduler.get_cached_model(hotkey)
+            if cached and cached.metadata.feature_config is not None:
+                try:
+                    configs[hotkey] = parse_feature_config(
+                        cached.metadata.feature_config
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to parse cached feature_config for {hotkey}: {e}, "
+                        "using default"
+                    )
+                    configs[hotkey] = None
+            else:
+                configs[hotkey] = None
+        return configs
+
     async def _run_evaluation(self, dataset: ValidationDataset) -> None:
         """
         Run evaluation pipeline on the given dataset.
@@ -504,13 +536,18 @@ class Validator:
             if hotkey in model_paths
         }
 
+        # Load feature configs from cache metadata for per-model encoding
+        feature_configs = self._load_feature_configs(set(model_paths.keys()))
+
         logger.info(f"Running evaluation with {len(model_paths)} models")
 
         # Start WandB run to measure evaluation time
         self._wandb_logger.start_run()
 
         try:
-            result = await self._orchestrator.run(dataset, model_paths, chain_metadata)
+            result = await self._orchestrator.run(
+                dataset, model_paths, chain_metadata, feature_configs
+            )
 
             if self.config.ath_enabled:
                 pre_eval_ath = await self.validation_client.fetch_ath()

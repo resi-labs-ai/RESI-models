@@ -49,7 +49,7 @@ def get_feature_order() -> list[str]:
 
 
 def get_expected_num_features() -> int:
-    """Get expected number of input features (currently 79)."""
+    """Get the default number of input features (full feature set from YAML config)."""
     return len(get_feature_order())
 
 
@@ -73,7 +73,7 @@ def get_test_data() -> tuple[np.ndarray, np.ndarray]:
 
     Returns:
         Tuple of (features, ground_truth) where:
-        - features: (N, 73) float32 array
+        - features: (N, num_features) float32 array
         - ground_truth: (N,) float32 array of actual prices
     """
     samples = load_test_samples()

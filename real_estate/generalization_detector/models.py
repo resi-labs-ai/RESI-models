@@ -19,20 +19,11 @@ class GeneralizationConfig:
     seed: int | None = None
     """Random seed for perturbation. None = random each call."""
 
-    num_numeric_features: int = 52
-    """Number of numeric features (for global perturbation range)."""
-
     spatial_noise_std: float = 0.005
     """Gaussian noise std for spatial perturbation (~500m)."""
 
     spatial_threshold: float = 0.90
     """Minimum spatial robustness ratio to pass."""
-
-    lat_index: int = 4
-    """Latitude column index in encoded features."""
-
-    lon_index: int = 5
-    """Longitude column index in encoded features."""
 
 
 @dataclass(frozen=True)

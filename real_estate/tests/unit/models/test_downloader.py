@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import contextlib
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -18,6 +20,25 @@ from real_estate.models import (
     ModelDownloader,
     ModelDownloadError,
 )
+
+
+def _mock_snapshot_download(files: dict[str, bytes | str]) -> Any:
+    """Create a mock for snapshot_download that writes files to local_dir."""
+
+    def _mock(*args: Any, **kwargs: Any) -> str:
+        local_dir = kwargs.get("local_dir")
+        if local_dir is None and len(args) > 1:
+            local_dir = args[1]
+        for name, content in files.items():
+            p = Path(local_dir) / name
+            p.parent.mkdir(parents=True, exist_ok=True)
+            if isinstance(content, bytes):
+                p.write_bytes(content)
+            else:
+                p.write_text(content)
+        return str(local_dir)
+
+    return _mock
 
 
 class TestCircuitBreaker:
@@ -371,8 +392,8 @@ class TestDiskSpaceCheck:
     ) -> None:
         """Raises InsufficientDiskSpaceError when disk is full."""
         mock_cache.get_free_disk_space.return_value = 50_000_000  # 50MB free
-        mock_verifier.find_onnx_file = AsyncMock(
-            return_value=("model.onnx", 100_000_000)
+        mock_verifier.find_repo_files = AsyncMock(
+            return_value=("model.onnx", 100_000_000, None)
         )
 
         downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
@@ -390,8 +411,8 @@ class TestDiskSpaceCheck:
     ) -> None:
         """Disk space check includes 100MB safety buffer."""
         # Model is 50MB, but with 100MB buffer we need 150MB
-        mock_verifier.find_onnx_file = AsyncMock(
-            return_value=("model.onnx", 50_000_000)
+        mock_verifier.find_repo_files = AsyncMock(
+            return_value=("model.onnx", 50_000_000, None)
         )
         mock_cache.get_free_disk_space.return_value = (
             120_000_000  # 120MB free (< 150MB)
@@ -409,24 +430,19 @@ class TestDiskSpaceCheck:
         mock_cache: MagicMock,
         mock_verifier: MagicMock,
         sample_commitment: MagicMock,
-        tmp_path: Path,
     ) -> None:
         """Proceeds with download when disk space is sufficient."""
-        mock_verifier.find_onnx_file = AsyncMock(
-            return_value=("model.onnx", 50_000_000)
+        mock_verifier.find_repo_files = AsyncMock(
+            return_value=("model.onnx", 50_000_000, None)
         )
         mock_cache.get_free_disk_space.return_value = 500_000_000  # 500MB free
-
-        # Create mock downloaded file
-        downloaded_file = tmp_path / "model.onnx"
-        downloaded_file.write_bytes(b"model content")
 
         downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
 
         with (
             patch(
-                "real_estate.models.downloader.hf_hub_download",
-                return_value=str(downloaded_file),
+                "real_estate.models.downloader.snapshot_download",
+                side_effect=_mock_snapshot_download({"model.onnx": b"model content"}),
             ),
             contextlib.suppress(Exception),
         ):
@@ -479,10 +495,7 @@ class TestDownloadModel:
     ) -> None:
         """Calls all verification steps in correct order."""
         mock_cache.is_valid.return_value = False
-        mock_verifier.find_onnx_file = AsyncMock(return_value=("model.onnx", 1000))
-
-        downloaded_file = tmp_path / "model.onnx"
-        downloaded_file.write_bytes(b"model content")
+        mock_verifier.find_repo_files = AsyncMock(return_value=("model.onnx", 1000, None))
 
         cached_path = tmp_path / "cached" / "model.onnx"
         mock_cache.put.return_value = cached_path
@@ -490,8 +503,8 @@ class TestDownloadModel:
         downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
 
         with patch(
-            "real_estate.models.downloader.hf_hub_download",
-            return_value=str(downloaded_file),
+            "real_estate.models.downloader.snapshot_download",
+            side_effect=_mock_snapshot_download({"model.onnx": b"model content"}),
         ):
             result = await downloader.download_model(sample_commitment)
 
@@ -499,7 +512,7 @@ class TestDownloadModel:
         mock_verifier.check_license.assert_called_once_with(
             sample_commitment.hf_repo_id
         )
-        mock_verifier.find_onnx_file.assert_called_once()
+        mock_verifier.find_repo_files.assert_called_once()
         mock_verifier.verify_extrinsic_record.assert_called_once()
         mock_verifier.verify_hash.assert_called_once()
         mock_cache.put.assert_called_once()
@@ -517,11 +530,8 @@ class TestDownloadModel:
     ) -> None:
         """Passes commit_block from Pylon to cache.put() for new downloads."""
         mock_cache.is_valid.return_value = False
-        mock_verifier.find_onnx_file = AsyncMock(return_value=("model.onnx", 1000))
+        mock_verifier.find_repo_files = AsyncMock(return_value=("model.onnx", 1000, None))
         mock_verifier.verify_extrinsic_record = AsyncMock(return_value=7500)
-
-        downloaded_file = tmp_path / "model.onnx"
-        downloaded_file.write_bytes(b"model content")
 
         cached_path = tmp_path / "cached" / "model.onnx"
         mock_cache.put.return_value = cached_path
@@ -529,8 +539,8 @@ class TestDownloadModel:
         downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
 
         with patch(
-            "real_estate.models.downloader.hf_hub_download",
-            return_value=str(downloaded_file),
+            "real_estate.models.downloader.snapshot_download",
+            side_effect=_mock_snapshot_download({"model.onnx": b"model content"}),
         ):
             result = await downloader.download_model(sample_commitment)
 
@@ -540,7 +550,7 @@ class TestDownloadModel:
         assert result.commit_block == 7500
 
     @pytest.mark.asyncio
-    async def test_cleans_up_temp_file_on_hash_failure(
+    async def test_cleans_up_temp_dir_on_hash_failure(
         self,
         download_config: DownloadConfig,
         mock_cache: MagicMock,
@@ -548,34 +558,37 @@ class TestDownloadModel:
         sample_commitment: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """Cleans up temp file when hash verification fails."""
+        """Cleans up temp directory when hash verification fails."""
         from real_estate.models import HashMismatchError
 
         mock_cache.is_valid.return_value = False
-        mock_verifier.find_onnx_file = AsyncMock(return_value=("model.onnx", 1000))
-
-        # Create temp file that will be cleaned up
-        downloaded_file = tmp_path / "model.onnx"
-        downloaded_file.write_bytes(b"model content")
+        mock_verifier.find_repo_files = AsyncMock(return_value=("model.onnx", 1000, None))
 
         # Make hash verification fail
         mock_verifier.verify_hash.side_effect = HashMismatchError(
             "Hash mismatch: computed abc, expected xyz"
         )
 
+        # Use a known temp dir so we can verify cleanup
+        temp_dir = tmp_path / "download_temp"
+        temp_dir.mkdir()
+
         downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
 
         with (
             patch(
-                "real_estate.models.downloader.hf_hub_download",
-                return_value=str(downloaded_file),
+                "tempfile.mkdtemp", return_value=str(temp_dir),
+            ),
+            patch(
+                "real_estate.models.downloader.snapshot_download",
+                side_effect=_mock_snapshot_download({"model.onnx": b"model content"}),
             ),
             pytest.raises(HashMismatchError),
         ):
             await downloader.download_model(sample_commitment)
 
-        # Temp file should be cleaned up
-        assert not downloaded_file.exists()
+        # Temp directory should be cleaned up
+        assert not temp_dir.exists()
 
     @pytest.mark.asyncio
     async def test_downloads_custom_onnx_filename(
@@ -589,12 +602,9 @@ class TestDownloadModel:
         """Downloads using the custom filename from find_onnx_file."""
         mock_cache.is_valid.return_value = False
         # Verifier returns custom filename
-        mock_verifier.find_onnx_file = AsyncMock(
-            return_value=("my_custom_model.onnx", 1000)
+        mock_verifier.find_repo_files = AsyncMock(
+            return_value=("my_custom_model.onnx", 1000, None)
         )
-
-        downloaded_file = tmp_path / "my_custom_model.onnx"
-        downloaded_file.write_bytes(b"model content")
 
         cached_path = tmp_path / "cached" / "model.onnx"
         mock_cache.put.return_value = cached_path
@@ -602,15 +612,202 @@ class TestDownloadModel:
         downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
 
         with patch(
-            "real_estate.models.downloader.hf_hub_download",
-            return_value=str(downloaded_file),
+            "real_estate.models.downloader.snapshot_download",
+            side_effect=_mock_snapshot_download(
+                {"my_custom_model.onnx": b"model content"}
+            ),
         ) as mock_download:
             await downloader.download_model(sample_commitment)
 
-        # Verify hf_hub_download was called with custom filename
+        # Verify snapshot_download was called with custom filename in allow_patterns
         mock_download.assert_called_once()
         call_kwargs = mock_download.call_args[1]
-        assert call_kwargs["filename"] == "my_custom_model.onnx"
+        assert "my_custom_model.onnx" in call_kwargs["allow_patterns"]
+
+
+class TestFeatureConfigFlow:
+    """Tests for feature_config.json download and caching."""
+
+    @pytest.mark.asyncio
+    async def test_feature_config_passed_to_cache_put(
+        self,
+        download_config: DownloadConfig,
+        mock_cache: MagicMock,
+        mock_verifier: MagicMock,
+        sample_commitment: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Valid feature_config.json is stored in cache metadata."""
+        mock_cache.is_valid.return_value = False
+        # find_repo_files says feature_config.json exists
+        mock_verifier.find_repo_files = AsyncMock(
+            return_value=("model.onnx", 1000, ("feature_config.json", 500))
+        )
+
+        # validate_feature_config returns a mock FeatureConfig
+        mock_fc = MagicMock()
+        mock_fc.features = ("bedrooms",)
+        mock_verifier.validate_feature_config.return_value = mock_fc
+
+        cached_path = tmp_path / "cached" / "model.onnx"
+        mock_cache.put.return_value = cached_path
+
+        config_data = {"version": "1.0", "features": ["bedrooms"]}
+
+        downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
+
+        with patch(
+            "real_estate.models.downloader.snapshot_download",
+            side_effect=_mock_snapshot_download({
+                "model.onnx": b"model content",
+                "feature_config.json": json.dumps(config_data),
+            }),
+        ):
+            result = await downloader.download_model(sample_commitment)
+
+        # feature_config should be passed to cache.put()
+        put_kwargs = mock_cache.put.call_args[1]
+        assert put_kwargs["feature_config"] is not None
+        assert put_kwargs["feature_config"]["version"] == "1.0"
+        assert put_kwargs["feature_config"]["features"] == ["bedrooms"]
+        assert result.feature_config == mock_fc
+
+    @pytest.mark.asyncio
+    async def test_feature_config_extra_keys_stripped(
+        self,
+        download_config: DownloadConfig,
+        mock_cache: MagicMock,
+        mock_verifier: MagicMock,
+        sample_commitment: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Extra keys in feature_config.json are stripped before caching."""
+        mock_cache.is_valid.return_value = False
+        mock_verifier.find_repo_files = AsyncMock(
+            return_value=("model.onnx", 1000, ("feature_config.json", 500))
+        )
+
+        config_data = {
+            "version": "1.0",
+            "features": ["bedrooms"],
+            "malicious_key": "should_be_stripped",
+            "another_extra": 42,
+        }
+
+        mock_fc = MagicMock()
+        mock_fc.features = ("bedrooms",)
+        mock_verifier.validate_feature_config.return_value = mock_fc
+
+        mock_cache.put.return_value = tmp_path / "cached" / "model.onnx"
+
+        downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
+
+        with patch(
+            "real_estate.models.downloader.snapshot_download",
+            side_effect=_mock_snapshot_download({
+                "model.onnx": b"model content",
+                "feature_config.json": json.dumps(config_data),
+            }),
+        ):
+            await downloader.download_model(sample_commitment)
+
+        put_kwargs = mock_cache.put.call_args[1]
+        cached_config = put_kwargs["feature_config"]
+        assert "malicious_key" not in cached_config
+        assert "another_extra" not in cached_config
+        assert set(cached_config.keys()) == {"version", "features"}
+
+    @pytest.mark.asyncio
+    async def test_feature_config_missing_falls_back_gracefully(
+        self,
+        download_config: DownloadConfig,
+        mock_cache: MagicMock,
+        mock_verifier: MagicMock,
+        sample_commitment: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Missing feature_config.json does not block download."""
+        mock_cache.is_valid.return_value = False
+        # find_repo_files says no feature_config.json
+        mock_verifier.find_repo_files = AsyncMock(
+            return_value=("model.onnx", 1000, None)
+        )
+
+        mock_cache.put.return_value = tmp_path / "cached" / "model.onnx"
+
+        downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
+
+        with patch(
+            "real_estate.models.downloader.snapshot_download",
+            side_effect=_mock_snapshot_download({"model.onnx": b"model content"}),
+        ):
+            result = await downloader.download_model(sample_commitment)
+
+        # Should succeed with no feature_config
+        assert result.feature_config is None
+        put_kwargs = mock_cache.put.call_args[1]
+        assert put_kwargs["feature_config"] is None
+
+    @pytest.mark.asyncio
+    async def test_invalid_feature_config_falls_back_gracefully(
+        self,
+        download_config: DownloadConfig,
+        mock_cache: MagicMock,
+        mock_verifier: MagicMock,
+        sample_commitment: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Invalid feature_config.json does not block download."""
+        mock_cache.is_valid.return_value = False
+        mock_verifier.find_repo_files = AsyncMock(
+            return_value=("model.onnx", 1000, ("feature_config.json", 500))
+        )
+
+        mock_cache.put.return_value = tmp_path / "cached" / "model.onnx"
+
+        downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
+
+        with patch(
+            "real_estate.models.downloader.snapshot_download",
+            side_effect=_mock_snapshot_download({
+                "model.onnx": b"model content",
+                "feature_config.json": "not valid json {{{",
+            }),
+        ):
+            result = await downloader.download_model(sample_commitment)
+
+        # Should succeed with no feature_config (graceful fallback)
+        assert result.feature_config is None
+
+    @pytest.mark.asyncio
+    async def test_cached_feature_config_restored_on_cache_hit(
+        self,
+        download_config: DownloadConfig,
+        mock_cache: MagicMock,
+        mock_verifier: MagicMock,
+        sample_commitment: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Feature config is restored from cache metadata on cache hit."""
+        cached_path = tmp_path / "cached" / "model.onnx"
+        cached_model = MagicMock()
+        cached_model.path = cached_path
+        cached_model.metadata.commit_block = 1000
+        cached_model.metadata.feature_config = {
+            "version": "1.0",
+            "features": ["living_area_sqft", "latitude", "longitude",
+                         "bedrooms", "bathrooms", "lot_size_sqft",
+                         "year_built", "has_pool", "has_garage", "stories"],
+        }
+
+        mock_cache.is_valid.return_value = True
+        mock_cache.get.return_value = cached_model
+
+        downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
+        result = await downloader.download_model(sample_commitment)
+
+        assert result.feature_config is not None
+        assert "living_area_sqft" in result.feature_config.features
 
 
 class TestIsCached:

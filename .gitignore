@@ -174,3 +174,10 @@ config/ecosystem.config.js
 # Wandb artifacts
 /Wandb
 wandb*
+
+/claude_scripts
+/claude_docs
+/artifacts
+/data_runs
+/test_model_cache
+/model_cache

@@ -93,7 +93,7 @@ boolean_fields:
   - home_type_nan
 
 # Output feature order (must match what miners expect)
-# Total: 52 numeric + 28 boolean (including 6 home_type) = 80 features
+# Total: 51 numeric + 28 boolean (including 6 home_type) = 79 features
 feature_order:
   # Numeric features
   - living_area_sqft

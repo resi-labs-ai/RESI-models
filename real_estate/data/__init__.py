@@ -1,5 +1,13 @@
 """Data module for property feature encoding."""
 
+from .config_encoder import (
+    ConfigEncoder,
+    FeatureConfig,
+    FeatureLayout,
+    create_default_feature_config,
+    load_feature_config,
+    parse_feature_config,
+)
 from .errors import (
     DataError,
     FeatureConfigError,
@@ -42,7 +50,14 @@ __all__ = [
     "ValidationDataProcessingError",
     "ValidationDataRateLimitError",
     "ValidationDataRequestError",
-    # Feature encoding
+    # Config-driven feature encoding
+    "ConfigEncoder",
+    "FeatureConfig",
+    "FeatureLayout",
+    "create_default_feature_config",
+    "load_feature_config",
+    "parse_feature_config",
+    # Legacy feature encoding
     "FeatureEncoder",
     "feature_transform",
     "get_registered_feature_transforms",

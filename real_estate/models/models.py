@@ -18,14 +18,18 @@ class CachedModelMetadata:
     hash: str  # SHA-256 hash (64 chars) - compared with chain commitment
     size_bytes: int  # For disk space tracking
     commit_block: int  # Block number when committed (from Pylon, for tie-breaking)
+    feature_config: dict | None = None  # Raw JSON dict from feature_config.json
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
-        return {
+        d = {
             "hash": self.hash,
             "size_bytes": self.size_bytes,
             "commit_block": self.commit_block,
         }
+        if self.feature_config is not None:
+            d["feature_config"] = self.feature_config
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> CachedModelMetadata:
@@ -34,6 +38,7 @@ class CachedModelMetadata:
             hash=data["hash"],
             size_bytes=data["size_bytes"],
             commit_block=data["commit_block"],
+            feature_config=data.get("feature_config"),
         )
 
 

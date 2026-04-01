@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from real_estate.data import FeatureEncoder
+from real_estate.data import (
+    ConfigEncoder,
+    FeatureConfig,
+    create_default_feature_config,
+)
 from real_estate.duplicate_detector import create_duplicate_detector
 from real_estate.evaluation import create_orchestrator as create_eval_orchestrator
 from real_estate.generalization_detector import (
@@ -25,11 +29,11 @@ from real_estate.incentives import (
 )
 from real_estate.model_inspector import InspectionConfig, ModelInspector
 
-from .models import ValidationResult
+from .models import EncodedModels, ValidationResult
 
 if TYPE_CHECKING:
     from real_estate.chain.models import ChainModelMetadata
-    from real_estate.data import ValidationDataset
+    from real_estate.data import FeatureLayout, ValidationDataset
     from real_estate.duplicate_detector import DuplicateDetector
     from real_estate.evaluation import EvaluationOrchestrator, OrchestratorConfig
 
@@ -45,7 +49,7 @@ class ValidationOrchestrator:
 
     Pipeline steps:
     0. Pre-flight model inspection (reject memorizers before evaluation)
-    1. Encode features from property data
+    1. Encode features per-model from property data + feature configs
     2. Run inference on all models (original features)
     3. Run inference on all models (perturbed features)
     4. Detect duplicate predictions, identify copiers
@@ -56,7 +60,6 @@ class ValidationOrchestrator:
 
     def __init__(
         self,
-        encoder: FeatureEncoder,
         evaluator: EvaluationOrchestrator,
         detector: DuplicateDetector,
         selector: WinnerSelector,
@@ -69,7 +72,6 @@ class ValidationOrchestrator:
         Initialize orchestrator with all dependencies.
 
         Args:
-            encoder: Feature encoder for property data
             evaluator: Model evaluation orchestrator
             detector: Duplicate prediction detector
             selector: Winner selection logic
@@ -78,7 +80,6 @@ class ValidationOrchestrator:
             generalization_config: Config for feature perturbation
             model_inspector: Pre-flight static ONNX inspector
         """
-        self._encoder = encoder
         self._evaluator = evaluator
         self._duplicate_detector = detector
         self._selector = selector
@@ -87,11 +88,20 @@ class ValidationOrchestrator:
         self._generalization_config = generalization_config
         self._model_inspector = model_inspector
 
+    def set_seed(self, seed: int) -> None:
+        """Update the generalization config seed (for decentralized randomness)."""
+        self._generalization_config = GeneralizationConfig(
+            global_noise_pct=self._generalization_config.global_noise_pct,
+            global_threshold=self._generalization_config.global_threshold,
+            seed=seed,
+            spatial_noise_std=self._generalization_config.spatial_noise_std,
+            spatial_threshold=self._generalization_config.spatial_threshold,
+        )
+
     @classmethod
     def create(
         cls,
         *,
-        feature_config_path: Path | None = None,
         evaluation_config: OrchestratorConfig | None = None,
         similarity_threshold: float = 1e-6,
         score_threshold: float = 0.01,
@@ -107,7 +117,6 @@ class ValidationOrchestrator:
         Create orchestrator with default dependencies.
 
         Args:
-            feature_config_path: Path to feature config YAML. If None, uses default.
             evaluation_config: Configuration for model evaluation (overrides docker_* params).
             similarity_threshold: Threshold for duplicate prediction detection.
             score_threshold: Score threshold for winner selection.
@@ -140,7 +149,6 @@ class ValidationOrchestrator:
         generalization_config = GeneralizationConfig()
 
         return cls(
-            encoder=FeatureEncoder(config_path=feature_config_path),
             evaluator=evaluator,
             detector=create_duplicate_detector(
                 similarity_threshold=similarity_threshold
@@ -151,10 +159,55 @@ class ValidationOrchestrator:
             ),
             generalization_detector=GeneralizationDetector(generalization_config),
             generalization_config=generalization_config,
-            model_inspector=ModelInspector(InspectionConfig(
-                price_count_threshold=inspection_price_threshold,
-                reject_unused_initializers=inspection_reject_unused,
-            )),
+            model_inspector=ModelInspector(
+                InspectionConfig(
+                    price_count_threshold=inspection_price_threshold,
+                    reject_unused_initializers=inspection_reject_unused,
+                )
+            ),
+        )
+
+    @staticmethod
+    def _encode_models(
+        model_paths: dict[str, Path],
+        feature_configs: dict[str, FeatureConfig | None],
+        properties: list[dict],
+    ) -> EncodedModels:
+        """Encode features per-model, removing models that fail encoding.
+
+        Returns:
+            EncodedModels with filtered model_paths, feature arrays, and layouts.
+
+        Raises:
+            NoValidModelsError: If all models fail feature encoding.
+        """
+        default_config = create_default_feature_config()
+        features: dict[str, np.ndarray] = {}
+        layouts: dict[str, FeatureLayout] = {}
+        failures: list[str] = []
+
+        for hotkey in model_paths:
+            config = feature_configs.get(hotkey) or default_config
+            try:
+                encoder = ConfigEncoder(config)
+                features[hotkey] = encoder.encode(properties)
+                layouts[hotkey] = encoder.layout
+                logger.debug(
+                    f"Encoded {hotkey}: {features[hotkey].shape} features"
+                )
+            except Exception as e:
+                logger.warning(f"Feature encoding failed for {hotkey}: {e}, skipping")
+                failures.append(hotkey)
+
+        if failures:
+            model_paths = {
+                k: v for k, v in model_paths.items() if k not in failures
+            }
+            if not model_paths:
+                raise NoValidModelsError("All models failed feature encoding")
+
+        return EncodedModels(
+            model_paths=model_paths, features=features, layouts=layouts,
         )
 
     async def run(
@@ -162,6 +215,7 @@ class ValidationOrchestrator:
         dataset: ValidationDataset,
         model_paths: dict[str, Path],
         chain_metadata: dict[str, ChainModelMetadata],
+        feature_configs: dict[str, FeatureConfig | None] | None = None,
     ) -> ValidationResult:
         """
         Run full evaluation pipeline.
@@ -170,6 +224,7 @@ class ValidationOrchestrator:
             dataset: Validation dataset with properties and ground truth
             model_paths: Mapping of hotkey -> path to ONNX model file
             chain_metadata: Mapping of hotkey -> chain commitment metadata
+            feature_configs: Mapping of hotkey -> FeatureConfig (None = use default)
 
         Returns:
             ValidationResult with weights and evaluation details
@@ -199,18 +254,23 @@ class ValidationOrchestrator:
                 "All models rejected by pre-flight inspection"
             )
 
-        # 1. Encode features
-        logger.debug("Encoding features...")
-        features = self._encoder.encode(dataset.properties)
+        # 1. Encode features per-model
+        logger.debug("Encoding features per-model...")
+        feature_configs = feature_configs or {}
         ground_truth = np.array(dataset.ground_truth, dtype=np.float32)
 
-        logger.debug(f"Encoded features shape: {features.shape}")
+        encoded = self._encode_models(
+            model_paths, feature_configs, dataset.properties,
+        )
+        model_paths = encoded.model_paths
+        per_model_features = encoded.features
+        per_model_layouts = encoded.layouts
 
         # 2. Run evaluation on all models (original features)
         logger.info("Running model evaluation...")
         eval_batch = await self._evaluator.evaluate_all(
             models=model_paths,
-            features=features,
+            features=per_model_features,
             ground_truth=ground_truth,
             model_metadata=chain_metadata,
         )
@@ -251,20 +311,34 @@ class ValidationOrchestrator:
             )
 
         logger.info("Running generalization detection (perturbed evaluation)...")
-        perturbed = perturb_features(features, self._generalization_config)
+        per_model_perturbed: dict[str, np.ndarray] = {
+            hk: perturb_features(
+                per_model_features[hk],
+                self._generalization_config,
+                per_model_layouts[hk],
+            )
+            for hk in perturbed_model_paths
+        }
 
         perturbed_batch = await self._evaluator.evaluate_all(
             models=perturbed_model_paths,
-            features=perturbed,
+            features=per_model_perturbed,
             ground_truth=ground_truth,
             model_metadata=chain_metadata,
         )
 
         logger.info("Running spatial perturbation pass...")
-        spatial_features = perturb_spatial(features, self._generalization_config)
+        per_model_spatial: dict[str, np.ndarray] = {
+            hk: perturb_spatial(
+                per_model_features[hk],
+                self._generalization_config,
+                per_model_layouts[hk],
+            )
+            for hk in perturbed_model_paths
+        }
         spatial_batch = await self._evaluator.evaluate_all(
             models=perturbed_model_paths,
-            features=spatial_features,
+            features=per_model_spatial,
             ground_truth=ground_truth,
             model_metadata=chain_metadata,
         )
@@ -320,4 +394,7 @@ class ValidationOrchestrator:
             duplicate_result=duplicates,
             generalization_result=generalization_result,
             inspection_result=inspection_result,
+            per_model_num_features={
+                hk: f.shape[1] for hk, f in per_model_features.items()
+            },
         )
