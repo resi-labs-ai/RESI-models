@@ -56,6 +56,30 @@ def combine_reveals(reveals: dict[str, str], modulus: int) -> int:
     return int(hash_hex, 16) % modulus
 
 
+def _oldest_valid_reveal(
+    entries: tuple[tuple[int, str], ...],
+    min_reveal_block: int,
+) -> str | None:
+    """Pick the oldest valid reveal from a list of (block, data) entries.
+
+    Uses oldest (not latest) to prevent re-commit attacks: a validator
+    who re-commits after seeing Drand reveals can't overwrite their
+    original timelocked value.
+
+    Chain entries are NOT sorted by block number — they come in storage
+    hash order — so we sort explicitly.
+    """
+    valid = [
+        (blk, data)
+        for blk, data in entries
+        if blk >= min_reveal_block and isinstance(data, str) and data
+    ]
+    if not valid:
+        return None
+    valid.sort(key=lambda x: x[0])
+    return valid[0][1]
+
+
 class DecentralizedSeedProvider:
     """
     Manages commit and harvest lifecycle for decentralized randomness.
@@ -84,11 +108,52 @@ class DecentralizedSeedProvider:
         """Proxy to subtensor.last_drand_round()."""
         return self._subtensor.last_drand_round()
 
-    @_subtensor_retry
-    def get_pending_commitment_hotkeys(self) -> set[str]:
-        """Return hotkeys that have pending (unrevealed) commitments."""
-        pending = self._subtensor.get_all_commitments(self._netuid)
-        return set(pending.keys()) if pending else set()
+    def get_pending_commitment_hotkeys(self, validator_hotkeys: set[str]) -> set[str]:
+        """Return which validators have pending (unrevealed) commitments.
+
+        Checks each validator individually rather than bulk query_map,
+        because bittensor's SCALE type decoder silently drops
+        TimelockEncrypted entries during bulk iteration — meaning
+        query_map never yields our Drand-timelocked commitments.
+
+        A single-key query that fails to decode raises an exception,
+        which we catch and treat as "commitment exists" (the data is
+        there, just in TimelockEncrypted format the SDK can't parse).
+
+        Args:
+            validator_hotkeys: Set of hotkeys to check.
+
+        Returns:
+            Subset of validator_hotkeys that have pending commitments.
+        """
+        committed: set[str] = set()
+        for hk in validator_hotkeys:
+            if self._has_commitment(hk):
+                committed.add(hk)
+        return committed
+
+    def _has_commitment(self, hotkey: str) -> bool:
+        """Check if a hotkey has any commitment on chain.
+
+        Returns True if the storage key has data (regardless of format).
+        TimelockEncrypted entries cause decode errors — we treat those
+        as "commitment exists" since the error proves data is present.
+        """
+        try:
+            result = self._subtensor.query(
+                module="Commitments",
+                name="CommitmentOf",
+                params=[self._netuid, hotkey],
+            )
+            # None / empty = no commitment
+            return result is not None and result.value is not None
+        except Exception:
+            # Decode error → data exists but can't be parsed
+            # (TimelockEncrypted format). This IS a pending commitment.
+            logger.debug(
+                f"Commitment decode error for {hotkey[:16]}... (treating as committed)"
+            )
+            return True
 
     def commit(self) -> int | None:
         """
@@ -218,7 +283,7 @@ class DecentralizedSeedProvider:
             logger.error(f"Failed to fetch revealed commitments: {e}", exc_info=True)
             return None
 
-        # Filter to validator hotkeys and extract latest reveal per validator
+        # Filter to validator hotkeys and extract oldest valid reveal
         reveals: dict[str, str] = {}
         stale_count = 0
         late_count = 0
@@ -227,9 +292,8 @@ class DecentralizedSeedProvider:
                 continue
             if not entries:
                 continue
-            # Each entry is (block_number, hex_data). Use the latest (last) entry.
-            reveal_block, hex_data = entries[-1]
-            if reveal_block < min_reveal_block:
+            hex_data = _oldest_valid_reveal(entries, min_reveal_block)
+            if hex_data is None:
                 stale_count += 1
                 continue
             if hotkey not in committed_hotkeys:
