@@ -161,11 +161,11 @@ class TestDecentralizedSeedProviderHarvest:
         )
         assert provider.harvest({"validator_a"}, min_reveal_block=0, committed_hotkeys={"validator_a"}) is None
 
-    def test_harvest_uses_latest_reveal(self) -> None:
-        """When a validator has multiple reveals, the latest (last) is used."""
+    def test_harvest_uses_oldest_valid_reveal(self) -> None:
+        """When a validator has multiple reveals, the oldest valid is used (anti re-commit)."""
         subtensor = MagicMock()
         subtensor.get_all_revealed_commitments.return_value = {
-            "val_a": ((1, "old_hex"), (2, "new_hex")),
+            "val_a": ((1, "original"), (5, "re_committed")),
             "val_b": ((3, "bbb222"),),
         }
         validators = {"val_a", "val_b"}
@@ -176,7 +176,28 @@ class TestDecentralizedSeedProviderHarvest:
         result = provider.harvest(validators, min_reveal_block=0, committed_hotkeys=validators)
 
         assert result is not None
-        assert "val_a" in result.validator_hotkeys
+        expected = combine_reveals({"val_a": "original", "val_b": "bbb222"}, 2**32)
+        assert result.seed == expected
+
+    def test_harvest_sorts_unsorted_entries(self) -> None:
+        """Entries from chain may be unsorted — oldest by block is still picked."""
+        subtensor = MagicMock()
+        # Chain returns entries in storage hash order, NOT block order
+        subtensor.get_all_revealed_commitments.return_value = {
+            "val_a": ((10, "re_committed"), (3, "original")),
+            "val_b": ((2, "bbb222"),),
+        }
+        validators = {"val_a", "val_b"}
+
+        provider = DecentralizedSeedProvider(
+            subtensor=subtensor, wallet=MagicMock(), netuid=46,
+        )
+        result = provider.harvest(validators, min_reveal_block=0, committed_hotkeys=validators)
+
+        assert result is not None
+        # Should use block=3 ("original"), not block=10 ("re_committed")
+        expected = combine_reveals({"val_a": "original", "val_b": "bbb222"}, 2**32)
+        assert result.seed == expected
 
     def test_harvest_deterministic_across_calls(self) -> None:
         """Same reveals produce same seed across multiple harvest calls."""
@@ -217,47 +238,72 @@ class TestDecentralizedSeedProviderHarvest:
 class TestGetPendingCommitmentHotkeys:
     """Tests for DecentralizedSeedProvider.get_pending_commitment_hotkeys()."""
 
-    def test_returns_hotkeys_from_chain(self) -> None:
-        """Returns set of hotkeys with pending commitments."""
+    def test_detects_raw_commitment(self) -> None:
+        """Validator with Raw-format commitment is detected."""
         subtensor = MagicMock()
-        subtensor.get_all_commitments.return_value = {
-            "val_a": "some_data",
-            "val_b": "other_data",
-        }
+        result_mock = MagicMock()
+        result_mock.value = {"some": "data"}
+        subtensor.query.return_value = result_mock
         provider = DecentralizedSeedProvider(
             subtensor=subtensor, wallet=MagicMock(), netuid=46,
         )
-        result = provider.get_pending_commitment_hotkeys()
+        result = provider.get_pending_commitment_hotkeys({"val_a", "val_b"})
         assert result == {"val_a", "val_b"}
 
-    def test_empty_commitments(self) -> None:
-        """Returns empty set when no pending commitments."""
+    def test_detects_timelock_encrypted_via_decode_error(self) -> None:
+        """TimelockEncrypted commitment causes decode error → treated as committed."""
         subtensor = MagicMock()
-        subtensor.get_all_commitments.return_value = {}
+        subtensor.query.side_effect = Exception("Error decoding TimelockEncrypted")
         provider = DecentralizedSeedProvider(
             subtensor=subtensor, wallet=MagicMock(), netuid=46,
         )
-        assert provider.get_pending_commitment_hotkeys() == set()
+        result = provider.get_pending_commitment_hotkeys({"val_a", "val_b"})
+        assert result == {"val_a", "val_b"}
 
-    def test_none_from_subtensor(self) -> None:
-        """Returns empty set when subtensor returns None."""
+    def test_no_commitment_returns_empty(self) -> None:
+        """Validator with no commitment is excluded."""
         subtensor = MagicMock()
-        subtensor.get_all_commitments.return_value = None
+        result_mock = MagicMock()
+        result_mock.value = None
+        subtensor.query.return_value = result_mock
         provider = DecentralizedSeedProvider(
             subtensor=subtensor, wallet=MagicMock(), netuid=46,
         )
-        assert provider.get_pending_commitment_hotkeys() == set()
+        assert provider.get_pending_commitment_hotkeys({"val_a"}) == set()
 
-    def test_exception_propagates_after_retries(self) -> None:
-        """Exceptions from subtensor propagate after retries exhausted."""
+    def test_mixed_committed_and_not(self) -> None:
+        """Mix of committed, decode-error, and no-commitment validators."""
+        subtensor = MagicMock()
+
+        committed_result = MagicMock()
+        committed_result.value = {"data": "raw"}
+        empty_result = MagicMock()
+        empty_result.value = None
+
+        def query_side_effect(*, module, name, params):
+            hotkey = params[1]
+            if hotkey == "val_committed":
+                return committed_result
+            elif hotkey == "val_timelock":
+                raise Exception("Error decoding TimelockEncrypted")
+            else:
+                return empty_result
+
+        subtensor.query.side_effect = query_side_effect
+        provider = DecentralizedSeedProvider(
+            subtensor=subtensor, wallet=MagicMock(), netuid=46,
+        )
+        result = provider.get_pending_commitment_hotkeys(
+            {"val_committed", "val_timelock", "val_none"}
+        )
+        assert result == {"val_committed", "val_timelock"}
+
+    def test_empty_validator_set(self) -> None:
+        """Empty validator set returns empty."""
         provider = DecentralizedSeedProvider(
             subtensor=MagicMock(), wallet=MagicMock(), netuid=46,
         )
-        provider.get_pending_commitment_hotkeys = MagicMock(
-            side_effect=RuntimeError("ws closed")
-        )
-        with pytest.raises(RuntimeError, match="ws closed"):
-            provider.get_pending_commitment_hotkeys()
+        assert provider.get_pending_commitment_hotkeys(set()) == set()
 
 
 class TestCommittedSnapshot:

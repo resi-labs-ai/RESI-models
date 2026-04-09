@@ -131,6 +131,8 @@ class Validator:
             cycle_window_hours=self.config.randomness_cycle_window_hours,
             blocks_until_reveal=self.config.randomness_blocks_until_reveal,
             reveal_buffer_seconds=self.config.randomness_reveal_buffer_seconds,
+            block_time_seconds=self.config.randomness_block_time_seconds,
+            min_quorum=self.config.randomness_min_quorum,
         )
         self._seed_provider: DecentralizedSeedProvider | None = None
         if self.config.randomness_enabled:
@@ -652,18 +654,18 @@ class Validator:
                 # Snapshot which validators have pending commitments BEFORE
                 # reveals land. Only these committed "on time" (before seeing
                 # others' reveals). Late commits are rejected at harvest.
+                await self.update_metagraph()
                 validator_hotkeys = self._get_validator_hotkeys()
                 try:
-                    all_pending = await asyncio.to_thread(
-                        self._seed_provider.get_pending_commitment_hotkeys
+                    committed = await asyncio.to_thread(
+                        self._seed_provider.get_pending_commitment_hotkeys,
+                        validator_hotkeys,
                     )
-                    committed = all_pending & validator_hotkeys
                     self._save_committed_snapshot(committed)
                     logger.info(
                         f"Pre-reveal snapshot: {len(committed)} validator "
                         f"commitments on chain "
-                        f"({len(all_pending)} total pending, "
-                        f"{len(validator_hotkeys)} vpermit)"
+                        f"({len(validator_hotkeys)} vpermit)"
                     )
                 except Exception as e:
                     logger.warning(f"Failed to snapshot pending commitments: {e}")

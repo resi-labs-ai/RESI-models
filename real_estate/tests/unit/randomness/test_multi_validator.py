@@ -168,8 +168,8 @@ class TestMultiValidatorConsensus:
 
         assert r_small.seed != r_large.seed
 
-    def test_stale_plus_fresh_reveals_uses_latest(self) -> None:
-        """Validator with multiple reveals -> latest used, all harvesters agree."""
+    def test_multiple_reveals_uses_first_valid(self) -> None:
+        """Validator with multiple reveals -> first valid used (anti re-commit)."""
         chain_state = {
             "val_a": ((1, "old_hex"), (2, "new_hex")),
             "val_b": ((1, "bbb222"),),
@@ -188,8 +188,8 @@ class TestMultiValidatorConsensus:
         seeds = {r.seed for r in results}
         assert len(seeds) == 1
 
-        # Verify it used the latest reveal, not the old one
-        expected = combine_reveals({"val_a": "new_hex", "val_b": "bbb222"}, 2**32)
+        # Verify it used the first (oldest) reveal, not the re-committed one
+        expected = combine_reveals({"val_a": "old_hex", "val_b": "bbb222"}, 2**32)
         assert results[0].seed == expected
 
     def test_custom_modulus_consensus(self) -> None:

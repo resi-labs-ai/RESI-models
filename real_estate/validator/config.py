@@ -336,6 +336,22 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=int(os.environ.get("RANDOMNESS_REVEAL_BUFFER_SECONDS", "300")),
     )
 
+    parser.add_argument(
+        "--randomness.block_time_seconds",
+        dest="randomness_block_time_seconds",
+        type=int,
+        help="Expected block time in seconds. Default 12 for mainnet, set to 5 for localnet if needed.",
+        default=int(os.environ.get("RANDOMNESS_BLOCK_TIME_SECONDS", "12")),
+    )
+
+    parser.add_argument(
+        "--randomness.min_quorum",
+        dest="randomness_min_quorum",
+        type=int,
+        help="Minimum validator reveals for a valid seed. Default 2. Set to 1 for localnet testing.",
+        default=int(os.environ.get("RANDOMNESS_MIN_QUORUM", "2")),
+    )
+
     # Test mode settings
     parser.add_argument(
         "--test-data-path",
@@ -488,6 +504,8 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "randomness_cycle_window_hours": config.randomness_cycle_window_hours,
         "randomness_blocks_until_reveal": config.randomness_blocks_until_reveal,
         "randomness_reveal_buffer_seconds": config.randomness_reveal_buffer_seconds,
+        "randomness_block_time_seconds": config.randomness_block_time_seconds,
+        "randomness_min_quorum": config.randomness_min_quorum,
     }
 
 

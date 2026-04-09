@@ -70,6 +70,8 @@ def mock_config() -> MagicMock:
     config.randomness_cycle_window_hours = 4.0
     config.randomness_blocks_until_reveal = 360
     config.randomness_reveal_buffer_seconds = 300
+    config.randomness_block_time_seconds = 12
+    config.randomness_min_quorum = 2
     return config
 
 
