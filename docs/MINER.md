@@ -86,12 +86,15 @@ Check that metrics meet targets (MAPE < 15%, Score > 0.85).
 
 ### Step 3: Submit to Chain
 
+> **Important:** Miners must currently use the `--no-commit-reveal` flag when submitting a model.
+
 ```bash
 miner-cli submit \
     --model.path ./my_model.onnx \
     --hf.repo_id your-username/your-repo \
     --wallet.name miner \
-    --wallet.hotkey default
+    --wallet.hotkey default \
+    --no-commit-reveal
 ```
 
 ### Step 4: Complete HuggingFace Setup
@@ -197,17 +200,17 @@ miner-cli submit \
 | Testnet | `--network test` | 428 |
 | Custom | `--network ws://host:port` | Must specify `--netuid` |
 
-**Commit-Reveal (enabled by default):**
+**Commit-Reveal (currently not supported):**
 
-Your commitment is encrypted using timelock encryption and only revealed after `--reveal-blocks` blocks (~72 minutes by default). This prevents frontrunning - competitors cannot see your model details until the reveal.
+> **Note:** Commit-reveal is not yet supported on the subnet. Miners **must** use `--no-commit-reveal` when submitting.
 
-How it works:
+Commit-reveal is designed to encrypt your commitment using timelock encryption, only revealing it after `--reveal-blocks` blocks (~72 minutes by default). This will prevent frontrunning - competitors cannot see your model details until the reveal.
+
+How it works (once enabled):
 1. Your commitment is encrypted with a drand timelock
 2. The encrypted commitment is stored on-chain
 3. After `reveal_round`, the chain automatically decrypts and reveals your commitment
 4. Validators can then download and evaluate your model
-
-To disable commit-reveal (not recommended): `--no-commit-reveal`
 
 **What it does:**
 1. Validates model file exists

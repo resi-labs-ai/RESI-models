@@ -370,6 +370,15 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=os.environ.get("ATH_ENABLED", "false").lower() == "true",
     )
 
+    # ATH (all-time high) incentive mode
+    parser.add_argument(
+        "--ath.enabled",
+        dest="ath_enabled",
+        action="store_true",
+        help="Enable ATH-based incentive: reward ATH winner until beaten. When disabled, reward daily evaluation winner.",
+        default=os.environ.get("ATH_ENABLED", "false").lower() == "true",
+    )
+
     # Burn settings (emission burning via subnet owner UID)
     parser.add_argument(
         "--burn_amount",
