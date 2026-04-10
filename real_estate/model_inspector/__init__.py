@@ -13,7 +13,12 @@ Usage:
 """
 
 from .inspector import ModelInspector
-from .models import InspectionBatchResult, InspectionConfig, ModelInspectionResult, RejectionReason
+from .models import (
+    InspectionBatchResult,
+    InspectionConfig,
+    ModelInspectionResult,
+    RejectionReason,
+)
 
 __all__ = [
     "InspectionBatchResult",

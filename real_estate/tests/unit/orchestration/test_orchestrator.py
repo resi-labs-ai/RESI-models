@@ -860,3 +860,43 @@ class TestPerturbOnceStrategy:
         superset_features = mock_perturb_features.call_args[0][0]
         assert superset_features.shape[1] == 79
 
+
+class TestSetSeed:
+    """Tests for set_seed method."""
+
+    def test_set_seed_updates_config(
+        self,
+        orchestrator: ValidationOrchestrator,
+    ) -> None:
+        """set_seed replaces the generalization config with new seed."""
+        assert orchestrator._generalization_config.seed is None
+
+        orchestrator.set_seed(42)
+        assert orchestrator._generalization_config.seed == 42
+
+    def test_set_seed_preserves_other_config(
+        self,
+        orchestrator: ValidationOrchestrator,
+        gen_config: GeneralizationConfig,
+    ) -> None:
+        """set_seed preserves noise_pct, threshold, and spatial config."""
+        orchestrator.set_seed(99)
+
+        new_config = orchestrator._generalization_config
+        assert new_config.seed == 99
+        assert new_config.global_noise_pct == gen_config.global_noise_pct
+        assert new_config.global_threshold == gen_config.global_threshold
+        assert new_config.spatial_noise_std == gen_config.spatial_noise_std
+        assert new_config.spatial_threshold == gen_config.spatial_threshold
+
+    def test_set_seed_none_resets(
+        self,
+        orchestrator: ValidationOrchestrator,
+    ) -> None:
+        """set_seed(None) resets to non-deterministic."""
+        orchestrator.set_seed(42)
+        assert orchestrator._generalization_config.seed == 42
+
+        orchestrator.set_seed(None)
+        assert orchestrator._generalization_config.seed is None
+

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from functools import lru_cache, update_wrapper
@@ -11,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 # Import only for type checking (mypy) to avoid circular import at runtime
 if TYPE_CHECKING:
     from real_estate.validator import Validator
+
+logger = logging.getLogger(__name__)
 
 
 def _ttl_hash_gen(seconds: int):
@@ -60,6 +63,10 @@ def ttl_cache(maxsize: int = 128, typed: bool = False, ttl: int = -1) -> Callabl
     return wrapper
 
 
+# Last successfully fetched block (fallback on transient errors)
+_last_known_block: int | None = None
+
+
 # 12 seconds updating block (matches Bittensor block time)
 @ttl_cache(maxsize=1, ttl=12)
 def ttl_get_block(validator: Validator) -> int:
@@ -70,11 +77,25 @@ def ttl_get_block(validator: Validator) -> int:
     Cached for 12 seconds to avoid excessive RPC calls while staying
     reasonably current with chain state.
 
+    Falls back to last known block on transient WebSocket errors.
+
     Args:
         validator: The validator instance (must have subtensor initialized).
 
     Returns:
         The current block number.
     """
-    result: int = validator.subtensor.get_current_block()
-    return result
+    global _last_known_block  # noqa: PLW0603
+    try:
+        result: int = validator.subtensor.get_current_block()
+        _last_known_block = result
+        return result
+    except Exception as e:
+        if _last_known_block is not None:
+            logger.warning(
+                f"subtensor.get_current_block() failed ({e}), "
+                f"using last known block {_last_known_block}"
+            )
+            return _last_known_block
+        logger.error(f"subtensor.get_current_block() failed with no fallback: {e}")
+        raise

@@ -141,7 +141,7 @@ class WandbLogger:
                     "netuid": self._netuid,
                 },
                 mode=mode,
-                resume="allow",  # Allow resuming if run exists
+                resume="never",  # Each evaluation gets its own run
                 save_code=False,
                 settings=wandb.Settings(
                     program_relpath=None,

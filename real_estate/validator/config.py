@@ -96,7 +96,7 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         dest="validation_data_max_retries",
         type=int,
         help="Max retry attempts for failed validation data fetches.",
-        default=int(os.environ.get("VALIDATION_DATA_MAX_RETRIES", "36")),
+        default=int(os.environ.get("VALIDATION_DATA_MAX_RETRIES", "60")),
     )
 
     parser.add_argument(
@@ -301,6 +301,57 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=float(os.environ.get("SCHEDULER_CATCH_UP_MINUTES", "30.0")),
     )
 
+    # Randomness settings (decentralized seed for generalization detection)
+    parser.add_argument(
+        "--randomness.enabled",
+        dest="randomness_enabled",
+        type=lambda v: v.lower() in ("true", "1", "yes"),
+        help="Enable decentralized randomness seed for generalization detection.",
+        default=os.environ.get("RANDOMNESS_ENABLED", "true").lower()
+        in ("true", "1", "yes"),
+    )
+
+    parser.add_argument(
+        "--randomness.cycle_window_hours",
+        dest="randomness_cycle_window_hours",
+        type=float,
+        help="Randomness cycle window (hours before eval). Bounds commit "
+        "fallback timing, reveal freshness filter, and snapshot TTL.",
+        default=float(os.environ.get("RANDOMNESS_CYCLE_WINDOW_HOURS", "4.0")),
+    )
+
+    parser.add_argument(
+        "--randomness.blocks_until_reveal",
+        dest="randomness_blocks_until_reveal",
+        type=int,
+        help="Drand timelock duration in blocks (~12s/block). 360 blocks = ~72 min.",
+        default=int(os.environ.get("RANDOMNESS_BLOCKS_UNTIL_REVEAL", "360")),
+    )
+
+    parser.add_argument(
+        "--randomness.reveal_buffer_seconds",
+        dest="randomness_reveal_buffer_seconds",
+        type=int,
+        help="Extra wait after expected reveal time for chain propagation (seconds).",
+        default=int(os.environ.get("RANDOMNESS_REVEAL_BUFFER_SECONDS", "300")),
+    )
+
+    parser.add_argument(
+        "--randomness.block_time_seconds",
+        dest="randomness_block_time_seconds",
+        type=int,
+        help="Expected block time in seconds. Default 12 for mainnet, set to 5 for localnet if needed.",
+        default=int(os.environ.get("RANDOMNESS_BLOCK_TIME_SECONDS", "12")),
+    )
+
+    parser.add_argument(
+        "--randomness.min_quorum",
+        dest="randomness_min_quorum",
+        type=int,
+        help="Minimum validator reveals for a valid seed. Default 2. Set to 1 for localnet testing.",
+        default=int(os.environ.get("RANDOMNESS_MIN_QUORUM", "2")),
+    )
+
     # Test mode settings
     parser.add_argument(
         "--test-data-path",
@@ -308,6 +359,14 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         type=str,
         help="Path to local JSON file with test validation data. Bypasses API fetch.",
         default=os.environ.get("TEST_DATA_PATH", ""),
+    )
+
+    parser.add_argument(
+        "--test-models-dir",
+        dest="test_models_dir",
+        type=str,
+        help="Load models from local dir ({dir}/{hotkey}/model.onnx). Bypasses HF + chain.",
+        default=os.environ.get("TEST_MODELS_DIR", ""),
     )
 
     parser.add_argument(
@@ -371,11 +430,23 @@ def check_config(config: argparse.Namespace) -> None:
     if not config.wallet_hotkey:
         raise ValueError("--wallet.hotkey is required (or set WALLET_HOTKEY env var)")
 
-    if not config.pylon_token:
-        raise ValueError("--pylon.token is required (or set PYLON_TOKEN env var)")
+    # Validate test_models_dir if set
+    if config.test_models_dir:
+        models_dir = Path(config.test_models_dir)
+        if not models_dir.is_dir():
+            raise ValueError(
+                f"--test-models-dir path does not exist: {config.test_models_dir}"
+            )
 
-    if not config.pylon_identity:
-        raise ValueError("--pylon.identity is required (or set PYLON_IDENTITY env var)")
+    # Pylon credentials not required when using local models in test mode
+    if not (config.test_models_dir and config.test_mode):
+        if not config.pylon_token:
+            raise ValueError("--pylon.token is required (or set PYLON_TOKEN env var)")
+
+        if not config.pylon_identity:
+            raise ValueError(
+                "--pylon.identity is required (or set PYLON_IDENTITY env var)"
+            )
 
     # Validate burn settings
     if config.burn_amount < 0.0 or config.burn_amount > 1.0:
@@ -424,10 +495,17 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "scheduler_pre_download_hours": config.scheduler_pre_download_hours,
         "scheduler_catch_up_minutes": config.scheduler_catch_up_minutes,
         "test_data_path": config.test_data_path,
+        "test_models_dir": config.test_models_dir,
         "test_mode": config.test_mode,
         "burn_amount": config.burn_amount,
         "burn_uid": config.burn_uid,
         "ath_enabled": config.ath_enabled,
+        "randomness_enabled": config.randomness_enabled,
+        "randomness_cycle_window_hours": config.randomness_cycle_window_hours,
+        "randomness_blocks_until_reveal": config.randomness_blocks_until_reveal,
+        "randomness_reveal_buffer_seconds": config.randomness_reveal_buffer_seconds,
+        "randomness_block_time_seconds": config.randomness_block_time_seconds,
+        "randomness_min_quorum": config.randomness_min_quorum,
     }
 
 
