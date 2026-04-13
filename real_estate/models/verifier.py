@@ -11,8 +11,10 @@ from typing import TYPE_CHECKING
 import httpx
 
 from ..data.config_encoder import FeatureConfig, parse_feature_config
+from ..data.errors import FeatureConfigError
 from .errors import (
     ExtrinsicVerificationError,
+    FeatureConfigValidationError,
     HashMismatchError,
     LicenseError,
     ModelDownloadError,
@@ -162,8 +164,7 @@ class ModelVerifier:
         onnx_files = [
             f
             for f in files
-            if f.get("path", "").endswith(".onnx")
-            and "/" not in f.get("path", "")
+            if f.get("path", "").endswith(".onnx") and "/" not in f.get("path", "")
         ]
 
         if not onnx_files:
@@ -185,9 +186,7 @@ class ModelVerifier:
 
         # Find feature_config.json (optional)
         feature_config_info = None
-        config_files = [
-            f for f in files if f.get("path") == "feature_config.json"
-        ]
+        config_files = [f for f in files if f.get("path") == "feature_config.json"]
         if config_files:
             config_size = config_files[0].get("size", 0)
             if config_size <= feature_config_max_size:
@@ -253,12 +252,12 @@ class ModelVerifier:
             Validated FeatureConfig.
 
         Raises:
-            ModelDownloadError: On any validation failure.
+            FeatureConfigValidationError: On any validation failure.
         """
         try:
             return parse_feature_config(config_data)
-        except Exception as e:
-            raise ModelDownloadError(
+        except FeatureConfigError as e:
+            raise FeatureConfigValidationError(
                 f"Invalid feature_config.json: {e}"
             ) from e
 

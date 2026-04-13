@@ -185,14 +185,11 @@ class ValidationOrchestrator:
         Returns:
             Dict of hotkey -> sliced perturbed array for that model's features.
         """
-        name_to_idx = {
-            name: i for i, name in enumerate(superset_layout.feature_names)
-        }
+        name_to_idx = {name: i for i, name in enumerate(superset_layout.feature_names)}
         result: dict[str, np.ndarray] = {}
         for hk in hotkeys:
             col_indices = [
-                name_to_idx[name]
-                for name in per_model_layouts[hk].feature_names
+                name_to_idx[name] for name in per_model_layouts[hk].feature_names
             ]
             result[hk] = perturbed_superset[:, col_indices]
         return result
@@ -222,22 +219,20 @@ class ValidationOrchestrator:
                 encoder = ConfigEncoder(config)
                 features[hotkey] = encoder.encode(properties)
                 layouts[hotkey] = encoder.layout
-                logger.debug(
-                    f"Encoded {hotkey}: {features[hotkey].shape} features"
-                )
+                logger.debug(f"Encoded {hotkey}: {features[hotkey].shape} features")
             except Exception as e:
                 logger.warning(f"Feature encoding failed for {hotkey}: {e}, skipping")
                 failures.append(hotkey)
 
         if failures:
-            model_paths = {
-                k: v for k, v in model_paths.items() if k not in failures
-            }
+            model_paths = {k: v for k, v in model_paths.items() if k not in failures}
             if not model_paths:
                 raise NoValidModelsError("All models failed feature encoding")
 
         return EncodedModels(
-            model_paths=model_paths, features=features, layouts=layouts,
+            model_paths=model_paths,
+            features=features,
+            layouts=layouts,
         )
 
     async def run(
@@ -266,9 +261,20 @@ class ValidationOrchestrator:
             f"Starting evaluation: {len(model_paths)} models, {len(dataset)} samples"
         )
 
+        feature_configs = feature_configs or {}
+        default_config = create_default_feature_config()
+
         # Step 0: Pre-flight model inspection
+        # Pass each model's declared feature count so inspector can flag
+        # ONNX input-shape mismatches before we waste time running them.
         logger.info("Running pre-flight model inspection...")
-        inspection_result = await self._model_inspector.inspect_all(model_paths)
+        expected_feature_counts = {
+            hk: len((feature_configs.get(hk) or default_config).features)
+            for hk in model_paths
+        }
+        inspection_result = await self._model_inspector.inspect_all(
+            model_paths, expected_feature_counts
+        )
         rejected = inspection_result.rejected_hotkeys
         if rejected:
             logger.info(
@@ -281,11 +287,12 @@ class ValidationOrchestrator:
 
         # 1. Encode features per-model
         logger.debug("Encoding features per-model...")
-        feature_configs = feature_configs or {}
         ground_truth = np.array(dataset.ground_truth, dtype=np.float32)
 
         encoded = self._encode_models(
-            model_paths, feature_configs, dataset.properties,
+            model_paths,
+            feature_configs,
+            dataset.properties,
         )
         model_paths = encoded.model_paths
         per_model_features = encoded.features
@@ -335,24 +342,31 @@ class ValidationOrchestrator:
 
         # Encode superset once, perturb once, then slice per-model columns
         logger.info("Running generalization detection (perturbed evaluation)...")
-        default_config = create_default_feature_config()
         superset_encoder = ConfigEncoder(default_config)
         superset_features = superset_encoder.encode(dataset.properties)
         superset_layout = superset_encoder.layout
 
         perturbed_superset = perturb_features(
-            superset_features, self._generalization_config, superset_layout,
+            superset_features,
+            self._generalization_config,
+            superset_layout,
         )
         spatial_superset = perturb_spatial(
-            superset_features, self._generalization_config, superset_layout,
+            superset_features,
+            self._generalization_config,
+            superset_layout,
         )
 
         per_model_perturbed = self._slice_perturbed(
-            perturbed_superset, superset_layout, per_model_layouts,
+            perturbed_superset,
+            superset_layout,
+            per_model_layouts,
             perturbed_model_paths,
         )
         per_model_spatial = self._slice_perturbed(
-            spatial_superset, superset_layout, per_model_layouts,
+            spatial_superset,
+            superset_layout,
+            per_model_layouts,
             perturbed_model_paths,
         )
 

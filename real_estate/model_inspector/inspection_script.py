@@ -43,6 +43,24 @@ def find_used_initializer_names(graph) -> set[str]:
     return used
 
 
+def extract_input_dim(graph) -> int | None:
+    """Extract the feature dimension from the model's first input tensor.
+
+    Returns None if the model has no inputs, multiple inputs, or a non-2D
+    input shape (e.g. dynamic, scalar, or higher-rank tensor we don't expect).
+    """
+    if len(graph.input) != 1:
+        return None
+    input_proto = graph.input[0]
+    shape = input_proto.type.tensor_type.shape.dim
+    if len(shape) != 2:
+        return None
+    feature_dim = shape[1]
+    if feature_dim.HasField("dim_value"):
+        return int(feature_dim.dim_value)
+    return None
+
+
 def analyze_model(model_path: Path) -> dict:
     try:
         model = onnx.load(str(model_path))
@@ -54,6 +72,7 @@ def analyze_model(model_path: Path) -> dict:
 
     results: dict = {
         "file_size_mb": round(model_path.stat().st_size / (1024 * 1024), 2),
+        "input_dim": extract_input_dim(graph),
         "total_params": 0,
         "total_initializers": len(graph.initializer),
         "unused_initializers": 0,

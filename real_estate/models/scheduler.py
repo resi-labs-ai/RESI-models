@@ -75,6 +75,15 @@ class ModelDownloadScheduler:
         """Get cached model with metadata for a hotkey."""
         return self._downloader.get_cached(hotkey)
 
+    def evict_cached_model(self, hotkey: str) -> bool:
+        """Evict a cached model entry by hotkey.
+
+        Used by callers (e.g. validator) when the cached file is hash-valid
+        but its sidecar metadata is incompatible with the current schema and
+        a fresh download is needed on the next cycle.
+        """
+        return self._downloader.evict_cached(hotkey)
+
     def get_available_models(
         self, registered_hotkeys: set[str], current_block: int
     ) -> dict[str, Path]:

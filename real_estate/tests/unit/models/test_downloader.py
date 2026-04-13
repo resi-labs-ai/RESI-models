@@ -471,6 +471,7 @@ class TestDownloadModel:
         cached_model = MagicMock()
         cached_model.path = cached_path
         cached_model.metadata.commit_block = 1000  # Set commit_block for cache hit
+        cached_model.metadata.feature_config = None  # No submitted feature_config
 
         mock_cache.is_valid.return_value = True
         mock_cache.get.return_value = cached_model
@@ -749,7 +750,7 @@ class TestFeatureConfigFlow:
         assert put_kwargs["feature_config"] is None
 
     @pytest.mark.asyncio
-    async def test_invalid_feature_config_falls_back_gracefully(
+    async def test_invalid_feature_config_disqualifies_model(
         self,
         download_config: DownloadConfig,
         mock_cache: MagicMock,
@@ -757,13 +758,19 @@ class TestFeatureConfigFlow:
         sample_commitment: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """Invalid feature_config.json does not block download."""
+        """Invalid feature_config.json (parse error) hard-rejects the model.
+
+        Submitting a feature_config at all is opt-in to per-model features —
+        any failure is a hard rejection rather than a silent fall-back to the
+        default all features encoder. The default fallback is reserved for
+        models that did not submit a config at all.
+        """
+        from real_estate.models.errors import FeatureConfigValidationError
+
         mock_cache.is_valid.return_value = False
         mock_verifier.find_repo_files = AsyncMock(
             return_value=("model.onnx", 1000, ("feature_config.json", 500))
         )
-
-        mock_cache.put.return_value = tmp_path / "cached" / "model.onnx"
 
         downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
 
@@ -774,10 +781,49 @@ class TestFeatureConfigFlow:
                 "feature_config.json": "not valid json {{{",
             }),
         ):
-            result = await downloader.download_model(sample_commitment)
+            with pytest.raises(FeatureConfigValidationError):
+                await downloader.download_model(sample_commitment)
 
-        # Should succeed with no feature_config (graceful fallback)
-        assert result.feature_config is None
+        # Model must NOT have been cached
+        mock_cache.put.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_invalid_feature_config_schema_disqualifies_model(
+        self,
+        download_config: DownloadConfig,
+        mock_cache: MagicMock,
+        mock_verifier: MagicMock,
+        sample_commitment: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Schema validation failure (e.g. missing required) also hard-rejects."""
+        from real_estate.models.errors import FeatureConfigValidationError
+
+        mock_cache.is_valid.return_value = False
+        mock_verifier.find_repo_files = AsyncMock(
+            return_value=("model.onnx", 1000, ("feature_config.json", 500))
+        )
+        mock_verifier.validate_feature_config.side_effect = (
+            FeatureConfigValidationError(
+                "Invalid feature_config.json: Missing required features: ['latitude']"
+            )
+        )
+
+        downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
+
+        with patch(
+            "real_estate.models.downloader.snapshot_download",
+            side_effect=_mock_snapshot_download({
+                "model.onnx": b"model content",
+                "feature_config.json": json.dumps(
+                    {"version": "1.0", "features": ["bedrooms"]}
+                ),
+            }),
+        ):
+            with pytest.raises(FeatureConfigValidationError):
+                await downloader.download_model(sample_commitment)
+
+        mock_cache.put.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_cached_feature_config_restored_on_cache_hit(

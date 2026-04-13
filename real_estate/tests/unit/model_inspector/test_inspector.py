@@ -30,8 +30,7 @@ def _make_inspector_with_mock(
     """
     # Build reverse lookup: model file content -> hotkey
     content_to_hotkey = {
-        model_path.read_bytes(): hotkey
-        for hotkey, model_path in model_paths.items()
+        model_path.read_bytes(): hotkey for hotkey, model_path in model_paths.items()
     }
 
     def fake_run(*args, **kwargs):
@@ -64,10 +63,12 @@ _CLEAN = {
 class TestModelInspector:
     @pytest.fixture
     def inspector(self) -> ModelInspector:
-        return ModelInspector(InspectionConfig(
-            price_count_threshold=50_000,
-            reject_unused_initializers=True,
-        ))
+        return ModelInspector(
+            InspectionConfig(
+                price_count_threshold=50_000,
+                reject_unused_initializers=True,
+            )
+        )
 
     @pytest.fixture
     def model_path(self, tmp_path: Path) -> Path:
@@ -76,43 +77,63 @@ class TestModelInspector:
         return path
 
     @pytest.mark.asyncio
-    async def test_lookup_pattern_rejects(self, inspector: ModelInspector, model_path: Path) -> None:
+    async def test_lookup_pattern_rejects(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
         """LOOKUP_PATTERN in container output triggers rejection."""
         paths = {"bad": model_path}
-        _make_inspector_with_mock(inspector, paths, {
-            "bad": {**_CLEAN, "lookup_pattern": True},
-        })
+        _make_inspector_with_mock(
+            inspector,
+            paths,
+            {
+                "bad": {**_CLEAN, "lookup_pattern": True},
+            },
+        )
 
         result = await inspector.inspect_all(paths)
         assert result.is_rejected("bad")
         assert result.results[0].rejection_reason == RejectionReason.LOOKUP_PATTERN
 
     @pytest.mark.asyncio
-    async def test_unused_initializers_rejects(self, inspector: ModelInspector, model_path: Path) -> None:
+    async def test_unused_initializers_rejects(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
         """Any unused initializers triggers rejection."""
         paths = {"bad": model_path}
-        _make_inspector_with_mock(inspector, paths, {
-            "bad": {**_CLEAN, "unused_initializer_ratio": 0.89},
-        })
+        _make_inspector_with_mock(
+            inspector,
+            paths,
+            {
+                "bad": {**_CLEAN, "unused_initializer_ratio": 0.89},
+            },
+        )
 
         result = await inspector.inspect_all(paths)
         assert result.is_rejected("bad")
         assert result.results[0].rejection_reason == RejectionReason.UNUSED_INITIALIZERS
 
     @pytest.mark.asyncio
-    async def test_price_values_rejects(self, inspector: ModelInspector, model_path: Path) -> None:
+    async def test_price_values_rejects(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
         """Excessive price-like values in weights triggers rejection."""
         paths = {"bad": model_path}
-        _make_inspector_with_mock(inspector, paths, {
-            "bad": {**_CLEAN, "price_like_values_total": 2_000_000},
-        })
+        _make_inspector_with_mock(
+            inspector,
+            paths,
+            {
+                "bad": {**_CLEAN, "price_like_values_total": 2_000_000},
+            },
+        )
 
         result = await inspector.inspect_all(paths)
         assert result.is_rejected("bad")
         assert result.results[0].rejection_reason == RejectionReason.PRICES_IN_WEIGHTS
 
     @pytest.mark.asyncio
-    async def test_clean_model_passes(self, inspector: ModelInspector, model_path: Path) -> None:
+    async def test_clean_model_passes(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
         """Model passing all checks is not rejected."""
         paths = {"good": model_path}
         _make_inspector_with_mock(inspector, paths, {"good": _CLEAN})
@@ -121,23 +142,31 @@ class TestModelInspector:
         assert not result.is_rejected("good")
 
     @pytest.mark.asyncio
-    async def test_rejection_priority(self, inspector: ModelInspector, model_path: Path) -> None:
+    async def test_rejection_priority(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
         """Early-exit: lookup pattern takes priority over other failures."""
         paths = {"bad": model_path}
-        _make_inspector_with_mock(inspector, paths, {
-            "bad": {
-                "lookup_pattern": True,
-                "unused_initializer_ratio": 0.89,
-                "price_like_values_total": 2_000_000,
-                "total_params": 47_000_000,
+        _make_inspector_with_mock(
+            inspector,
+            paths,
+            {
+                "bad": {
+                    "lookup_pattern": True,
+                    "unused_initializer_ratio": 0.89,
+                    "price_like_values_total": 2_000_000,
+                    "total_params": 47_000_000,
+                },
             },
-        })
+        )
 
         result = await inspector.inspect_all(paths)
         assert result.results[0].rejection_reason == RejectionReason.LOOKUP_PATTERN
 
     @pytest.mark.asyncio
-    async def test_docker_failure_rejects(self, inspector: ModelInspector, model_path: Path) -> None:
+    async def test_docker_failure_rejects(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
         """Docker failure causes rejection with error details."""
         mock_client = MagicMock()
         mock_client.containers.run.side_effect = RuntimeError("Docker exploded")
@@ -148,7 +177,9 @@ class TestModelInspector:
         assert "Docker exploded" in result.results[0].error_message
 
     @pytest.mark.asyncio
-    async def test_container_nonzero_exit_rejects(self, inspector: ModelInspector, model_path: Path) -> None:
+    async def test_container_nonzero_exit_rejects(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
         """Non-zero exit code causes rejection."""
         container = MagicMock()
         container.wait.return_value = {"StatusCode": 1}
@@ -163,7 +194,9 @@ class TestModelInspector:
         assert result.results[0].error is not None
 
     @pytest.mark.asyncio
-    async def test_mixed_models(self, inspector: ModelInspector, tmp_path: Path) -> None:
+    async def test_mixed_models(
+        self, inspector: ModelInspector, tmp_path: Path
+    ) -> None:
         """Mix of clean and rejected models."""
         clean_path = tmp_path / "clean.onnx"
         clean_path.write_bytes(b"clean_model")
@@ -171,10 +204,14 @@ class TestModelInspector:
         bad_path.write_bytes(b"bad_model")
 
         paths = {"clean": clean_path, "bad": bad_path}
-        _make_inspector_with_mock(inspector, paths, {
-            "clean": _CLEAN,
-            "bad": {**_CLEAN, "lookup_pattern": True},
-        })
+        _make_inspector_with_mock(
+            inspector,
+            paths,
+            {
+                "clean": _CLEAN,
+                "bad": {**_CLEAN, "lookup_pattern": True},
+            },
+        )
 
         result = await inspector.inspect_all(paths)
         assert not result.is_rejected("clean")
@@ -187,9 +224,13 @@ class TestModelInspector:
     ) -> None:
         """Scan + Hardmax pattern triggers LOOKUP_PATTERN rejection."""
         paths = {"bad": model_path}
-        _make_inspector_with_mock(inspector, paths, {
-            "bad": {**_CLEAN, "lookup_pattern": True},
-        })
+        _make_inspector_with_mock(
+            inspector,
+            paths,
+            {
+                "bad": {**_CLEAN, "lookup_pattern": True},
+            },
+        )
 
         result = await inspector.inspect_all(paths)
         assert result.is_rejected("bad")
@@ -201,9 +242,13 @@ class TestModelInspector:
     ) -> None:
         """Zero-padding bytes above threshold triggers ZERO_PADDING rejection."""
         paths = {"bad": model_path}
-        _make_inspector_with_mock(inspector, paths, {
-            "bad": {**_CLEAN, "zero_initializer_bytes": 135_000_000},
-        })
+        _make_inspector_with_mock(
+            inspector,
+            paths,
+            {
+                "bad": {**_CLEAN, "zero_initializer_bytes": 135_000_000},
+            },
+        )
 
         result = await inspector.inspect_all(paths)
         assert result.is_rejected("bad")
@@ -217,9 +262,13 @@ class TestModelInspector:
     ) -> None:
         """Zero-padding bytes below threshold does not reject."""
         paths = {"ok": model_path}
-        _make_inspector_with_mock(inspector, paths, {
-            "ok": {**_CLEAN, "zero_initializer_bytes": 10_000_000},
-        })
+        _make_inspector_with_mock(
+            inspector,
+            paths,
+            {
+                "ok": {**_CLEAN, "zero_initializer_bytes": 10_000_000},
+            },
+        )
 
         result = await inspector.inspect_all(paths)
         assert not result.is_rejected("ok")
@@ -237,3 +286,104 @@ class TestModelInspector:
         assert not result.is_rejected("good")
         assert result.results[0].has_zero_padding is False
         assert result.results[0].zero_padding_bytes == 0
+
+    @pytest.mark.asyncio
+    async def test_shape_mismatch_rejects(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
+        """ONNX input dim != declared feature count triggers SHAPE_MISMATCH."""
+        paths = {"bad": model_path}
+        _make_inspector_with_mock(
+            inspector,
+            paths,
+            {
+                "bad": {**_CLEAN, "input_dim": 20},
+            },
+        )
+
+        result = await inspector.inspect_all(paths, {"bad": 15})
+        assert result.is_rejected("bad")
+        assert result.results[0].rejection_reason == RejectionReason.SHAPE_MISMATCH
+        assert result.results[0].input_dim == 20
+        assert result.results[0].expected_features == 15
+
+    @pytest.mark.asyncio
+    async def test_shape_match_passes(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
+        """ONNX input dim == declared feature count does not trigger rejection."""
+        paths = {"ok": model_path}
+        _make_inspector_with_mock(
+            inspector,
+            paths,
+            {
+                "ok": {**_CLEAN, "input_dim": 79},
+            },
+        )
+
+        result = await inspector.inspect_all(paths, {"ok": 79})
+        assert not result.is_rejected("ok")
+        assert result.results[0].input_dim == 79
+        assert result.results[0].expected_features == 79
+
+    @pytest.mark.asyncio
+    async def test_shape_check_skipped_when_input_dim_unknown(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
+        """If ONNX input dim is unknown (dynamic), shape check is skipped."""
+        paths = {"ok": model_path}
+        _make_inspector_with_mock(
+            inspector,
+            paths,
+            {
+                "ok": {**_CLEAN, "input_dim": None},
+            },
+        )
+
+        result = await inspector.inspect_all(paths, {"ok": 79})
+        assert not result.is_rejected("ok")
+        assert result.results[0].input_dim is None
+        assert result.results[0].expected_features == 79
+
+    @pytest.mark.asyncio
+    async def test_shape_check_skipped_when_no_expected_count(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
+        """If no expected feature count is supplied, shape check is skipped."""
+        paths = {"ok": model_path}
+        _make_inspector_with_mock(
+            inspector,
+            paths,
+            {
+                "ok": {**_CLEAN, "input_dim": 20},
+            },
+        )
+
+        # No expected_feature_counts passed - shape check skipped
+        result = await inspector.inspect_all(paths)
+        assert not result.is_rejected("ok")
+        assert result.results[0].input_dim == 20
+        assert result.results[0].expected_features is None
+
+    @pytest.mark.asyncio
+    async def test_shape_mismatch_priority_over_other_checks(
+        self, inspector: ModelInspector, model_path: Path
+    ) -> None:
+        """Shape mismatch is checked first - takes priority over other failures."""
+        paths = {"bad": model_path}
+        _make_inspector_with_mock(
+            inspector,
+            paths,
+            {
+                "bad": {
+                    "lookup_pattern": True,
+                    "unused_initializer_ratio": 0.89,
+                    "price_like_values_total": 2_000_000,
+                    "total_params": 47_000_000,
+                    "input_dim": 20,
+                },
+            },
+        )
+
+        result = await inspector.inspect_all(paths, {"bad": 15})
+        assert result.results[0].rejection_reason == RejectionReason.SHAPE_MISMATCH
