@@ -15,8 +15,14 @@ import numpy as np
 import onnx
 import onnxruntime as ort
 
+from ..data.config_encoder import (
+    ConfigEncoder,
+    FeatureConfig,
+    create_default_feature_config,
+    load_feature_config,
+)
 from ..evaluation import MetricsConfig, calculate_metrics
-from .config import get_expected_num_features, get_test_data
+from .config import get_expected_num_features, load_test_samples
 from .errors import (
     EvaluationError,
     InvalidONNXFormatError,
@@ -64,12 +70,16 @@ def validate_model_file(model_path: Path, max_size_mb: int = 200) -> None:
         raise InvalidONNXFormatError(f"Failed to read ONNX model: {e}") from e
 
 
-def validate_model_interface(session: ort.InferenceSession) -> str:
+def validate_model_interface(
+    session: ort.InferenceSession,
+    expected_features: int | None = None,
+) -> str:
     """
     Validate model input/output interface matches expected format.
 
     Args:
         session: ONNX runtime inference session.
+        expected_features: Expected number of input features. If None, uses default.
 
     Returns:
         Input name for the model.
@@ -77,7 +87,8 @@ def validate_model_interface(session: ort.InferenceSession) -> str:
     Raises:
         ModelInterfaceError: If interface doesn't match expected format.
     """
-    expected_features = get_expected_num_features()
+    if expected_features is None:
+        expected_features = get_expected_num_features()
 
     # Validate inputs
     inputs = session.get_inputs()
@@ -173,22 +184,76 @@ def run_inference(
     return predictions
 
 
+def resolve_feature_config(
+    feature_config_path: str | Path | None = None,
+) -> FeatureConfig:
+    """
+    Load feature config from path, or return default (all 79 features).
+
+    Args:
+        feature_config_path: Path to feature_config.json, or None for default.
+
+    Returns:
+        Parsed FeatureConfig.
+
+    Raises:
+        FeatureConfigError: If the file is invalid.
+        FileNotFoundError: If the file doesn't exist.
+    """
+    if feature_config_path is not None:
+        feature_config = load_feature_config(Path(feature_config_path))
+        logger.debug(f"Feature config loaded: {len(feature_config.features)} features")
+    else:
+        feature_config = create_default_feature_config()
+        logger.debug("Using default feature config (all features)")
+    return feature_config
+
+
+def encode_test_data(
+    feature_config: FeatureConfig,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Load test samples and encode features using the given config.
+
+    Args:
+        feature_config: Feature config defining which features to encode.
+
+    Returns:
+        Tuple of (features, ground_truth) arrays.
+
+    Raises:
+        EvaluationError: If test data loading or encoding fails.
+    """
+    samples = load_test_samples()
+    encoder = ConfigEncoder(feature_config)
+    properties = [s["features"] for s in samples]
+    features = encoder.encode(properties)
+    ground_truth = np.array(
+        [float(s["actual_price"]) for s in samples], dtype=np.float32
+    )
+    logger.debug(f"Encoded {len(features)} test samples ({features.shape[1]} features)")
+    return features, ground_truth
+
+
 def evaluate_model(
     model_path: str | Path,
     max_size_mb: int = 200,
+    feature_config_path: str | Path | None = None,
 ) -> EvaluateResult:
     """
     Evaluate an ONNX model locally.
 
     This runs the same validation as validators (without Docker):
     1. Validates model file (exists, size, ONNX format)
-    2. Validates model interface (input/output shapes)
-    3. Runs inference on test samples
-    4. Calculates metrics (MAPE, score)
+    2. Validates feature config (if provided)
+    3. Validates model interface (input/output shapes)
+    4. Runs inference on test samples
+    5. Calculates metrics (MAPE, score)
 
     Args:
         model_path: Path to ONNX model file.
         max_size_mb: Maximum model size in MB.
+        feature_config_path: Path to feature_config.json. If None, uses all default features.
 
     Returns:
         EvaluateResult with metrics and pass/fail status.
@@ -206,7 +271,19 @@ def evaluate_model(
             error_message=str(e),
         )
 
-    # Step 2: Load model
+    # Step 2: Load and validate feature config
+    try:
+        feature_config = resolve_feature_config(feature_config_path)
+    except Exception as e:
+        return EvaluateResult(
+            model_path=str(model_path),
+            success=False,
+            error_message=f"Invalid feature_config.json: {e}",
+        )
+
+    expected_features = len(feature_config.features)
+
+    # Step 3: Load model
     try:
         session = ort.InferenceSession(
             str(model_path), providers=["CPUExecutionProvider"]
@@ -218,9 +295,9 @@ def evaluate_model(
             error_message=f"Failed to load model: {e}",
         )
 
-    # Step 3: Validate interface
+    # Step 4: Validate interface
     try:
-        input_name = validate_model_interface(session)
+        input_name = validate_model_interface(session, expected_features)
     except Exception as e:
         return EvaluateResult(
             model_path=str(model_path),
@@ -228,11 +305,17 @@ def evaluate_model(
             error_message=str(e),
         )
 
-    # Step 4: Load test data
-    features, ground_truth = get_test_data()
-    logger.debug(f"Loaded {len(features)} test samples")
+    # Step 5: Load test data and encode with feature config
+    try:
+        features, ground_truth = encode_test_data(feature_config)
+    except Exception as e:
+        return EvaluateResult(
+            model_path=str(model_path),
+            success=False,
+            error_message=f"Failed to encode test data: {e}",
+        )
 
-    # Step 5: Run inference
+    # Step 6: Run inference
     try:
         start = time.time()
         predictions = run_inference(session, input_name, features)
@@ -245,7 +328,7 @@ def evaluate_model(
             error_message=str(e),
         )
 
-    # Step 6: Calculate metrics
+    # Step 7: Calculate metrics
     try:
         metrics = calculate_metrics(ground_truth, predictions, MetricsConfig())
         logger.debug(f"MAPE: {metrics.mape:.2%}, Score: {metrics.score:.4f}")

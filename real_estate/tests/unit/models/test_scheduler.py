@@ -977,7 +977,7 @@ class TestGetAvailableModels:
         cached_model = MagicMock()
         cached_model.path = Path("/cache/hotkey1/model.onnx")
         cached_model.metadata.hash = "hash123"
-        mock_downloader._cache.get.return_value = cached_model
+        mock_downloader.get_cached.return_value = cached_model
 
         scheduler = ModelDownloadScheduler(
             scheduler_config, mock_downloader, mock_chain_client
@@ -1000,7 +1000,7 @@ class TestGetAvailableModels:
     ) -> None:
         """Excludes hotkeys that don't have known commitments."""
         mock_downloader = MagicMock()
-        mock_downloader._cache.get.return_value = MagicMock()
+        mock_downloader.get_cached.return_value = MagicMock()
 
         scheduler = ModelDownloadScheduler(
             scheduler_config, mock_downloader, mock_chain_client
@@ -1010,7 +1010,7 @@ class TestGetAvailableModels:
         result = scheduler.get_available_models({"5Hotkey1"}, current_block=10000)
 
         assert result == {}
-        mock_downloader._cache.get.assert_not_called()
+        mock_downloader.get_cached.assert_not_called()
 
     def test_excludes_models_with_hash_mismatch(
         self,
@@ -1024,7 +1024,7 @@ class TestGetAvailableModels:
         cached_model = MagicMock()
         cached_model.path = Path("/cache/model.onnx")
         cached_model.metadata.hash = "old_hash"
-        mock_downloader._cache.get.return_value = cached_model
+        mock_downloader.get_cached.return_value = cached_model
 
         scheduler = ModelDownloadScheduler(
             scheduler_config, mock_downloader, mock_chain_client
@@ -1047,7 +1047,7 @@ class TestGetAvailableModels:
     ) -> None:
         """Excludes models that aren't in cache."""
         mock_downloader = MagicMock()
-        mock_downloader._cache.get.return_value = None  # Not cached
+        mock_downloader.get_cached.return_value = None  # Not cached
 
         scheduler = ModelDownloadScheduler(
             scheduler_config, mock_downloader, mock_chain_client
@@ -1073,7 +1073,7 @@ class TestGetAvailableModels:
         cached_model = MagicMock()
         cached_model.path = Path("/cache/model.onnx")
         cached_model.metadata.hash = "hash123"
-        mock_downloader._cache.get.return_value = cached_model
+        mock_downloader.get_cached.return_value = cached_model
 
         scheduler = ModelDownloadScheduler(
             scheduler_config, mock_downloader, mock_chain_client
@@ -1102,7 +1102,7 @@ class TestGetAvailableModels:
         cached_model = MagicMock()
         cached_model.path = Path("/cache/model.onnx")
         cached_model.metadata.hash = "hash123"
-        mock_downloader._cache.get.return_value = cached_model
+        mock_downloader.get_cached.return_value = cached_model
 
         scheduler = ModelDownloadScheduler(
             scheduler_config, mock_downloader, mock_chain_client
@@ -1118,7 +1118,7 @@ class TestGetAvailableModels:
 
         assert result == {}
         # Should not even check cache for too-recent commitments
-        mock_downloader._cache.get.assert_not_called()
+        mock_downloader.get_cached.assert_not_called()
 
     def test_includes_models_exactly_at_cutoff_block(
         self,
@@ -1131,7 +1131,7 @@ class TestGetAvailableModels:
         cached_model = MagicMock()
         cached_model.path = Path("/cache/model.onnx")
         cached_model.metadata.hash = "hash123"
-        mock_downloader._cache.get.return_value = cached_model
+        mock_downloader.get_cached.return_value = cached_model
 
         scheduler = ModelDownloadScheduler(
             scheduler_config, mock_downloader, mock_chain_client

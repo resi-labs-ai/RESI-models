@@ -71,7 +71,7 @@ class EvaluationOrchestrator:
     async def evaluate_all(
         self,
         models: dict[str, Path],
-        features: np.ndarray,
+        features: np.ndarray | dict[str, np.ndarray],
         ground_truth: np.ndarray,
         model_metadata: dict[str, ChainModelMetadata] | None = None,
     ) -> EvaluationBatch:
@@ -80,27 +80,18 @@ class EvaluationOrchestrator:
 
         Args:
             models: Mapping of hotkey -> model path
-            features: Input features array (N x F)
+            features: Input features — either a single array for all models,
+                or a dict mapping hotkey -> per-model feature array.
             ground_truth: Ground truth prices (N,)
             model_metadata: Optional chain metadata for each model
 
         Returns:
             EvaluationBatch with all results
-
-        Example:
-            batch = await orchestrator.evaluate_all(
-                models={
-                    "5F3sa...": Path("model_cache/5F3sa.../model.onnx"),
-                    "5G7xb...": Path("model_cache/5G7xb.../model.onnx"),
-                },
-                features=np.array([[...]]),
-                ground_truth=np.array([200000, 500000, ...]),
-            )
-            print(f"Highest score: {best.hotkey}")
         """
         start_time = time.time()
         results: list[EvaluationResult] = []
         model_metadata = model_metadata or {}
+        per_model = isinstance(features, dict)
 
         logger.info(
             f"Starting evaluation of {len(models)} models on {len(ground_truth)} samples"
@@ -113,10 +104,11 @@ class EvaluationOrchestrator:
             hotkey: str, model_path: Path
         ) -> EvaluationResult:
             async with semaphore:
+                model_features = features[hotkey] if per_model else features
                 return await self._evaluate_single_model(
                     hotkey=hotkey,
                     model_path=model_path,
-                    features=features,
+                    features=model_features,
                     ground_truth=ground_truth,
                     metadata=model_metadata.get(hotkey),
                 )

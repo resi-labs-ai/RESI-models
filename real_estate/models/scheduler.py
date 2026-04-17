@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from ..chain.models import ChainModelMetadata
 from .downloader import ModelDownloader
 from .errors import ModelError
-from .models import DownloadResult
+from .models import CachedModel, DownloadResult
 
 if TYPE_CHECKING:
     from ..chain.client import ChainClient
@@ -71,6 +71,19 @@ class ModelDownloadScheduler:
         """Cached commitments from last download run."""
         return self._known_commitments
 
+    def get_cached_model(self, hotkey: str) -> CachedModel | None:
+        """Get cached model with metadata for a hotkey."""
+        return self._downloader.get_cached(hotkey)
+
+    def evict_cached_model(self, hotkey: str) -> bool:
+        """Evict a cached model entry by hotkey.
+
+        Used by callers (e.g. validator) when the cached file is hash-valid
+        but its sidecar metadata is incompatible with the current schema and
+        a fresh download is needed on the next cycle.
+        """
+        return self._downloader.evict_cached(hotkey)
+
     def get_available_models(
         self, registered_hotkeys: set[str], current_block: int
     ) -> dict[str, Path]:
@@ -102,7 +115,7 @@ class ModelDownloadScheduler:
                     f"(block {commitment.block_number} > cutoff {cutoff_block})"
                 )
                 continue
-            cached = self._downloader._cache.get(hotkey)
+            cached = self._downloader.get_cached(hotkey)
             if cached and cached.metadata.hash == commitment.model_hash:
                 result[hotkey] = cached.path
         return result
@@ -202,7 +215,7 @@ class ModelDownloadScheduler:
         # Include already-cached models in results
         for commitment in commitments:
             if commitment.hotkey not in results:
-                cached = self._downloader._cache.get(commitment.hotkey)
+                cached = self._downloader.get_cached(commitment.hotkey)
                 if cached and cached.metadata.hash == commitment.model_hash:
                     results[commitment.hotkey] = DownloadResult(
                         hotkey=commitment.hotkey,
@@ -296,7 +309,7 @@ class ModelDownloadScheduler:
             for hotkey, commitment in current_map.items():
                 if hotkey in results:
                     continue
-                cached = self._downloader._cache.get(hotkey)
+                cached = self._downloader.get_cached(hotkey)
                 if cached and cached.metadata.hash == commitment.model_hash:
                     results[commitment.hotkey] = DownloadResult(
                         hotkey=commitment.hotkey,

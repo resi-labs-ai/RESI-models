@@ -78,6 +78,27 @@ class ModelDownloadError(ModelError):
     pass
 
 
+class FeatureConfigValidationError(ModelError):
+    """
+    Raised when a miner's feature_config.json is present but invalid.
+
+    Distinct from a missing feature_config.json (backward-compat path) — a
+    miner who submits a config has explicitly opted into per-model feature
+    selection, so any validation failure is a hard rejection rather than a
+    silent fall-back to the default full feature encoder.
+
+    This can happen when:
+    - JSON parse error
+    - Wrong/unsupported version
+    - Missing required features
+    - Unknown feature names
+    - Duplicate feature names
+    - Too few or too many features
+    """
+
+    pass
+
+
 class ModelCorruptedError(ModelError):
     """
     Raised when model file is corrupted or not valid ONNX.

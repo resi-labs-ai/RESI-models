@@ -33,6 +33,7 @@ from real_estate.chain.subtensor import patch_subtensor_reconnect
 
 if TYPE_CHECKING:
     from real_estate.chain import ChainClient
+    from real_estate.data import FeatureConfig
     from real_estate.orchestration.models import ValidationResult
 
 from real_estate.data import (
@@ -523,6 +524,53 @@ class Validator:
         logger.info(f"Validation data updated: {len(validation_data)} properties")
         self._evaluation_event.set()
 
+    def _load_feature_configs(
+        self, hotkeys: set[str]
+    ) -> tuple[dict[str, FeatureConfig | None], set[str]]:
+        """Load feature configs from cache metadata for each model.
+
+        A model that submitted a feature_config but whose cached metadata no
+        longer parses against the current schema is rejected from this cycle
+        AND evicted from the cache so the next download cycle re-fetches the
+        config from HF and re-validates it against the current schema.
+
+        The default-all-features fallback is reserved for models that opted out of
+        per-model features entirely (no feature_config submitted).
+
+        Args:
+            hotkeys: Set of hotkeys to load configs for.
+
+        Returns:
+            Tuple of:
+              - Dict mapping accepted hotkey -> FeatureConfig (None for
+                backward-compat models with no submitted config)
+              - Set of rejected hotkeys whose cached config no longer validates
+        """
+        from real_estate.data import parse_feature_config
+        from real_estate.data.errors import FeatureConfigError
+
+        configs: dict[str, FeatureConfig | None] = {}
+        rejected: set[str] = set()
+        for hotkey in hotkeys:
+            cached = self._model_scheduler.get_cached_model(hotkey)
+            if cached and cached.metadata.feature_config is not None:
+                try:
+                    configs[hotkey] = parse_feature_config(
+                        cached.metadata.feature_config
+                    )
+                except FeatureConfigError as e:
+                    logger.warning(
+                        f"Cached feature_config for {hotkey} no longer "
+                        f"validates against current schema: {e}. "
+                        "Evicting cache entry and disqualifying model "
+                        "from this cycle (will re-download next cycle)."
+                    )
+                    self._model_scheduler.evict_cached_model(hotkey)
+                    rejected.add(hotkey)
+            else:
+                configs[hotkey] = None
+        return configs, rejected
+
     async def _run_evaluation(self, dataset: ValidationDataset) -> None:
         """
         Run evaluation pipeline on the given dataset.
@@ -549,6 +597,26 @@ class Validator:
             logger.warning("No models available for evaluation")
             return
 
+        # Load feature configs from cache metadata for per-model encoding.
+        # Models whose cached config no longer validates against the current
+        # schema are dropped from the eval set entirely.
+        feature_configs, rejected_hotkeys = self._load_feature_configs(
+            set(model_paths.keys())
+        )
+        if rejected_hotkeys:
+            for hotkey in rejected_hotkeys:
+                model_paths.pop(hotkey, None)
+            logger.warning(
+                f"Dropped {len(rejected_hotkeys)} model(s) with stale "
+                f"feature_config from this evaluation cycle"
+            )
+
+        if not model_paths:
+            logger.warning(
+                "No models available for evaluation after feature_config filtering"
+            )
+            return
+
         # Get cached metadata from scheduler, filtered to models we're evaluating
         chain_metadata = {
             hotkey: meta
@@ -562,7 +630,9 @@ class Validator:
         self._wandb_logger.start_run()
 
         try:
-            result = await self._orchestrator.run(dataset, model_paths, chain_metadata)
+            result = await self._orchestrator.run(
+                dataset, model_paths, chain_metadata, feature_configs
+            )
 
             if self.config.ath_enabled:
                 pre_eval_ath = await self.validation_client.fetch_ath()

@@ -90,6 +90,7 @@ class ModelCache:
         model_hash: str,
         size_bytes: int,
         commit_block: int,
+        feature_config: dict | None = None,
     ) -> Path:
         """
         Store model in cache (atomic move from temp).
@@ -100,6 +101,7 @@ class ModelCache:
             model_hash: Verified hash of the model
             size_bytes: Size of model file
             commit_block: Block number when committed (from Pylon)
+            feature_config: Raw JSON dict from feature_config.json (optional)
 
         Returns:
             Path to cached model
@@ -118,6 +120,7 @@ class ModelCache:
             hash=model_hash,
             size_bytes=size_bytes,
             commit_block=commit_block,
+            feature_config=feature_config,
         )
         with open(metadata_path, "w") as f:
             json.dump(metadata.to_dict(), f)

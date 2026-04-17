@@ -27,11 +27,14 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     from .evaluate import evaluate_model
 
     print(f"Evaluating model: {args.model_path}")
+    if args.feature_config:
+        print(f"Feature config: {args.feature_config}")
     print()
 
     result = evaluate_model(
         model_path=args.model_path,
         max_size_mb=args.max_size_mb,
+        feature_config_path=args.feature_config,
     )
 
     if not result.success:
@@ -165,18 +168,21 @@ def cmd_submit(args: argparse.Namespace) -> int:
     print()
     print("Next steps:")
     print("  1. Ensure model.onnx is uploaded to your HuggingFace repo")
-    print("  2. Ensure the model repo is having the proper license")
+    print("  2. Ensure the model repo has the proper MIT license")
+    print(
+        "  3. Add feature_config.json to your repo (declares which features your model uses)"
+    )
 
     if extrinsic_info:
-        print("  3. Add extrinsic_record.json to your repo with this content:")
+        print("  4. Add extrinsic_record.json to your repo with this content:")
         print()
         record = extrinsic_info.to_record_dict(hotkey_ss58)
         print(json.dumps(record, indent=2))
     else:
-        print("  3. Find your extrinsic ID and add extrinsic_record.json to your repo")
+        print("  4. Find your extrinsic ID and add extrinsic_record.json to your repo")
 
     print()
-    print("  4. Wait for validator evaluation")
+    print("  5. Wait for validator evaluation")
 
     return 0
 
@@ -210,6 +216,14 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         required=True,
         metavar="PATH",
         help="Path to ONNX model file",
+    )
+
+    eval_parser.add_argument(
+        "--feature-config",
+        dest="feature_config",
+        default=None,
+        metavar="PATH",
+        help="Path to feature_config.json (if omitted, uses all default features)",
     )
 
     eval_parser.add_argument(

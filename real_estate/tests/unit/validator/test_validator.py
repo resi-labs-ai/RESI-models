@@ -269,20 +269,19 @@ class TestSetWeights:
     async def test_set_weights_no_burn_all_rewards_to_miners(
         self, validator: Validator
     ) -> None:
-        """Test 0% burn (default) — all rewards go to miners."""
+        """Test no burn when burn_uid is negative — all rewards go to miners."""
         validator.hotkeys = [
             "hotkey_0",
             "hotkey_1",
-            "burn_hotkey",  # UID 2 would be burn target
+            "hotkey_2",
             "hotkey_3",
             "our_hotkey",
         ]
         validator.scores = np.array([1.0, 0.0, 0.0, 3.0, 0.0], dtype=np.float32)
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
 
-        # burn_amount defaults to 0.0, but set burn_uid to verify it's ignored
-        validator.config.burn_amount = 0.0
-        validator.config.burn_uid = 2
+        # burn_uid < 0 disables burn (burn_amount is hardcoded to 1.0)
+        validator.config.burn_uid = -1
 
         mock_chain = MagicMock()
         mock_chain.set_weights = AsyncMock()
@@ -295,7 +294,6 @@ class TestSetWeights:
         weights = mock_chain.set_weights.call_args[0][0]
         assert weights["hotkey_0"] == pytest.approx(0.25)
         assert weights["hotkey_3"] == pytest.approx(0.75)
-        assert "burn_hotkey" not in weights
 
     @pytest.mark.asyncio
     async def test_set_weights_with_burn_allocation(
@@ -369,7 +367,7 @@ class TestSetWeights:
     async def test_skips_weights_when_all_scores_zero_and_no_burn(
         self, validator: Validator
     ) -> None:
-        """Test no weights set when all scores zero and burn is 0%."""
+        """Test no weights set when all scores zero and burn is disabled."""
         validator.hotkeys = [
             "hotkey_0",
             "hotkey_1",
@@ -380,8 +378,8 @@ class TestSetWeights:
         validator.scores = np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
 
-        validator.config.burn_amount = 0.0
-        validator.config.burn_uid = 2
+        # burn_uid < 0 disables burn entirely
+        validator.config.burn_uid = -1
 
         mock_chain = MagicMock()
         mock_chain.set_weights = AsyncMock()
@@ -389,7 +387,7 @@ class TestSetWeights:
 
         await validator.set_weights()
 
-        # All scores zero + 0% burn = no weights to set
+        # All scores zero + burn disabled = no weights to set
         mock_chain.set_weights.assert_not_called()
 
     @pytest.mark.asyncio
