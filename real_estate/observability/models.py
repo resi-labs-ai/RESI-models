@@ -34,6 +34,9 @@ class MinerResultLog:
     is_winner: bool = False
     is_copier: bool = False
     is_memorizer: bool = False
+    num_features: int | None = None
+    global_ratio: float | None = None
+    spatial_ratio: float | None = None
 
     # Error info (only if failed)
     error: str | None = None
@@ -62,6 +65,13 @@ class MinerResultLog:
             "is_winner": self.is_winner,
             "is_copier": self.is_copier,
             "is_memorizer": self.is_memorizer,
+            "num_features": self.num_features,
+            "global_ratio": (
+                round(self.global_ratio, 4) if self.global_ratio is not None else None
+            ),
+            "spatial_ratio": (
+                round(self.spatial_ratio, 4) if self.spatial_ratio is not None else None
+            ),
             "error": self.error,
         }
 

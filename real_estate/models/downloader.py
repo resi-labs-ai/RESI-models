@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import shutil
 import tempfile
@@ -11,23 +12,28 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download, snapshot_download
 from huggingface_hub.utils import (
     EntryNotFoundError,
     HfHubHTTPError,
     RepositoryNotFoundError,
 )
 
+from ..data.config_encoder import parse_feature_config
+from ..data.errors import FeatureConfigError
 from .cache import ModelCache
 from .errors import (
     CircuitBreakerOpenError,
+    FeatureConfigValidationError,
     InsufficientDiskSpaceError,
     ModelDownloadError,
 )
+from .models import CachedModel
 from .verifier import ModelVerifier
 
 if TYPE_CHECKING:
     from ..chain.models import ChainModelMetadata
+    from ..data.config_encoder import FeatureConfig
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +56,7 @@ class ModelDownloadResult:
 
     path: Path
     commit_block: int  # Block number from Pylon chain query (trusted source)
+    feature_config: FeatureConfig | None = None  # Parsed feature config (if provided)
 
 
 @dataclass
@@ -141,15 +148,39 @@ class ModelDownloader:
             cached = self._cache.get(hotkey)
             if cached:
                 logger.info(f"Using cached model for {hotkey}")
+                # Restore feature_config from cache metadata if available.
+                # Parse failure here is a version-skew defense — the cache was
+                # written by an older downloader whose schema rules differ from
+                # the current one. Evict the entry and raise so the scheduler
+                # records a failure and the next retry re-downloads (since
+                # is_valid will now be False).
+                cached_feature_config = None
+                if cached.metadata.feature_config is not None:
+                    try:
+                        cached_feature_config = parse_feature_config(
+                            cached.metadata.feature_config
+                        )
+                    except FeatureConfigError as e:
+                        self._cache.remove(hotkey)
+                        raise FeatureConfigValidationError(
+                            f"Cached feature_config for {hotkey} no longer "
+                            f"validates against current schema: {e}. "
+                            "Evicted cache entry; will re-download on retry."
+                        ) from e
                 return ModelDownloadResult(
-                    path=cached.path, commit_block=cached.metadata.commit_block
+                    path=cached.path,
+                    commit_block=cached.metadata.commit_block,
+                    feature_config=cached_feature_config,
                 )
 
         logger.info(f"Downloading model for {hotkey} from {hf_repo_id}")
 
         await self._verifier.check_license(hf_repo_id)
 
-        onnx_filename, size = await self._verifier.find_onnx_file(hf_repo_id)
+        # Single API call to find ONNX file and feature_config.json
+        onnx_filename, size, feature_config_info = await self._verifier.find_repo_files(
+            hf_repo_id
+        )
         self._verifier.check_model_size(
             size, self._config.max_model_size_bytes, onnx_filename
         )
@@ -169,14 +200,47 @@ class ModelDownloader:
             expected_hash=expected_hash,
         )
 
-        # 7. Download with retry
-        temp_path = await self._download_with_retry(hf_repo_id, onnx_filename)
+        # 7. Download and validate feature_config.json before the ONNX model
+        # so a bad config doesn't waste the full model transfer.
+        feature_config = None
+        feature_config_raw = None
+        if feature_config_info is not None:
+            config_temp_dir = await self._download_with_retry_batch(
+                hf_repo_id, ["feature_config.json"]
+            )
+            config_path = config_temp_dir / "feature_config.json"
+            try:
+                with open(config_path) as f:
+                    feature_config_raw = json.load(f)
+            except json.JSONDecodeError as e:
+                raise FeatureConfigValidationError(
+                    f"Invalid feature_config.json for {hotkey}: {e}"
+                ) from e
+            finally:
+                self._cleanup_temp_dir(str(config_temp_dir))
+
+            feature_config = self._verifier.validate_feature_config(feature_config_raw)
+            feature_config_raw = {
+                "version": feature_config_raw.get("version"),
+                "features": feature_config_raw.get("features"),
+            }
+            logger.info(
+                f"Feature config validated for {hotkey}: "
+                f"{len(feature_config.features)} features"
+            )
+
+        # 8. Download the ONNX model (only reached if feature_config was
+        # absent OR validated successfully)
+        temp_dir_path = await self._download_with_retry_batch(
+            hf_repo_id, [onnx_filename]
+        )
+        temp_path = temp_dir_path / onnx_filename
 
         try:
-            # 8. Verify hash
+            # 9. Verify hash
             self._verifier.verify_hash(temp_path, expected_hash)
 
-            # 9. Move to cache
+            # 10. Move to cache
             actual_size = temp_path.stat().st_size
             temp_dir = temp_path.parent
             cached_path = self._cache.put(
@@ -185,19 +249,23 @@ class ModelDownloader:
                 model_hash=expected_hash,
                 size_bytes=actual_size,
                 commit_block=commit_block,
+                feature_config=feature_config_raw,
             )
 
-            # 10. Clean up temp directory (file was moved, dir may have HF cache files)
+            # 11. Clean up temp directory (file was moved, dir may have HF cache files)
             self._cleanup_temp_dir(str(temp_dir))
 
             self._record_success()
             logger.info(f"Successfully downloaded and cached model for {hotkey}")
-            return ModelDownloadResult(path=cached_path, commit_block=commit_block)
+            return ModelDownloadResult(
+                path=cached_path,
+                commit_block=commit_block,
+                feature_config=feature_config,
+            )
 
         except Exception:
-            # Clean up temp file on any verification failure
-            if temp_path.exists():
-                temp_path.unlink()
+            # Clean up temp file and directory on any verification failure
+            self._cleanup_temp_dir(str(temp_path.parent))
             raise
 
     async def _download_with_retry(self, hf_repo_id: str, filename: str) -> Path:
@@ -291,6 +359,100 @@ class ModelDownloader:
             f"{self._config.max_retries} attempts: {last_error}"
         )
 
+    async def _download_with_retry_batch(
+        self, hf_repo_id: str, allow_patterns: list[str]
+    ) -> Path:
+        """
+        Download multiple files from HuggingFace in one call with retry.
+
+        Uses snapshot_download with allow_patterns to fetch all needed files
+        (e.g. ONNX model + feature_config.json) in a single operation.
+
+        Args:
+            hf_repo_id: HuggingFace repository ID
+            allow_patterns: List of filenames/patterns to download
+
+        Returns:
+            Path to temp directory containing downloaded files
+
+        Raises:
+            ModelDownloadError: If all retries exhausted
+        """
+        last_error: Exception | None = None
+        delay = self._config.initial_retry_delay_seconds
+
+        for attempt in range(self._config.max_retries):
+            temp_dir: str | None = None
+            try:
+                temp_dir = tempfile.mkdtemp(prefix="model_download_")
+
+                await asyncio.wait_for(
+                    asyncio.to_thread(
+                        snapshot_download,
+                        repo_id=hf_repo_id,
+                        allow_patterns=allow_patterns,
+                        local_dir=temp_dir,
+                        local_dir_use_symlinks=False,
+                        token=self._hf_token,
+                    ),
+                    timeout=self._config.download_timeout_seconds,
+                )
+
+                return Path(temp_dir)
+
+            except RepositoryNotFoundError as e:
+                self._cleanup_temp_dir(temp_dir)
+                raise ModelDownloadError(f"Repository not found: {hf_repo_id}") from e
+
+            except EntryNotFoundError as e:
+                self._cleanup_temp_dir(temp_dir)
+                raise ModelDownloadError(f"File not found in {hf_repo_id}: {e}") from e
+
+            except asyncio.TimeoutError as e:
+                self._cleanup_temp_dir(temp_dir)
+                last_error = e
+                self._record_failure()
+
+                if attempt < self._config.max_retries - 1:
+                    logger.warning(
+                        f"Download attempt {attempt + 1} timed out for {hf_repo_id} "
+                        f"(>{self._config.download_timeout_seconds}s). "
+                        f"Retrying in {delay}s..."
+                    )
+                    await asyncio.sleep(delay)
+                    delay *= 2
+
+            except HfHubHTTPError as e:
+                self._cleanup_temp_dir(temp_dir)
+                last_error = e
+                self._record_failure()
+
+                if attempt < self._config.max_retries - 1:
+                    logger.warning(
+                        f"Download attempt {attempt + 1} failed for {hf_repo_id}: "
+                        f"{e}. Retrying in {delay}s..."
+                    )
+                    await asyncio.sleep(delay)
+                    delay *= 2
+
+            except Exception as e:
+                self._cleanup_temp_dir(temp_dir)
+                last_error = e
+                self._record_failure()
+
+                if attempt < self._config.max_retries - 1:
+                    logger.warning(
+                        f"Download attempt {attempt + 1} failed for {hf_repo_id}: "
+                        f"{e}. Retrying in {delay}s..."
+                    )
+                    await asyncio.sleep(delay)
+                    delay *= 2
+
+        raise ModelDownloadError(
+            f"Failed to download from {hf_repo_id} after "
+            f"{self._config.max_retries} attempts: {last_error}"
+        )
+
     @staticmethod
     def _cleanup_temp_dir(temp_dir: str | None) -> None:
         """Remove temp directory if it exists."""
@@ -344,6 +506,20 @@ class ModelDownloader:
     def is_cached(self, hotkey: str, expected_hash: str) -> bool:
         """Check if model is cached with matching hash."""
         return self._cache.is_valid(hotkey, expected_hash)
+
+    def get_cached(self, hotkey: str) -> CachedModel | None:
+        """Get cached model with metadata if exists."""
+        return self._cache.get(hotkey)
+
+    def evict_cached(self, hotkey: str) -> bool:
+        """Remove a cached model entry by hotkey.
+
+        Used when the cached file is technically valid (hash matches chain)
+        but its sidecar metadata (e.g. feature_config) is no longer compatible
+        with the current schema. Eviction forces a fresh download on the next
+        cycle so the metadata is re-fetched and re-validated.
+        """
+        return self._cache.remove(hotkey)
 
     def get_cached_path(self, hotkey: str) -> Path | None:
         """Get path to cached model if exists."""

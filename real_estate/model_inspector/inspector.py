@@ -72,7 +72,11 @@ class ModelInspector:
                 f"Build it with: docker build -t {self._config.image} real_estate/evaluation/"
             ) from e
 
-    async def inspect_all(self, model_paths: dict[str, Path]) -> InspectionBatchResult:
+    async def inspect_all(
+        self,
+        model_paths: dict[str, Path],
+        expected_feature_counts: dict[str, int] | None = None,
+    ) -> InspectionBatchResult:
         """
         Inspect all models for memorization indicators.
 
@@ -80,11 +84,16 @@ class ModelInspector:
 
         Args:
             model_paths: Mapping of hotkey -> path to ONNX model file.
+            expected_feature_counts: Optional mapping of hotkey -> declared
+                feature count (from feature_config or default 79). Models
+                whose ONNX input dim doesn't match are rejected with
+                SHAPE_MISMATCH. If None, the shape check is skipped.
 
         Returns:
             InspectionBatchResult with rejected hotkeys and per-model results.
         """
         logger.info(f"Inspecting {len(model_paths)} models...")
+        expected_feature_counts = expected_feature_counts or {}
 
         semaphore = asyncio.Semaphore(self._config.max_concurrent)
 
@@ -93,7 +102,10 @@ class ModelInspector:
         ) -> ModelInspectionResult:
             async with semaphore:
                 return await asyncio.to_thread(
-                    self._inspect_single_safe, hotkey, model_path
+                    self._inspect_single_safe,
+                    hotkey,
+                    model_path,
+                    expected_feature_counts.get(hotkey),
                 )
 
         tasks = [
@@ -117,11 +129,14 @@ class ModelInspector:
         return InspectionBatchResult(results=tuple(results))
 
     def _inspect_single_safe(
-        self, hotkey: str, model_path: Path
+        self,
+        hotkey: str,
+        model_path: Path,
+        expected_features: int | None = None,
     ) -> ModelInspectionResult:
         """Inspect a single model, catching exceptions into a rejection result."""
         try:
-            return self._inspect_single(hotkey, model_path)
+            return self._inspect_single(hotkey, model_path, expected_features)
         except Exception as e:
             logger.exception(f"Inspection failed for {hotkey}, rejecting")
             return ModelInspectionResult(
@@ -132,11 +147,17 @@ class ModelInspector:
                 price_like_values=0,
                 zero_padding_bytes=0,
                 total_params=0,
+                expected_features=expected_features,
                 rejection_reason=RejectionReason.INSPECTION_FAILED,
                 error=e,
             )
 
-    def _inspect_single(self, hotkey: str, model_path: Path) -> ModelInspectionResult:
+    def _inspect_single(
+        self,
+        hotkey: str,
+        model_path: Path,
+        expected_features: int | None = None,
+    ) -> ModelInspectionResult:
         """
         Inspect a single model in a Docker container.
 
@@ -195,14 +216,19 @@ class ModelInspector:
                 with open(results_path) as f:
                     data = json.load(f)
 
-                return self._apply_rejection_rules(hotkey, data)
+                return self._apply_rejection_rules(hotkey, data, expected_features)
 
             finally:
                 if container:
                     with contextlib.suppress(Exception):
                         container.remove(force=True)
 
-    def _apply_rejection_rules(self, hotkey: str, data: dict) -> ModelInspectionResult:
+    def _apply_rejection_rules(
+        self,
+        hotkey: str,
+        data: dict,
+        expected_features: int | None = None,
+    ) -> ModelInspectionResult:
         """Apply rejection rules to inspection data."""
         has_lookup_pattern = bool(data.get("lookup_pattern", False))
         has_unused_initializers = float(data.get("unused_initializer_ratio", 0.0)) > 0
@@ -212,11 +238,22 @@ class ModelInspector:
         )
         price_count = int(data.get("price_like_values_total", 0))
         total_params = int(data.get("total_params", 0))
+        raw_input_dim = data.get("input_dim")
+        input_dim = int(raw_input_dim) if raw_input_dim is not None else None
 
-        # Pipeline: early exit on first failure
-        # Order: LOOKUP_PATTERN → UNUSED_INITIALIZERS → ZERO_PADDING → PRICES_IN_WEIGHTS
+        # Pipeline: early exit on first failure.
+        # Shape mismatch is checked first because the model is structurally
+        # incompatible with what we'd feed it — every other check is moot if
+        # inference would fail anyway. Only fires when both a declared count
+        # is supplied and the ONNX has a static, parseable input dim.
         rejection_reason: RejectionReason | None = None
-        if has_lookup_pattern:
+        if (
+            expected_features is not None
+            and input_dim is not None
+            and input_dim != expected_features
+        ):
+            rejection_reason = RejectionReason.SHAPE_MISMATCH
+        elif has_lookup_pattern:
             rejection_reason = RejectionReason.LOOKUP_PATTERN
         elif self._config.reject_unused_initializers and has_unused_initializers:
             rejection_reason = RejectionReason.UNUSED_INITIALIZERS
@@ -233,5 +270,7 @@ class ModelInspector:
             price_like_values=price_count,
             zero_padding_bytes=zero_padding_bytes,
             total_params=total_params,
+            input_dim=input_dim,
+            expected_features=expected_features,
             rejection_reason=rejection_reason,
         )

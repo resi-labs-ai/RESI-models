@@ -14,6 +14,7 @@ class RejectionReason(str, Enum):
     UNUSED_INITIALIZERS = "Model contains unused initializers"
     ZERO_PADDING = "Model contains significant zero-valued padding"
     PRICES_IN_WEIGHTS = "Suspicious amount of price-like values found in model weights"
+    SHAPE_MISMATCH = "Model input dimension does not match declared feature count"
     INSPECTION_FAILED = "Inspection container failed"
 
 
@@ -57,6 +58,12 @@ class ModelInspectionResult:
     price_like_values: int
     zero_padding_bytes: int
     total_params: int
+    input_dim: int | None = None
+    """Number of input features the ONNX model expects, or None if unknown."""
+
+    expected_features: int | None = None
+    """Number of features the validator expected per the model's feature_config."""
+
     rejection_reason: RejectionReason | None = None
     """Why the model was rejected, or None if it passed."""
 
@@ -87,6 +94,8 @@ class ModelInspectionResult:
             "price_like_values": self.price_like_values,
             "zero_padding_bytes": self.zero_padding_bytes,
             "total_params": self.total_params,
+            "input_dim": self.input_dim,
+            "expected_features": self.expected_features,
             "is_rejected": self.is_rejected,
             "rejection_reason": self.rejection_reason,
             "error": self.error_message,

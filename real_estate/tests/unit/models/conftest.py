@@ -10,6 +10,7 @@ import pytest
 from real_estate.models import (
     DownloadConfig,
     ModelCache,
+    ModelDownloadError,
     ModelVerifier,
     SchedulerConfig,
 )
@@ -75,10 +76,19 @@ def mock_verifier() -> MagicMock:
     verifier = MagicMock(spec=ModelVerifier)
     verifier.check_license = AsyncMock()
     verifier.find_onnx_file = AsyncMock(return_value=("model.onnx", 1000))
+    # find_repo_files: (onnx_filename, onnx_size, feature_config_info_or_none)
+    verifier.find_repo_files = AsyncMock(
+        return_value=("model.onnx", 1000, None)
+    )
     verifier.check_model_size = MagicMock()
     # verify_extrinsic_record returns commit block from Pylon
     verifier.verify_extrinsic_record = AsyncMock(return_value=1000)
     verifier.verify_hash = MagicMock()
+    # find_feature_config raises ModelDownloadError by default (no feature_config.json)
+    verifier.find_feature_config = AsyncMock(
+        side_effect=ModelDownloadError("No feature_config.json found")
+    )
+    verifier.validate_feature_config = MagicMock()
     return verifier
 
 

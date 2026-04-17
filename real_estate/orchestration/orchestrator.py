@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from real_estate.data import FeatureEncoder
+from real_estate.data import (
+    ConfigEncoder,
+    FeatureConfig,
+    create_default_feature_config,
+)
 from real_estate.duplicate_detector import create_duplicate_detector
 from real_estate.evaluation import create_orchestrator as create_eval_orchestrator
 from real_estate.generalization_detector import (
@@ -25,11 +29,11 @@ from real_estate.incentives import (
 )
 from real_estate.model_inspector import InspectionConfig, ModelInspector
 
-from .models import ValidationResult
+from .models import EncodedModels, ValidationResult
 
 if TYPE_CHECKING:
     from real_estate.chain.models import ChainModelMetadata
-    from real_estate.data import ValidationDataset
+    from real_estate.data import FeatureLayout, ValidationDataset
     from real_estate.duplicate_detector import DuplicateDetector
     from real_estate.evaluation import EvaluationOrchestrator, OrchestratorConfig
 
@@ -45,7 +49,7 @@ class ValidationOrchestrator:
 
     Pipeline steps:
     0. Pre-flight model inspection (reject memorizers before evaluation)
-    1. Encode features from property data
+    1. Encode features per-model from property data + feature configs
     2. Run inference on all models (original features)
     3. Run inference on all models (perturbed features)
     4. Detect duplicate predictions, identify copiers
@@ -56,7 +60,6 @@ class ValidationOrchestrator:
 
     def __init__(
         self,
-        encoder: FeatureEncoder,
         evaluator: EvaluationOrchestrator,
         detector: DuplicateDetector,
         selector: WinnerSelector,
@@ -69,7 +72,6 @@ class ValidationOrchestrator:
         Initialize orchestrator with all dependencies.
 
         Args:
-            encoder: Feature encoder for property data
             evaluator: Model evaluation orchestrator
             detector: Duplicate prediction detector
             selector: Winner selection logic
@@ -78,7 +80,6 @@ class ValidationOrchestrator:
             generalization_config: Config for feature perturbation
             model_inspector: Pre-flight static ONNX inspector
         """
-        self._encoder = encoder
         self._evaluator = evaluator
         self._duplicate_detector = detector
         self._selector = selector
@@ -88,19 +89,19 @@ class ValidationOrchestrator:
         self._model_inspector = model_inspector
 
     def set_seed(self, seed: int | None) -> None:
-        """Update the perturbation seed for the next evaluation round."""
+        """Update the generalization config seed (for decentralized randomness)."""
         self._generalization_config = GeneralizationConfig(
             global_noise_pct=self._generalization_config.global_noise_pct,
             global_threshold=self._generalization_config.global_threshold,
             seed=seed,
-            num_numeric_features=self._generalization_config.num_numeric_features,
+            spatial_noise_std=self._generalization_config.spatial_noise_std,
+            spatial_threshold=self._generalization_config.spatial_threshold,
         )
 
     @classmethod
     def create(
         cls,
         *,
-        feature_config_path: Path | None = None,
         evaluation_config: OrchestratorConfig | None = None,
         similarity_threshold: float = 1e-6,
         score_threshold: float = 0.01,
@@ -116,7 +117,6 @@ class ValidationOrchestrator:
         Create orchestrator with default dependencies.
 
         Args:
-            feature_config_path: Path to feature config YAML. If None, uses default.
             evaluation_config: Configuration for model evaluation (overrides docker_* params).
             similarity_threshold: Threshold for duplicate prediction detection.
             score_threshold: Score threshold for winner selection.
@@ -149,7 +149,6 @@ class ValidationOrchestrator:
         generalization_config = GeneralizationConfig()
 
         return cls(
-            encoder=FeatureEncoder(config_path=feature_config_path),
             evaluator=evaluator,
             detector=create_duplicate_detector(
                 similarity_threshold=similarity_threshold
@@ -168,11 +167,80 @@ class ValidationOrchestrator:
             ),
         )
 
+    @staticmethod
+    def _slice_perturbed(
+        perturbed_superset: np.ndarray,
+        superset_layout: FeatureLayout,
+        per_model_layouts: dict[str, FeatureLayout],
+        hotkeys: dict[str, Path],
+    ) -> dict[str, np.ndarray]:
+        """Slice per-model columns from a perturbed superset array.
+
+        Args:
+            perturbed_superset: Full (N, 79) perturbed feature matrix.
+            superset_layout: Layout of the superset (all features).
+            per_model_layouts: Per-model layouts mapping feature names to indices.
+            hotkeys: Model paths dict (keys used to iterate models).
+
+        Returns:
+            Dict of hotkey -> sliced perturbed array for that model's features.
+        """
+        name_to_idx = {name: i for i, name in enumerate(superset_layout.feature_names)}
+        result: dict[str, np.ndarray] = {}
+        for hk in hotkeys:
+            col_indices = [
+                name_to_idx[name] for name in per_model_layouts[hk].feature_names
+            ]
+            result[hk] = perturbed_superset[:, col_indices]
+        return result
+
+    @staticmethod
+    def _encode_models(
+        model_paths: dict[str, Path],
+        feature_configs: dict[str, FeatureConfig | None],
+        properties: list[dict],
+    ) -> EncodedModels:
+        """Encode features per-model, removing models that fail encoding.
+
+        Returns:
+            EncodedModels with filtered model_paths, feature arrays, and layouts.
+
+        Raises:
+            NoValidModelsError: If all models fail feature encoding.
+        """
+        default_config = create_default_feature_config()
+        features: dict[str, np.ndarray] = {}
+        layouts: dict[str, FeatureLayout] = {}
+        failures: list[str] = []
+
+        for hotkey in model_paths:
+            config = feature_configs.get(hotkey) or default_config
+            try:
+                encoder = ConfigEncoder(config)
+                features[hotkey] = encoder.encode(properties)
+                layouts[hotkey] = encoder.layout
+                logger.debug(f"Encoded {hotkey}: {features[hotkey].shape} features")
+            except Exception as e:
+                logger.warning(f"Feature encoding failed for {hotkey}: {e}, skipping")
+                failures.append(hotkey)
+
+        if failures:
+            model_paths = {k: v for k, v in model_paths.items() if k not in failures}
+            if not model_paths:
+                raise NoValidModelsError("All models failed feature encoding")
+
+        return EncodedModels(
+            model_paths=model_paths,
+            features=features,
+            layouts=layouts,
+        )
+
     async def run(
         self,
         dataset: ValidationDataset,
         model_paths: dict[str, Path],
         chain_metadata: dict[str, ChainModelMetadata],
+        feature_configs: dict[str, FeatureConfig | None] | None = None,
     ) -> ValidationResult:
         """
         Run full evaluation pipeline.
@@ -181,6 +249,7 @@ class ValidationOrchestrator:
             dataset: Validation dataset with properties and ground truth
             model_paths: Mapping of hotkey -> path to ONNX model file
             chain_metadata: Mapping of hotkey -> chain commitment metadata
+            feature_configs: Mapping of hotkey -> FeatureConfig (None = use default)
 
         Returns:
             ValidationResult with weights and evaluation details
@@ -192,9 +261,20 @@ class ValidationOrchestrator:
             f"Starting evaluation: {len(model_paths)} models, {len(dataset)} samples"
         )
 
+        feature_configs = feature_configs or {}
+        default_config = create_default_feature_config()
+
         # Step 0: Pre-flight model inspection
+        # Pass each model's declared feature count so inspector can flag
+        # ONNX input-shape mismatches before we waste time running them.
         logger.info("Running pre-flight model inspection...")
-        inspection_result = await self._model_inspector.inspect_all(model_paths)
+        expected_feature_counts = {
+            hk: len((feature_configs.get(hk) or default_config).features)
+            for hk in model_paths
+        }
+        inspection_result = await self._model_inspector.inspect_all(
+            model_paths, expected_feature_counts
+        )
         rejected = inspection_result.rejected_hotkeys
         if rejected:
             logger.info(
@@ -205,18 +285,24 @@ class ValidationOrchestrator:
         if not model_paths:
             raise NoValidModelsError("All models rejected by pre-flight inspection")
 
-        # 1. Encode features
-        logger.debug("Encoding features...")
-        features = self._encoder.encode(dataset.properties)
+        # 1. Encode features per-model
+        logger.debug("Encoding features per-model...")
         ground_truth = np.array(dataset.ground_truth, dtype=np.float32)
 
-        logger.debug(f"Encoded features shape: {features.shape}")
+        encoded = self._encode_models(
+            model_paths,
+            feature_configs,
+            dataset.properties,
+        )
+        model_paths = encoded.model_paths
+        per_model_features = encoded.features
+        per_model_layouts = encoded.layouts
 
         # 2. Run evaluation on all models (original features)
         logger.info("Running model evaluation...")
         eval_batch = await self._evaluator.evaluate_all(
             models=model_paths,
-            features=features,
+            features=per_model_features,
             ground_truth=ground_truth,
             model_metadata=chain_metadata,
         )
@@ -244,7 +330,7 @@ class ValidationOrchestrator:
                 f"{len(copiers)} copiers"
             )
 
-        # 4. Detect memorizers via perturbation
+        # 4. Generalization detection (perturbation-based)
         # Only run perturbed eval on models that succeeded on original features
         successful_hotkeys = {r.hotkey for r in eval_batch.successful_results}
         perturbed_model_paths = {
@@ -254,21 +340,47 @@ class ValidationOrchestrator:
         if skipped:
             logger.info(f"Skipping {skipped} failed models from perturbed evaluation")
 
+        # Encode superset once, perturb once, then slice per-model columns
         logger.info("Running generalization detection (perturbed evaluation)...")
-        perturbed = perturb_features(features, self._generalization_config)
+        superset_encoder = ConfigEncoder(default_config)
+        superset_features = superset_encoder.encode(dataset.properties)
+        superset_layout = superset_encoder.layout
+
+        perturbed_superset = perturb_features(
+            superset_features,
+            self._generalization_config,
+            superset_layout,
+        )
+        spatial_superset = perturb_spatial(
+            superset_features,
+            self._generalization_config,
+            superset_layout,
+        )
+
+        per_model_perturbed = self._slice_perturbed(
+            perturbed_superset,
+            superset_layout,
+            per_model_layouts,
+            perturbed_model_paths,
+        )
+        per_model_spatial = self._slice_perturbed(
+            spatial_superset,
+            superset_layout,
+            per_model_layouts,
+            perturbed_model_paths,
+        )
 
         perturbed_batch = await self._evaluator.evaluate_all(
             models=perturbed_model_paths,
-            features=perturbed,
+            features=per_model_perturbed,
             ground_truth=ground_truth,
             model_metadata=chain_metadata,
         )
 
         logger.info("Running spatial perturbation pass...")
-        spatial_features = perturb_spatial(features, self._generalization_config)
         spatial_batch = await self._evaluator.evaluate_all(
             models=perturbed_model_paths,
-            features=spatial_features,
+            features=per_model_spatial,
             ground_truth=ground_truth,
             model_metadata=chain_metadata,
         )
@@ -324,4 +436,7 @@ class ValidationOrchestrator:
             duplicate_result=duplicates,
             generalization_result=generalization_result,
             inspection_result=inspection_result,
+            per_model_num_features={
+                hk: f.shape[1] for hk, f in per_model_features.items()
+            },
         )

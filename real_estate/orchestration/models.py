@@ -3,14 +3,32 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 if TYPE_CHECKING:
+    from real_estate.data import FeatureLayout
     from real_estate.duplicate_detector import DuplicateDetectionResult
     from real_estate.evaluation import EvaluationBatch
     from real_estate.generalization_detector import GeneralizationDetectionResult
     from real_estate.incentives import IncentiveWeights, WinnerSelectionResult
     from real_estate.model_inspector import InspectionBatchResult
+
+
+@dataclass(frozen=True)
+class EncodedModels:
+    """Result of per-model feature encoding."""
+
+    model_paths: dict[str, Path]
+    """Hotkey -> ONNX path (models that failed encoding are excluded)."""
+
+    features: dict[str, np.ndarray]
+    """Hotkey -> encoded feature matrix (N_samples x N_features)."""
+
+    layouts: dict[str, FeatureLayout]
+    """Hotkey -> feature layout (column indices for perturbation)."""
 
 
 @dataclass
@@ -34,6 +52,9 @@ class ValidationResult:
 
     inspection_result: InspectionBatchResult | None = None
     """Pre-flight inspection results."""
+
+    per_model_num_features: dict[str, int] | None = None
+    """Hotkey -> number of features used by each model."""
 
     def to_dict(self) -> dict:
         """

@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import numpy as np
-import pytest
 
 from real_estate.evaluation.models import (
     EvaluationBatch,
@@ -226,12 +225,3 @@ def create_inspection_result(
     return InspectionBatchResult(results=results)
 
 
-# Pytest fixtures for common mock dependencies
-
-
-@pytest.fixture
-def mock_encoder() -> MagicMock:
-    """Create mock feature encoder."""
-    encoder = MagicMock()
-    encoder.encode.return_value = np.array([[1.0, 2.0, 3.0]] * 10)
-    return encoder
