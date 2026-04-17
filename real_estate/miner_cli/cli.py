@@ -169,7 +169,9 @@ def cmd_submit(args: argparse.Namespace) -> int:
     print("Next steps:")
     print("  1. Ensure model.onnx is uploaded to your HuggingFace repo")
     print("  2. Ensure the model repo has the proper MIT license")
-    print("  3. Add feature_config.json to your repo (declares which features your model uses)")
+    print(
+        "  3. Add feature_config.json to your repo (declares which features your model uses)"
+    )
 
     if extrinsic_info:
         print("  4. Add extrinsic_record.json to your repo with this content:")

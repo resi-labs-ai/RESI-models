@@ -202,9 +202,7 @@ def resolve_feature_config(
     """
     if feature_config_path is not None:
         feature_config = load_feature_config(Path(feature_config_path))
-        logger.debug(
-            f"Feature config loaded: {len(feature_config.features)} features"
-        )
+        logger.debug(f"Feature config loaded: {len(feature_config.features)} features")
     else:
         feature_config = create_default_feature_config()
         logger.debug("Using default feature config (all features)")

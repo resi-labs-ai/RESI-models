@@ -176,10 +176,12 @@ def create_default_feature_config() -> FeatureConfig:
     Routed through parse_feature_config for full validation.
     """
     _, _, default_order = _get_field_sets()
-    return parse_feature_config({
-        "version": SUPPORTED_VERSION,
-        "features": list(default_order),
-    })
+    return parse_feature_config(
+        {
+            "version": SUPPORTED_VERSION,
+            "features": list(default_order),
+        }
+    )
 
 
 class ConfigEncoder:
