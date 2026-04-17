@@ -22,7 +22,7 @@ from ..data.config_encoder import (
     load_feature_config,
 )
 from ..evaluation import MetricsConfig, calculate_metrics
-from .config import get_expected_num_features, get_test_data, load_test_samples
+from .config import get_expected_num_features, load_test_samples
 from .errors import (
     EvaluationError,
     InvalidONNXFormatError,

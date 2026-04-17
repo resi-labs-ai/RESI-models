@@ -256,7 +256,7 @@ class TestValidationOrchestratorIntegration:
             n_features=N_TEST_FEATURES, output_path=valid_path, seed=42
         )
 
-        # Wrong feature count -> will fail at inference
+        # Wrong feature count -> rejected at pre-flight inspection (SHAPE_MISMATCH)
         invalid_path = tmp_path / "invalid.onnx"
         create_test_model(n_features=99, output_path=invalid_path, seed=123)
 
@@ -279,8 +279,11 @@ class TestValidationOrchestratorIntegration:
             feature_configs=make_feature_configs(set(model_paths)),
         )
 
+        # Invalid model is rejected at inspection, not at evaluation
         assert result.eval_batch.successful_count == 1
-        assert result.eval_batch.failed_count == 1
+        assert result.eval_batch.failed_count == 0
+        assert result.inspection_result is not None
+        assert "invalid" in result.inspection_result.rejected_hotkeys
         assert result.winner.winner_hotkey == "valid"
         assert result.weights.get_weight("valid") == pytest.approx(0.99)
         assert result.weights.get_weight("invalid") == 0.0
@@ -298,7 +301,7 @@ class TestValidationOrchestratorIntegration:
 
         orchestrator = ValidationOrchestrator.create()
 
-        with pytest.raises(NoValidModelsError, match="All model evaluations failed"):
+        with pytest.raises(NoValidModelsError, match="All models rejected by pre-flight inspection"):
             await orchestrator.run(
                 dataset=validation_dataset,
                 model_paths=model_paths,
