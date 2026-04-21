@@ -18,6 +18,7 @@ from pylon_client.artanis import (
     PylonUnauthorized,
     Weight,
 )
+from pylon_client.artanis.unstable import HexDataCommitment
 from scalecodec.utils.ss58 import ss58_encode
 
 from .errors import (
@@ -117,14 +118,19 @@ class ChainClient:
 
     async def get_all_commitments(self) -> list[ChainModelMetadata]:
         """
-        Fetch all commitments from chain with actual commit block numbers.
+        Fetch all commitments from chain — both regular and revealed.
 
-        Uses the unstable Pylon API which returns per-commitment
-        block numbers in a single request.
+        Merges results from two Pylon unstable API calls:
+        1. get_commitments() — returns regular (hex_data) and timelock_encrypted;
+           we only parse hex_data commitments (timelock ones aren't readable yet).
+        2. get_all_revealed_commitments() — returns decoded commit-reveal
+           commitments. A hotkey may have multiple reveals; we take the latest.
+
+        If a hotkey appears in both, the one with the higher block number
+        (more recent) wins.
 
         Returns:
             List of ChainModelMetadata for all miners with commitments.
-            Pylon filters to registered hotkeys only.
         """
         client = self._ensure_client()
 
@@ -140,25 +146,82 @@ class ChainClient:
         except PylonResponseException as e:
             raise ChainConnectionError(f"Failed to fetch commitments: {e}") from e
 
-        result = []
+        # 1. Parse regular hex_data commitments (skip timelock_encrypted)
+        regular: dict[str, ChainModelMetadata] = {}
         for hotkey, commitment in response.commitments.items():
+            if not isinstance(commitment, HexDataCommitment):
+                continue
             try:
                 metadata = ChainModelMetadata.from_hex(
                     hotkey=hotkey,
                     hex_data=commitment.commitment,
                     block_number=commitment.commitment_block_number,
                 )
-                result.append(metadata)
+                regular[hotkey] = metadata
             except Exception as e:
                 logger.warning(f"Failed to parse commitment for {hotkey}: {e}")
-                continue
 
-        logger.debug(f"Fetched {len(result)} commitments")
+        # 2. Fetch revealed commitments
+        revealed = await self._fetch_revealed_commitments(client)
+
+        # 3. Merge — keep whichever has the higher block number
+        merged = regular.copy()
+        for hotkey, rev_meta in revealed.items():
+            if (
+                hotkey not in merged
+                or rev_meta.block_number > merged[hotkey].block_number
+            ):
+                merged[hotkey] = rev_meta
+
+        logger.debug(
+            f"Fetched {len(merged)} commitments "
+            f"({len(regular)} regular, {len(revealed)} revealed)"
+        )
+        return list(merged.values())
+
+    async def _fetch_revealed_commitments(
+        self, client: AsyncPylonClient
+    ) -> dict[str, ChainModelMetadata]:
+        """Fetch and parse all revealed commitments.
+
+        For hotkeys with multiple reveals, takes the one with the highest
+        (most recent) reveal_block_number.
+
+        Returns:
+            Dict of hotkey -> ChainModelMetadata from revealed commitments.
+        """
+        try:
+            response = await client.unstable.identity.get_all_revealed_commitments()
+        except PylonResponseException as e:
+            logger.warning(f"Failed to fetch revealed commitments: {e}")
+            return {}
+        except PylonRequestException as e:
+            logger.warning(f"Connection error fetching revealed commitments: {e}")
+            return {}
+
+        result: dict[str, ChainModelMetadata] = {}
+        for hotkey, reveals in response.commitments.items():
+            if not reveals:
+                continue
+            # Take the latest reveal by block number
+            latest = max(reveals, key=lambda r: r.reveal_block_number)
+            try:
+                metadata = ChainModelMetadata.from_revealed(
+                    hotkey=hotkey,
+                    data=latest.commitment,
+                    block_number=latest.reveal_block_number,
+                )
+                result[hotkey] = metadata
+            except Exception as e:
+                logger.warning(f"Failed to parse revealed commitment for {hotkey}: {e}")
         return result
 
     async def get_commitment(self, hotkey: str) -> Commitment | None:
         """
         Fetch commitment for a specific hotkey.
+
+        Returns the regular (hex_data) commitment if available. For
+        timelock_encrypted commitments, returns None (not readable yet).
 
         Args:
             hotkey: Miner's hotkey address
@@ -175,10 +238,17 @@ class ChainClient:
                 logger.debug(f"No commitment found for hotkey {hotkey}")
                 return None
 
+            commitment = response.commitment
+            if not isinstance(commitment, HexDataCommitment):
+                logger.debug(
+                    f"Commitment for {hotkey} is {commitment.kind}, not readable"
+                )
+                return None
+
             return Commitment(
-                hotkey=response.hotkey,
-                data=response.commitment,
-                block=response.block.number,
+                hotkey=hotkey,
+                data=commitment.commitment,
+                block=commitment.commitment_block_number,
             )
 
         except PylonUnauthorized as e:
@@ -189,7 +259,6 @@ class ChainClient:
                 f"Connection error: {cause or 'Pylon unreachable'}"
             ) from e
         except PylonResponseException as e:
-            # 404 means no commitment exists - check via __cause__ (Pylon doesn't expose status code)
             if e.__cause__ and "404" in str(e.__cause__):
                 logger.debug(f"No commitment found for hotkey {hotkey}")
                 return None
