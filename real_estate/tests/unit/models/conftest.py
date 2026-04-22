@@ -34,7 +34,9 @@ def cache(temp_cache_dir: Path) -> ModelCache:
 @pytest.fixture
 def sample_metadata() -> CachedModelMetadata:
     """Sample cached model metadata."""
-    return CachedModelMetadata(hash="abc12345", size_bytes=1000, commit_block=1000)
+    return CachedModelMetadata(
+        hash="abc12345", size_bytes=1000, commit_block=1000, license_type="exclusive"
+    )
 
 
 @pytest.fixture
@@ -74,7 +76,7 @@ def mock_cache() -> MagicMock:
 def mock_verifier() -> MagicMock:
     """Mock ModelVerifier."""
     verifier = MagicMock(spec=ModelVerifier)
-    verifier.check_license = AsyncMock()
+    verifier.check_license = AsyncMock(return_value="exclusive")
     verifier.find_onnx_file = AsyncMock(return_value=("model.onnx", 1000))
     # find_repo_files: (onnx_filename, onnx_size, feature_config_info_or_none)
     verifier.find_repo_files = AsyncMock(
