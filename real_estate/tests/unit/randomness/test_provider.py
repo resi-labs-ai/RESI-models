@@ -313,8 +313,10 @@ class TestCommittedSnapshot:
     def mock_validator(self, tmp_path: Path) -> MagicMock:
         """Create a minimal mock validator with snapshot methods."""
         # Mock pylon before importing Validator
-        sys.modules.setdefault("pylon_client", MagicMock())
-        sys.modules.setdefault("pylon_client.artanis", MagicMock())
+        _mock = MagicMock()
+        sys.modules.setdefault("pylon_client", _mock)
+        sys.modules.setdefault("pylon_client.artanis", _mock.artanis)
+        sys.modules.setdefault("pylon_client.artanis.unstable", _mock.artanis.unstable)
         from real_estate.validator.validator import Validator
 
         stub = MagicMock(spec=Validator)

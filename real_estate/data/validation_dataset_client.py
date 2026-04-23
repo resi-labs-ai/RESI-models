@@ -109,7 +109,7 @@ class ValidationClient:
             logger.info(f"TEST DATA: Will load data from {config.test_data_path}")
 
     async def fetch_ath(self) -> ATHRecord | None:
-        """Fetch ATH winner from dashboard /api/stats endpoint.
+        """Fetch ATH winner from /api/ath endpoint.
 
         Retries up to 3 times with exponential backoff (5s, 10s, 20s).
         """
@@ -126,7 +126,7 @@ class ValidationClient:
                             f"Retrying ATH fetch "
                             f"(attempt {attempt.retry_state.attempt_number}/3)"
                         )
-                    url = f"{self._base_url}/api/stats"
+                    url = f"{self._base_url}/api/ath"
                     async with httpx.AsyncClient(timeout=30) as client:
                         response = await client.get(url)
                         response.raise_for_status()

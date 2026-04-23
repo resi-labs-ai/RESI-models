@@ -71,8 +71,10 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--validation_data.url",
         dest="validation_data_url",
         type=str,
-        help="URL of the validation data API (dashboard).",
-        default=os.environ.get("VALIDATION_DATA_URL", "https://dashboard.resilabs.ai"),
+        help="URL of the validation data API.",
+        default=os.environ.get(
+            "VALIDATION_DATA_URL", "https://resi-validator-api.vercel.app"
+        ),
     )
 
     parser.add_argument(

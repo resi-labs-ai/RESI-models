@@ -57,11 +57,7 @@ class ChainModelMetadata:
             hex_data: Hex-encoded JSON commitment data
             block_number: Block number where commitment was made
         """
-        # Decode hex to bytes, then to string, then parse JSON
-        hex_str = hex_data[2:] if hex_data.startswith("0x") else hex_data
-        raw_bytes = bytes.fromhex(hex_str)
-        json_str = raw_bytes.decode("utf-8")
-        data = json.loads(json_str)
+        data = cls._decode_hex_json(hex_data)
 
         return cls(
             hotkey=hotkey,
@@ -69,6 +65,42 @@ class ChainModelMetadata:
             model_hash=data.get("h", ""),
             block_number=block_number or data.get("b", 0),
         )
+
+    @classmethod
+    def from_revealed(
+        cls, hotkey: str, data: str, block_number: int = 0
+    ) -> ChainModelMetadata:
+        """
+        Parse a revealed commitment.
+
+        Revealed commitments may be plain-text JSON or hex-encoded JSON,
+        depending on how the miner submitted.
+
+        Args:
+            hotkey: Miner's hotkey address
+            data: Commitment data — either plain JSON or hex-encoded JSON
+            block_number: Block number where commitment was revealed
+        """
+        # Try plain JSON first
+        try:
+            parsed = json.loads(data)
+        except (json.JSONDecodeError, ValueError):
+            # Fall back to hex-encoded JSON
+            parsed = cls._decode_hex_json(data)
+
+        return cls(
+            hotkey=hotkey,
+            hf_repo_id=parsed.get("r", ""),
+            model_hash=parsed.get("h", ""),
+            block_number=block_number or parsed.get("b", 0),
+        )
+
+    @staticmethod
+    def _decode_hex_json(data: str) -> dict:
+        """Decode hex-encoded JSON, with or without 0x prefix."""
+        hex_str = data[2:] if data.startswith("0x") else data
+        raw_bytes = bytes.fromhex(hex_str)
+        return json.loads(raw_bytes.decode("utf-8"))
 
 
 @dataclass(frozen=True)

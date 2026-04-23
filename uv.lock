@@ -250,7 +250,7 @@ wheels = [
 
 [[package]]
 name = "bittensor-pylon-client"
-version = "1.8.0"
+version = "1.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "apscheduler" },
@@ -260,9 +260,9 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5d/31/4398bf68255ef256d3dc3992f1ee3f50ceecad0410c90ef1fa6c2a3b8a75/bittensor_pylon_client-1.8.0.tar.gz", hash = "sha256:d43a65742a15d8b43311f22616360fd72e134f470225a719b5235b6746a840f3", size = 22436, upload-time = "2026-02-20T08:43:53.649Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/80/56f239dafdaaa4a9bcd9c4d4ae20eec8fd347a80f2332642aa86929ffb19/bittensor_pylon_client-1.9.0.tar.gz", hash = "sha256:840ee5f514e0ec0c0b9b1c5f6f24313d96a4ad979a64f135cc4637bc2eefd129", size = 24937, upload-time = "2026-04-13T09:09:43.093Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/75/c7/e8037067d3b87ad6e4ac876375cdbd4844fdc581ea958133724c3f81139a/bittensor_pylon_client-1.8.0-py3-none-any.whl", hash = "sha256:4c0f500dd27d02f880b41532a0ca663bae30a1bb98e29a91b641e57b10914ad4", size = 47761, upload-time = "2026-02-20T08:43:52.128Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/db/44b969cbc937138ca6897bfb8e2daf4710e4da5d67f74b8d223775e3a685/bittensor_pylon_client-1.9.0-py3-none-any.whl", hash = "sha256:176ce1f66e3d4535082ca5b580e2cb29d78171d13f6c66446dcb7b7598f0de7b", size = 51594, upload-time = "2026-04-13T09:09:41.701Z" },
 ]
 
 [[package]]
@@ -1807,7 +1807,7 @@ dev = [
 requires-dist = [
     { name = "apscheduler", specifier = ">=3.11.1" },
     { name = "bittensor", specifier = "==9.12.2" },
-    { name = "bittensor-pylon-client", specifier = ">=1.8.0,<1.9.0" },
+    { name = "bittensor-pylon-client", specifier = ">=1.9.0,<2.0.0" },
     { name = "bittensor-wallet", specifier = "==4.0.1" },
     { name = "httpx", specifier = ">=0.26.0" },
     { name = "huggingface-hub", specifier = ">=0.20.0" },
