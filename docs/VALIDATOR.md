@@ -368,7 +368,7 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | `ARCHIVE_NETWORK` | `finney` | Archive network for Pylon historical block lookups |
 | `ARCHIVE_BLOCKS_CUTOFF` | `256` | Blocks older than this use archive node |
 | **Validation Schedule** | | |
-| `VALIDATION_DATA_URL` | `https://dashboard.resilabs.ai` | Validation data API URL |
+| `VALIDATION_DATA_URL` | `https://resi-validator-api.vercel.app` | Validation data API URL |
 | `VALIDATION_DATA_SCHEDULE_HOUR` | `18` | Hour (UTC) for daily evaluation |
 | `VALIDATION_DATA_SCHEDULE_MINUTE` | `0` | Minute for daily evaluation |
 | `VALIDATION_DATA_MAX_RETRIES` | `24` | Retry attempts if data not ready (~2 hours) |
