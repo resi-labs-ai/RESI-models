@@ -11,6 +11,7 @@ from .errors import (
     ModelDownloadError,
     ModelError,
     ModelTooLargeError,
+    RepoValidationError,
 )
 from .factory import create_model_scheduler
 from .models import (
@@ -31,6 +32,7 @@ __all__ = [
     "HashMismatchError",
     "ExtrinsicVerificationError",
     "ModelTooLargeError",
+    "RepoValidationError",
     "ModelDownloadError",
     "InsufficientDiskSpaceError",
     "CircuitBreakerOpenError",

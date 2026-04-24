@@ -19,6 +19,7 @@ class CachedModelMetadata:
     size_bytes: int  # For disk space tracking
     commit_block: int  # Block number when committed (from Pylon, for tie-breaking)
     feature_config: dict | None = None  # Raw JSON dict from feature_config.json
+    license_type: str | None = None  # License type verified at download time
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -29,6 +30,8 @@ class CachedModelMetadata:
         }
         if self.feature_config is not None:
             d["feature_config"] = self.feature_config
+        if self.license_type is not None:
+            d["license_type"] = self.license_type
         return d
 
     @classmethod
@@ -39,6 +42,7 @@ class CachedModelMetadata:
             size_bytes=data["size_bytes"],
             commit_block=data["commit_block"],
             feature_config=data.get("feature_config"),
+            license_type=data.get("license_type"),
         )
 
 

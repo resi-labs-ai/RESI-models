@@ -84,6 +84,24 @@ class ModelDownloadScheduler:
         """
         return self._downloader.evict_cached(hotkey)
 
+    def _is_cached_with_license(self, hotkey: str, model_hash: str) -> bool:
+        """Check if model is cached with matching hash AND valid license.
+
+        Returns False (forcing re-download) if the cache entry exists but
+        has no license_type or a non-exclusive license.
+        """
+        if not self._downloader.is_cached(hotkey, model_hash):
+            return False
+        cached = self._downloader.get_cached(hotkey)
+        if cached and cached.metadata.license_type != "exclusive":
+            logger.warning(
+                f"Cached model for {hotkey} has license_type="
+                f"'{cached.metadata.license_type}', needs re-download"
+            )
+            self._downloader.evict_cached(hotkey)
+            return False
+        return True
+
     def get_available_models(
         self, registered_hotkeys: set[str], current_block: int
     ) -> dict[str, Path]:
@@ -117,6 +135,15 @@ class ModelDownloadScheduler:
                 continue
             cached = self._downloader.get_cached(hotkey)
             if cached and cached.metadata.hash == commitment.model_hash:
+                # Evict old cache entries without verified license
+                if cached.metadata.license_type != "exclusive":
+                    logger.warning(
+                        f"Evicting {hotkey}: license_type="
+                        f"'{cached.metadata.license_type}', "
+                        f"expected 'exclusive'"
+                    )
+                    self._downloader.evict_cached(hotkey)
+                    continue
                 result[hotkey] = cached.path
         return result
 
@@ -276,8 +303,8 @@ class ModelDownloadScheduler:
                 )
                 continue
 
-            # Skip if already cached successfully
-            if self._downloader.is_cached(hotkey, commitment.model_hash):
+            # Skip if already cached with valid license
+            if self._is_cached_with_license(hotkey, commitment.model_hash):
                 continue
 
             # Retry if explicitly marked as failed
@@ -374,7 +401,7 @@ class ModelDownloadScheduler:
         needs_download = [
             c
             for c in eligible
-            if not self._downloader.is_cached(c.hotkey, c.model_hash)
+            if not self._is_cached_with_license(c.hotkey, c.model_hash)
         ]
 
         logger.info(
