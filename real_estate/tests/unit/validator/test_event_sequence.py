@@ -18,8 +18,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # Mock pylon_client module before importing Validator
-sys.modules["pylon_client"] = MagicMock()
-sys.modules["pylon_client.artanis"] = MagicMock()
+if "pylon_client.artanis.unstable" not in sys.modules:
+    _mock = MagicMock()
+    sys.modules.setdefault("pylon_client", _mock)
+    sys.modules.setdefault("pylon_client.artanis", _mock.artanis)
+    sys.modules.setdefault("pylon_client.artanis.unstable", _mock.artanis.unstable)
 
 
 @pytest.fixture
