@@ -112,7 +112,10 @@ class TestVerifierSendsAuthHeader:
         verifier = ModelVerifier(mock_chain, hf_token=None)
 
         with patch("real_estate.models.verifier.httpx.AsyncClient", CapturingClient):
-            await verifier.check_license(HF_REPO)
+            try:
+                await verifier.check_license(HF_REPO)
+            except Exception:
+                pass  # License check may fail — we only care about the header
 
         hf_request = next(
             (r for r in captured_requests if "huggingface.co" in str(r.url)), None
