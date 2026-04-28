@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -9,10 +10,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from real_estate.data import (
-    ConfigEncoder,
+    IMAGES_FEATURE_NAME,
     FeatureConfig,
+    TabularEncoder,
     create_default_feature_config,
+    decode_for_model,
 )
+from real_estate.data.image_bundle import ImageBundleManifest
 from real_estate.duplicate_detector import create_duplicate_detector
 from real_estate.evaluation import create_orchestrator as create_eval_orchestrator
 from real_estate.generalization_detector import (
@@ -216,7 +220,7 @@ class ValidationOrchestrator:
         for hotkey in model_paths:
             config = feature_configs.get(hotkey) or default_config
             try:
-                encoder = ConfigEncoder(config)
+                encoder = TabularEncoder(config)
                 features[hotkey] = encoder.encode(properties)
                 layouts[hotkey] = encoder.layout
                 logger.debug(f"Encoded {hotkey}: {features[hotkey].shape} features")
@@ -241,6 +245,8 @@ class ValidationOrchestrator:
         model_paths: dict[str, Path],
         chain_metadata: dict[str, ChainModelMetadata],
         feature_configs: dict[str, FeatureConfig | None] | None = None,
+        image_bundle_path: Path | None = None,
+        image_bundle_manifest: ImageBundleManifest | None = None,
     ) -> ValidationResult:
         """
         Run full evaluation pipeline.
@@ -250,6 +256,8 @@ class ValidationOrchestrator:
             model_paths: Mapping of hotkey -> path to ONNX model file
             chain_metadata: Mapping of hotkey -> chain commitment metadata
             feature_configs: Mapping of hotkey -> FeatureConfig (None = use default)
+            image_bundle_path: Path to verified image bundle zip (None if unavailable)
+            image_bundle_manifest: Pre-parsed manifest (from verify_bundle)
 
         Returns:
             ValidationResult with weights and evaluation details
@@ -269,7 +277,10 @@ class ValidationOrchestrator:
         # ONNX input-shape mismatches before we waste time running them.
         logger.info("Running pre-flight model inspection...")
         expected_feature_counts = {
-            hk: len((feature_configs.get(hk) or default_config).features)
+            hk: len([
+                f for f in (feature_configs.get(hk) or default_config).features
+                if f != IMAGES_FEATURE_NAME
+            ])
             for hk in model_paths
         }
         inspection_result = await self._model_inspector.inspect_all(
@@ -298,6 +309,55 @@ class ValidationOrchestrator:
         per_model_features = encoded.features
         per_model_layouts = encoded.layouts
 
+        # 1b. Decode images once, share across all image models
+        per_model_images: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        if image_bundle_path and image_bundle_manifest:
+            # Find which models want images and the max images any of them need
+            image_hotkeys = []
+            for hotkey in model_paths:
+                config = feature_configs.get(hotkey)
+                if config and config.image_block:
+                    image_hotkeys.append(hotkey)
+
+            if image_hotkeys:
+                # All v1 models share the same max_images_per_property constant,
+                # so one decode covers everyone. If v2 allows different values,
+                # decode with the max and slice down per-model.
+                max_imgs = max(
+                    feature_configs[hk].image_block.max_images_per_property
+                    for hk in image_hotkeys
+                )
+                property_ids = [
+                    p.get("external_id", str(i))
+                    for i, p in enumerate(dataset.properties)
+                ]
+                decoded = await asyncio.to_thread(
+                    decode_for_model,
+                    zip_path=image_bundle_path,
+                    manifest=image_bundle_manifest,
+                    property_ids=property_ids,
+                    max_images_per_property=max_imgs,
+                )
+                shared = (decoded.images, decoded.image_counts)
+
+                for hotkey in image_hotkeys:
+                    model_max = feature_configs[hotkey].image_block.max_images_per_property
+                    if model_max < max_imgs:
+                        # Slice image tensor, clamp counts
+                        sliced_counts = np.minimum(shared[1], model_max)
+                        per_model_images[hotkey] = (
+                            shared[0][:, :model_max],
+                            sliced_counts,
+                        )
+                    else:
+                        per_model_images[hotkey] = shared
+
+                logger.info(
+                    f"Decoded images once for {len(image_hotkeys)} models "
+                    f"(max {max_imgs} imgs/prop, "
+                    f"tensor {decoded.images.nbytes / 1024 / 1024:.0f} MB)"
+                )
+
         # 2. Run evaluation on all models (original features)
         logger.info("Running model evaluation...")
         eval_batch = await self._evaluator.evaluate_all(
@@ -305,6 +365,7 @@ class ValidationOrchestrator:
             features=per_model_features,
             ground_truth=ground_truth,
             model_metadata=chain_metadata,
+            image_data=per_model_images or None,
         )
 
         successful_count = len(eval_batch.successful_results)
@@ -342,7 +403,7 @@ class ValidationOrchestrator:
 
         # Encode superset once, perturb once, then slice per-model columns
         logger.info("Running generalization detection (perturbed evaluation)...")
-        superset_encoder = ConfigEncoder(default_config)
+        superset_encoder = TabularEncoder(default_config)
         superset_features = superset_encoder.encode(dataset.properties)
         superset_layout = superset_encoder.layout
 
@@ -370,11 +431,17 @@ class ValidationOrchestrator:
             perturbed_model_paths,
         )
 
+        # Filter image data to only successful models in perturbed set
+        perturbed_image_data = {
+            k: v for k, v in per_model_images.items() if k in perturbed_model_paths
+        } or None
+
         perturbed_batch = await self._evaluator.evaluate_all(
             models=perturbed_model_paths,
             features=per_model_perturbed,
             ground_truth=ground_truth,
             model_metadata=chain_metadata,
+            image_data=perturbed_image_data,
         )
 
         logger.info("Running spatial perturbation pass...")
@@ -383,6 +450,7 @@ class ValidationOrchestrator:
             features=per_model_spatial,
             ground_truth=ground_truth,
             model_metadata=chain_metadata,
+            image_data=perturbed_image_data,
         )
 
         generalization_result = self._generalization_detector.detect(

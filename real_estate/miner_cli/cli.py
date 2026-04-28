@@ -24,11 +24,22 @@ Validators verify this before evaluating your model.
 
 def cmd_evaluate(args: argparse.Namespace) -> int:
     """Execute the evaluate command."""
-    from .evaluate import evaluate_model
+    from .evaluate import evaluate_model, resolve_feature_config
 
     print(f"Evaluating model: {args.model_path}")
     if args.feature_config:
         print(f"Feature config: {args.feature_config}")
+
+    # Show image info if applicable
+    try:
+        fc = resolve_feature_config(args.feature_config)
+        if fc.image_block:
+            c, h, w = fc.image_block.dim
+            max_imgs = fc.image_block.max_images_per_property
+            print(f"Image input: enabled ({max_imgs} x {c}x{h}x{w}, dummy zeros for local eval)")
+    except Exception:
+        pass  # evaluate_model will report the real error
+
     print()
 
     result = evaluate_model(

@@ -26,12 +26,37 @@ MAX_FEATURES = 79
 SUPPORTED_VERSION = "1.0"
 
 
+IMAGES_FEATURE_NAME = "property_images"
+"""Reserved feature name. Including this in the features list opts the model into
+receiving property image tensors alongside numeric features."""
+
+
+@dataclass(frozen=True)
+class ImageBlockConfig:
+    """Image input parameters for models that opt into property_images.
+
+    Auto-populated from v1 constants when a miner includes 'property_images'
+    in their feature list. Not configured by miners directly.
+    """
+
+    dim: tuple[int, int, int]
+    """Image tensor dimensions as (C, H, W)."""
+
+    max_images_per_property: int
+    """Maximum images per property. Validator pads with zeros + mask."""
+
+
+IMAGE_BLOCK_V1_DIM = (3, 224, 224)
+MAX_IMAGES_PER_PROPERTY_V1 = 10
+
+
 @dataclass(frozen=True)
 class FeatureConfig:
     """Miner's declared feature selection from feature_config.json."""
 
     version: str
     features: tuple[str, ...]
+    image_block: ImageBlockConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -119,20 +144,24 @@ def parse_feature_config(data: dict) -> FeatureConfig:
         dupes = [f for f in features if features.count(f) > 1]
         raise FeatureConfigError(f"Duplicate feature names: {sorted(set(dupes))}")
 
-    # Check count bounds
-    if len(features) < MIN_FEATURES:
+    # Separate property_images from numeric/boolean features
+    has_images = IMAGES_FEATURE_NAME in features
+    numeric_boolean_features = [f for f in features if f != IMAGES_FEATURE_NAME]
+
+    # Count bounds apply to numeric/boolean features only
+    if len(numeric_boolean_features) < MIN_FEATURES:
         raise FeatureConfigError(
-            f"Too few features: {len(features)}, minimum is {MIN_FEATURES}"
+            f"Too few features: {len(numeric_boolean_features)}, minimum is {MIN_FEATURES}"
         )
-    if len(features) > MAX_FEATURES:
+    if len(numeric_boolean_features) > MAX_FEATURES:
         raise FeatureConfigError(
-            f"Too many features: {len(features)}, maximum is {MAX_FEATURES}"
+            f"Too many features: {len(numeric_boolean_features)}, maximum is {MAX_FEATURES}"
         )
 
-    # Check all names exist in data contract
+    # Check all numeric/boolean names exist in data contract
     numeric_fields, boolean_fields, _ = _get_field_sets()
     all_known = numeric_fields | boolean_fields
-    unknown = set(features) - all_known
+    unknown = set(numeric_boolean_features) - all_known
     if unknown:
         raise FeatureConfigError(f"Unknown feature names: {sorted(unknown)}")
 
@@ -143,7 +172,15 @@ def parse_feature_config(data: dict) -> FeatureConfig:
             f"Missing required features: {sorted(missing_required)}"
         )
 
-    return FeatureConfig(version=version, features=tuple(features))
+    # Auto-populate image_block when property_images is in the feature list
+    image_block = None
+    if has_images:
+        image_block = ImageBlockConfig(
+            dim=IMAGE_BLOCK_V1_DIM,
+            max_images_per_property=MAX_IMAGES_PER_PROPERTY_V1,
+        )
+
+    return FeatureConfig(version=version, features=tuple(features), image_block=image_block)
 
 
 def load_feature_config(path: Path) -> FeatureConfig:
@@ -184,11 +221,11 @@ def create_default_feature_config() -> FeatureConfig:
     )
 
 
-class ConfigEncoder:
-    """Encodes properties using a miner's feature_config.json.
+class TabularEncoder:
+    """Encodes property dicts into numeric/boolean feature arrays.
 
-    Each model may have a different feature config, so one ConfigEncoder
-    is created per model.
+    Each model may have a different feature config, so one TabularEncoder
+    is created per model. Image features are handled separately.
     """
 
     def __init__(self, feature_config: FeatureConfig):
@@ -197,12 +234,15 @@ class ConfigEncoder:
         Args:
             feature_config: Validated FeatureConfig from parse_feature_config().
         """
-        self._feature_names = feature_config.features
-        self._layout = self._compute_layout(feature_config)
+        # Numeric/boolean features only — property_images is handled separately
+        self._feature_names = tuple(
+            f for f in feature_config.features if f != IMAGES_FEATURE_NAME
+        )
+        self._layout = self._compute_layout(self._feature_names)
 
     @staticmethod
-    def _compute_layout(config: FeatureConfig) -> FeatureLayout:
-        """Compute feature layout from config and YAML data contract."""
+    def _compute_layout(feature_names: tuple[str, ...]) -> FeatureLayout:
+        """Compute feature layout from feature names and YAML data contract."""
         numeric_fields, boolean_fields, _ = _get_field_sets()
 
         numeric_indices: list[int] = []
@@ -210,7 +250,7 @@ class ConfigEncoder:
         lat_index = -1
         lon_index = -1
 
-        for i, name in enumerate(config.features):
+        for i, name in enumerate(feature_names):
             if name in numeric_fields:
                 numeric_indices.append(i)
             elif name in boolean_fields:
@@ -222,7 +262,7 @@ class ConfigEncoder:
                 lon_index = i
 
         return FeatureLayout(
-            feature_names=config.features,
+            feature_names=feature_names,
             numeric_indices=tuple(numeric_indices),
             boolean_indices=tuple(boolean_indices),
             lat_index=lat_index,
@@ -230,15 +270,15 @@ class ConfigEncoder:
         )
 
     def encode(self, properties: list[dict]) -> np.ndarray:
-        """Encode properties using only the listed features, in listed order.
+        """Encode properties using only the numeric/boolean features, in listed order.
 
         Args:
             properties: List of property dicts.
 
         Returns:
-            np.ndarray of shape (N, len(features)), dtype float32.
+            np.ndarray of shape (N, num_numeric_boolean_features), dtype float32.
         """
-        numeric_fields, boolean_fields, _ = _get_field_sets()
+        _, boolean_fields, _ = _get_field_sets()
         rows: list[list[float]] = []
 
         for prop in properties:

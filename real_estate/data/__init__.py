@@ -1,9 +1,11 @@
 """Data module for property feature encoding."""
 
 from .config_encoder import (
-    ConfigEncoder,
+    IMAGES_FEATURE_NAME,
     FeatureConfig,
     FeatureLayout,
+    ImageBlockConfig,
+    TabularEncoder,
     create_default_feature_config,
     load_feature_config,
     parse_feature_config,
@@ -28,9 +30,16 @@ from .feature_transforms import (
     reset_clock,
     set_clock,
 )
+from .image_bundle import (
+    DecodedImageBundle,
+    decode_for_model,
+    parse_manifest,
+    verify_bundle,
+)
 from .models import PropertyData, ValidationDataset
 from .validation_dataset_client import (
     ATHRecord,
+    ImageBundleResponse,
     RawFileInfo,
     ValidationClient,
     ValidationClientConfig,
@@ -51,9 +60,11 @@ __all__ = [
     "ValidationDataRateLimitError",
     "ValidationDataRequestError",
     # Config-driven feature encoding
-    "ConfigEncoder",
+    "IMAGES_FEATURE_NAME",
+    "TabularEncoder",
     "FeatureConfig",
     "FeatureLayout",
+    "ImageBlockConfig",
     "create_default_feature_config",
     "load_feature_config",
     "parse_feature_config",
@@ -64,6 +75,12 @@ __all__ = [
     # Clock utilities (for testing)
     "set_clock",
     "reset_clock",
+    # Image bundle
+    "DecodedImageBundle",
+    "ImageBundleResponse",
+    "decode_for_model",
+    "parse_manifest",
+    "verify_bundle",
     # Models
     "PropertyData",
     "ValidationDataset",

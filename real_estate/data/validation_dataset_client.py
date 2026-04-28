@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import tempfile
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -49,6 +51,8 @@ class ValidationClientConfig:
     download_raw: bool = False  # Whether to download raw files by default
     # Test mode: load from local file instead of API
     test_data_path: str = ""  # Path to local JSON file (bypasses API when set)
+    # Image bundle
+    image_bundle_endpoint: str = "/api/auth/image-bundle"
 
 
 @dataclass
@@ -71,6 +75,18 @@ class ValidationDatasetResponse:
     validation_set_filename: str
     validation_set_size: int
     raw_files: list[RawFileInfo]
+
+
+@dataclass(frozen=True)
+class ImageBundleResponse:
+    """Response from image bundle API."""
+
+    validation_date: str
+    bundle_url: str
+    bundle_sha256: str
+    expires_at: str
+    property_count: int
+    image_count: int
 
 
 @dataclass
@@ -524,6 +540,118 @@ class ValidationClient:
                 raise ValidationDataRequestError(
                     f"Failed to download raw file: {e}"
                 ) from e
+
+    async def get_image_bundle_url(
+        self, date: str | None = None
+    ) -> ImageBundleResponse:
+        """Get presigned URL for image bundle."""
+        logger.info(f"Fetching image bundle URL{f' for {date}' if date else ''}...")
+
+        params = {"date": date} if date else {}
+        data = await self._request(
+            "POST", self._config.image_bundle_endpoint, params=params
+        )
+
+        return ImageBundleResponse(
+            validation_date=data["validation_date"],
+            bundle_url=data["bundle_url"],
+            bundle_sha256=data["bundle_sha256"],
+            expires_at=data["expires_at"],
+            property_count=data["property_count"],
+            image_count=data["image_count"],
+        )
+
+    async def download_image_bundle(self, date: str | None = None) -> Path:
+        """Download image bundle zip to a temp file, verify sha256, return path.
+
+        Streams the download in chunks — constant memory regardless of bundle size.
+        The caller is responsible for deleting the file when done.
+
+        Returns:
+            Path to verified temp zip file.
+
+        Raises:
+            ValidationDataRequestError: On download or verification failure.
+        """
+        response = await self.get_image_bundle_url(date)
+
+        logger.info(
+            f"Downloading image bundle: {response.property_count} properties, "
+            f"{response.image_count} images..."
+        )
+
+        # Stream to temp file while computing sha256
+        tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
+            prefix="resi_images_", suffix=".zip", delete=False
+        )
+        tmp_path = Path(tmp.name)
+        hasher = hashlib.sha256()
+
+        try:
+            async with httpx.AsyncClient(timeout=self._config.timeout) as client:  # noqa: SIM117
+                async with client.stream("GET", response.bundle_url) as stream:
+                    stream.raise_for_status()
+                    async for chunk in stream.aiter_bytes(chunk_size=65536):
+                        tmp.write(chunk)
+                        hasher.update(chunk)
+            tmp.close()
+
+            actual_sha256 = hasher.hexdigest()
+            if actual_sha256 != response.bundle_sha256:
+                raise ValidationDataRequestError(
+                    f"Image bundle sha256 mismatch: "
+                    f"expected {response.bundle_sha256}, got {actual_sha256}"
+                )
+
+            logger.info(f"Image bundle saved to temp file: {tmp_path}")
+            return tmp_path
+
+        except Exception:
+            tmp.close()
+            tmp_path.unlink(missing_ok=True)
+            raise
+
+    async def fetch_image_bundle_with_retry(
+        self, date: str | None = None
+    ) -> Path | None:
+        """Download image bundle with retry logic.
+
+        Returns:
+            Path to verified zip, or None if unavailable/all retries exhausted.
+        """
+        try:
+            async for attempt in AsyncRetrying(
+                stop=stop_after_attempt(self._config.max_retries),
+                wait=wait_fixed(self._config.retry_delay_seconds),
+                retry=retry_if_exception_type(
+                    (
+                        ValidationDataRequestError,
+                        ValidationDataRateLimitError,
+                        ValidationDataProcessingError,
+                    )
+                ),
+                reraise=True,
+            ):
+                with attempt:
+                    if attempt.retry_state.attempt_number > 1:
+                        logger.info(
+                            f"Retrying image bundle fetch "
+                            f"(attempt {attempt.retry_state.attempt_number}/"
+                            f"{self._config.max_retries})"
+                        )
+                    return await self.download_image_bundle(date)
+
+        except ValidationDataNotFoundError:
+            logger.info(
+                f"No image bundle available{f' for {date}' if date else ''}"
+            )
+            return None
+        except ValidationDataAuthError:
+            logger.error("Image bundle auth failed — not retrying")
+            return None
+        except Exception as e:
+            logger.error(f"Image bundle fetch failed after retries: {e}")
+            return None
 
     async def fetch_with_retry(
         self,

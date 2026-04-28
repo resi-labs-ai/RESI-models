@@ -81,7 +81,7 @@ class TestEvaluationOrchestratorEvaluateAll:
         mock_runner = MagicMock()
 
         # First model succeeds, second fails
-        def mock_inference(model_path, input_data):
+        def mock_inference(model_path, input_data, image_data=None, image_counts=None):
             if "model1" in str(model_path):
                 return InferenceResult(
                     predictions=np.array([105000, 195000, 310000]),
