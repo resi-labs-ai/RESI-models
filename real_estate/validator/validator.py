@@ -624,6 +624,34 @@ class Validator:
             if hotkey in model_paths
         }
 
+        # Load image bundle if any model opts into images
+        image_bundle_path = None
+        image_bundle_manifest = None
+        any_model_wants_images = any(
+            fc.image_block is not None
+            for fc in feature_configs.values()
+            if fc is not None
+        )
+
+        if any_model_wants_images:
+            if self.config.test_image_bundle_path:
+                # Local test mode — load from disk
+                from real_estate.data.image_bundle import verify_bundle
+                bundle_path = Path(self.config.test_image_bundle_path)
+                logger.info(f"Loading test image bundle from: {bundle_path}")
+                image_bundle_manifest = verify_bundle(bundle_path)
+                image_bundle_path = bundle_path
+            else:
+                # Production — fetch from API
+                try:
+                    bundle_path = await self.validation_client.fetch_image_bundle_with_retry()
+                    if bundle_path:
+                        from real_estate.data.image_bundle import verify_bundle
+                        image_bundle_manifest = verify_bundle(bundle_path)
+                        image_bundle_path = bundle_path
+                except Exception as e:
+                    logger.warning(f"Image bundle fetch failed, proceeding without images: {e}")
+
         logger.info(f"Running evaluation with {len(model_paths)} models")
 
         # Start WandB run to measure evaluation time
@@ -631,7 +659,9 @@ class Validator:
 
         try:
             result = await self._orchestrator.run(
-                dataset, model_paths, chain_metadata, feature_configs
+                dataset, model_paths, chain_metadata, feature_configs,
+                image_bundle_path=image_bundle_path,
+                image_bundle_manifest=image_bundle_manifest,
             )
 
             if self.config.ath_enabled:
@@ -661,6 +691,15 @@ class Validator:
         except NoValidModelsError as e:
             logger.warning(f"Evaluation skipped: {e}")
         finally:
+            # Clean up temp image bundle (skip if it's a local test file)
+            if (
+                image_bundle_path
+                and not self.config.test_image_bundle_path
+                and image_bundle_path.exists()
+            ):
+                image_bundle_path.unlink(missing_ok=True)
+                logger.debug(f"Cleaned up temp image bundle: {image_bundle_path}")
+
             # Always finish WandB run
             self._wandb_logger.finish()
 

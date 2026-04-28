@@ -16,8 +16,9 @@ import onnx
 import onnxruntime as ort
 
 from ..data.config_encoder import (
-    ConfigEncoder,
+    IMAGES_FEATURE_NAME,
     FeatureConfig,
+    TabularEncoder,
     create_default_feature_config,
     load_feature_config,
 )
@@ -73,16 +74,18 @@ def validate_model_file(model_path: Path, max_size_mb: int = 200) -> None:
 def validate_model_interface(
     session: ort.InferenceSession,
     expected_features: int | None = None,
+    has_images: bool = False,
 ) -> str:
     """
     Validate model input/output interface matches expected format.
 
     Args:
         session: ONNX runtime inference session.
-        expected_features: Expected number of input features. If None, uses default.
+        expected_features: Expected number of numeric/boolean input features.
+        has_images: Whether the model declared property_images.
 
     Returns:
-        Input name for the model.
+        Input name for the features (numeric) input.
 
     Raises:
         ModelInterfaceError: If interface doesn't match expected format.
@@ -90,21 +93,34 @@ def validate_model_interface(
     if expected_features is None:
         expected_features = get_expected_num_features()
 
-    # Validate inputs
     inputs = session.get_inputs()
-    if len(inputs) != 1:
-        raise ModelInterfaceError(
-            f"Model has {len(inputs)} inputs, expected 1. "
-            "Model should have a single input for property features."
-        )
+    input_names = {i.name for i in inputs}
 
-    input_info = inputs[0]
-    input_shape = input_info.shape
+    if has_images:
+        # Multi-input model: expect "features", "images", "image_counts"
+        required_inputs = {"features", "images", "image_counts"}
+        missing = required_inputs - input_names
+        if missing:
+            raise ModelInterfaceError(
+                f"Image model missing required inputs: {sorted(missing)}. "
+                f"Model has: {sorted(input_names)}"
+            )
+        features_input = next(i for i in inputs if i.name == "features")
+    else:
+        # Single-input model
+        if len(inputs) != 1:
+            raise ModelInterfaceError(
+                f"Model has {len(inputs)} inputs, expected 1. "
+                "Model should have a single input for property features."
+            )
+        features_input = inputs[0]
+
+    input_shape = features_input.shape
 
     # Expect shape like (batch, num_features) or (None, num_features)
     if len(input_shape) != 2:
         raise ModelInterfaceError(
-            f"Input shape {input_shape} invalid. "
+            f"Features input shape {input_shape} invalid. "
             f"Expected 2D shape (batch, {expected_features})."
         )
 
@@ -138,21 +154,23 @@ def validate_model_interface(
     logger.debug(
         f"Model interface: input={list(input_shape)}, output={list(output_shape)}"
     )
-    return input_info.name
+    return features_input.name
 
 
 def run_inference(
     session: ort.InferenceSession,
     input_name: str,
     features: np.ndarray,
+    image_block: object | None = None,
 ) -> np.ndarray:
     """
     Run inference on the model.
 
     Args:
         session: ONNX runtime inference session.
-        input_name: Name of the model's input.
+        input_name: Name of the features input.
         features: Input features array of shape (batch, num_features).
+        image_block: ImageBlockConfig if model uses images (generates dummy data).
 
     Returns:
         Predictions array of shape (batch,).
@@ -161,7 +179,28 @@ def run_inference(
         EvaluationError: If inference fails or produces invalid output.
     """
     try:
-        outputs = session.run(None, {input_name: features})
+        input_feed = {input_name: features}
+
+        if image_block is not None:
+            batch_size = features.shape[0]
+            c, h, w = image_block.dim
+            max_imgs = image_block.max_images_per_property
+
+            # Generate zero-padded dummy images (simulates properties with no photos)
+            dummy_images = np.zeros(
+                (batch_size, max_imgs, c, h, w), dtype=np.uint8
+            )
+            dummy_counts = np.zeros(batch_size, dtype=np.int32)
+
+            input_feed["images"] = dummy_images
+            input_feed["image_counts"] = dummy_counts
+
+            logger.debug(
+                f"Using dummy images: shape={dummy_images.shape} "
+                f"(zero-padded, simulating no available photos)"
+            )
+
+        outputs = session.run(None, input_feed)
         predictions = outputs[0].flatten()
     except Exception as e:
         raise EvaluationError(f"Inference failed: {e}") from e
@@ -225,7 +264,7 @@ def encode_test_data(
         EvaluationError: If test data loading or encoding fails.
     """
     samples = load_test_samples()
-    encoder = ConfigEncoder(feature_config)
+    encoder = TabularEncoder(feature_config)
     properties = [s["features"] for s in samples]
     features = encoder.encode(properties)
     ground_truth = np.array(
@@ -281,7 +320,11 @@ def evaluate_model(
             error_message=f"Invalid feature_config.json: {e}",
         )
 
-    expected_features = len(feature_config.features)
+    has_images = feature_config.image_block is not None
+    # Numeric/boolean features only — property_images isn't a column
+    expected_features = len([
+        f for f in feature_config.features if f != IMAGES_FEATURE_NAME
+    ])
 
     # Step 3: Load model
     try:
@@ -297,7 +340,7 @@ def evaluate_model(
 
     # Step 4: Validate interface
     try:
-        input_name = validate_model_interface(session, expected_features)
+        input_name = validate_model_interface(session, expected_features, has_images)
     except Exception as e:
         return EvaluateResult(
             model_path=str(model_path),
@@ -318,7 +361,9 @@ def evaluate_model(
     # Step 6: Run inference
     try:
         start = time.time()
-        predictions = run_inference(session, input_name, features)
+        predictions = run_inference(
+            session, input_name, features, feature_config.image_block
+        )
         inference_time_ms = (time.time() - start) * 1000
         logger.debug(f"Inference completed in {inference_time_ms:.0f}ms")
     except Exception as e:

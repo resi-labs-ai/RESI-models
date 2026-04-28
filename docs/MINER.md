@@ -29,10 +29,83 @@ The miner CLI (`miner-cli`) helps you:
 |-------------|---------------|
 | Format | ONNX |
 | Max size | 200 MB |
-| Input shape | `(batch, 79)` float32 |
+| Input shape | `(batch, 10-79)` float32 (numeric features) |
 | Output shape | `(batch, 1)` or `(batch,)` float32 |
+| Image inputs | Optional — see [Property Images](#property-images-optional) |
 
-Your model must accept exactly **79 features** in the order defined in `real_estate/data/mappings/feature_config.yaml`.
+### Feature Selection
+
+Your model chooses which features it uses via a `feature_config.json` file in your HuggingFace repo. You can select **10 to 79** numeric/boolean features from the available set in `real_estate/data/mappings/feature_config.yaml`.
+
+Five features are **required**: `living_area_sqft`, `latitude`, `longitude`, `bedrooms`, `bathrooms`.
+
+If you don't include a `feature_config.json`, the validator falls back to all 79 features in the default YAML order (backwards compatible).
+
+#### feature_config.json format
+
+```json
+{
+  "version": "1.0",
+  "features": [
+    "living_area_sqft",
+    "latitude",
+    "longitude",
+    "bedrooms",
+    "bathrooms",
+    "lot_size_sqft",
+    "year_built",
+    "stories"
+  ]
+}
+```
+
+The feature order in this list defines the column order of your model's input tensor. Your ONNX model's first input must have shape `(batch, len(features))`.
+
+### Property Images (optional)
+
+Models can optionally receive property images by adding `"property_images"` to the features list:
+
+```json
+{
+  "version": "1.0",
+  "features": [
+    "living_area_sqft",
+    "latitude",
+    "longitude",
+    "bedrooms",
+    "bathrooms",
+    "lot_size_sqft",
+    "year_built",
+    "stories",
+    "property_images"
+  ]
+}
+```
+
+When `property_images` is included, the validator provides two additional ONNX inputs alongside the numeric features:
+
+| Input name | Shape | Dtype | Description |
+|------------|-------|-------|-------------|
+| `features` | `(batch, N)` | float32 | Numeric/boolean features (same as without images) |
+| `images` | `(batch, max_imgs, channels, height, width)` | uint8 | Property photos |
+| `image_counts` | `(batch,)` | int32 | How many real images each property has |
+
+Current v1 image parameters:
+
+| Parameter | Value |
+|-----------|-------|
+| `max_imgs` | 10 (slots per property, fixed) |
+| `channels` | 3 (RGB) |
+| `height` | 224 |
+| `width` | 224 |
+
+So the full `images` shape is `(batch, 10, 3, 224, 224)`.
+
+Your ONNX model must declare inputs named exactly `features`, `images`, and `image_counts`.
+
+The tensor always has 10 image slots per property. Properties with fewer photos have their remaining slots zero-padded. Use `image_counts` to know where real data ends — for example, if `image_counts[i] == 3`, then `images[i, 0:3]` are real photos and `images[i, 3:10]` are zeros.
+
+Models **without** `property_images` in their config are completely unaffected — they receive a single numeric input as before.
 
 ## Prerequisites
 
@@ -131,7 +204,7 @@ miner-cli evaluate --model.path PATH [--max-size-mb MB]
 **What it checks:**
 1. File exists and is under size limit
 2. Valid ONNX format
-3. Correct input shape (batch, 79)
+3. Correct input shape (matches feature_config.json or default 79)
 4. Correct output shape
 5. No NaN or Inf in predictions
 
@@ -256,7 +329,8 @@ Your repo must contain:
 ```
 your-username/housing-model/
 ├── model.onnx              # Your ONNX model (required)
-└── extrinsic_record.json   # Chain commitment link (required)
+├── extrinsic_record.json   # Chain commitment link (required)
+└── feature_config.json     # Feature selection (optional — defaults to all 79)
 ```
 
 > **Note:** Select **MIT** license when creating your HuggingFace repository.
@@ -355,9 +429,9 @@ ERROR: Invalid ONNX format: Unable to parse proto from file...
 ### Wrong number of features
 
 ```
-ERROR: Model expects 72 features, but validator expects 79.
+ERROR: Model input dimension does not match declared feature count
 ```
-**Fix:** Retrain your model with the correct 79 input features from `feature_config.yaml`.
+**Fix:** Your ONNX model's input shape must match the number of features in your `feature_config.json` (or 79 if you don't provide one).
 
 ### Model too large
 
