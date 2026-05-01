@@ -381,7 +381,7 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | **Model Settings** | | |
 | `MODEL_CACHE_PATH` | `./model_cache` | Path to cache downloaded models |
 | `MODEL_MAX_SIZE_MB` | `200` | Maximum model size in MB |
-| `MODEL_MIN_COMMITMENT_AGE_BLOCKS` | `8400` | Min blocks before model eligible (~28 hours) |
+| `MODEL_MIN_COMMITMENT_AGE_BLOCKS` | `216000` | Min blocks before model eligible (~30 days) |
 | **Scheduler** | | |
 | `SCHEDULER_PRE_DOWNLOAD_HOURS` | `3.0` | Hours before eval to start downloads |
 | `SCHEDULER_CATCH_UP_MINUTES` | `30.0` | Minutes reserved for catch-up downloads |
