@@ -1,4 +1,4 @@
-"""Tests for ConfigEncoder and parse_feature_config."""
+"""Tests for TabularEncoder and parse_feature_config."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from real_estate.data import (
-    ConfigEncoder,
+    TabularEncoder,
     FeatureConfig,
     FeatureConfigError,
     create_default_feature_config,
@@ -102,10 +102,10 @@ class TestCreateDefaultConfig:
 
 
 
-class TestConfigEncoderLayout:
+class TestTabularEncoderLayout:
     def test_numeric_and_boolean_indices(self) -> None:
         fc = parse_feature_config(_make_raw())
-        encoder = ConfigEncoder(fc)
+        encoder = TabularEncoder(fc)
         layout = encoder.layout
 
         # MINIMAL_FEATURES: living_area_sqft(0), latitude(1), longitude(2),
@@ -117,7 +117,7 @@ class TestConfigEncoderLayout:
 
     def test_lat_lon_indices(self) -> None:
         fc = parse_feature_config(_make_raw())
-        encoder = ConfigEncoder(fc)
+        encoder = TabularEncoder(fc)
         layout = encoder.layout
 
         assert layout.feature_names[layout.lat_index] == "latitude"
@@ -125,7 +125,7 @@ class TestConfigEncoderLayout:
 
     def test_default_config_lat_lon_present(self) -> None:
         fc = create_default_feature_config()
-        encoder = ConfigEncoder(fc)
+        encoder = TabularEncoder(fc)
         layout = encoder.layout
         assert layout.lat_index >= 0
         assert layout.lon_index >= 0
@@ -133,10 +133,10 @@ class TestConfigEncoderLayout:
         assert layout.feature_names[layout.lon_index] == "longitude"
 
 
-class TestConfigEncoderEncode:
+class TestTabularEncoderEncode:
     def test_output_shape(self) -> None:
         fc = parse_feature_config(_make_raw())
-        encoder = ConfigEncoder(fc)
+        encoder = TabularEncoder(fc)
 
         properties = [
             {"living_area_sqft": 1500, "latitude": 40.0, "longitude": -74.0,
@@ -153,7 +153,7 @@ class TestConfigEncoderEncode:
 
     def test_boolean_encoding(self) -> None:
         fc = parse_feature_config(_make_raw())
-        encoder = ConfigEncoder(fc)
+        encoder = TabularEncoder(fc)
 
         properties = [
             {"living_area_sqft": 1, "latitude": 1, "longitude": 1,
@@ -168,7 +168,7 @@ class TestConfigEncoderEncode:
 
     def test_numeric_values_preserved(self) -> None:
         fc = parse_feature_config(_make_raw())
-        encoder = ConfigEncoder(fc)
+        encoder = TabularEncoder(fc)
 
         properties = [
             {"living_area_sqft": 1500.5, "latitude": 40.7, "longitude": -74.0,
@@ -182,7 +182,7 @@ class TestConfigEncoderEncode:
 
     def test_missing_field_defaults_to_zero(self) -> None:
         fc = parse_feature_config(_make_raw())
-        encoder = ConfigEncoder(fc)
+        encoder = TabularEncoder(fc)
 
         # Property missing "stories" field
         properties = [
@@ -197,7 +197,7 @@ class TestConfigEncoderEncode:
 
     def test_none_value_defaults_to_zero(self) -> None:
         fc = parse_feature_config(_make_raw())
-        encoder = ConfigEncoder(fc)
+        encoder = TabularEncoder(fc)
 
         properties = [
             {"living_area_sqft": None, "latitude": 1, "longitude": 1,
@@ -216,7 +216,7 @@ class TestConfigEncoderEncode:
             "lot_size_sqft", "year_built", "stories", "has_pool", "has_garage",
         ]
         fc = parse_feature_config(_make_raw(features=features))
-        encoder = ConfigEncoder(fc)
+        encoder = TabularEncoder(fc)
 
         properties = [
             {"bedrooms": 3, "bathrooms": 2, "living_area_sqft": 1500,
@@ -231,7 +231,7 @@ class TestConfigEncoderEncode:
 
     def test_empty_properties_list(self) -> None:
         fc = parse_feature_config(_make_raw())
-        encoder = ConfigEncoder(fc)
+        encoder = TabularEncoder(fc)
 
         result = encoder.encode([])
         assert result.ndim <= 2

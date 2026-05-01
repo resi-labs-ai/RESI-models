@@ -144,6 +144,8 @@ class DockerRunner:
         self,
         model_path: Path,
         input_data: np.ndarray,
+        image_data: np.ndarray | None = None,
+        image_counts: np.ndarray | None = None,
     ) -> InferenceResult:
         """
         Run inference on ONNX model in Docker container.
@@ -151,6 +153,8 @@ class DockerRunner:
         Args:
             model_path: Path to .onnx model file
             input_data: Input features as numpy array (N x F)
+            image_data: Optional image tensor, uint8 (N, max_imgs, C, H, W)
+            image_counts: Optional int32 array (N,) — real image count per property
 
         Returns:
             InferenceResult with predictions and timing
@@ -178,6 +182,12 @@ class DockerRunner:
             # Save input data
             input_path = workspace_path / "input.npy"
             np.save(input_path, input_data.astype(np.float32))
+
+            # Save image data if provided
+            if image_data is not None:
+                np.save(workspace_path / "images.npy", image_data)
+            if image_counts is not None:
+                np.save(workspace_path / "image_counts.npy", image_counts)
 
             # Copy inference script
             script_path = workspace_path / "run_inference.py"

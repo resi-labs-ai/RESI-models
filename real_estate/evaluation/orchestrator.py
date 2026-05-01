@@ -74,6 +74,7 @@ class EvaluationOrchestrator:
         features: np.ndarray | dict[str, np.ndarray],
         ground_truth: np.ndarray,
         model_metadata: dict[str, ChainModelMetadata] | None = None,
+        image_data: dict[str, tuple[np.ndarray, np.ndarray]] | None = None,
     ) -> EvaluationBatch:
         """
         Evaluate all models on the validation dataset.
@@ -84,6 +85,9 @@ class EvaluationOrchestrator:
                 or a dict mapping hotkey -> per-model feature array.
             ground_truth: Ground truth prices (N,)
             model_metadata: Optional chain metadata for each model
+            image_data: Optional mapping of hotkey -> (images, mask) for models
+                that declared an image_block. Images: uint8 (N, max_imgs, C, H, W),
+                mask: bool (N, max_imgs).
 
         Returns:
             EvaluationBatch with all results
@@ -91,6 +95,7 @@ class EvaluationOrchestrator:
         start_time = time.time()
         results: list[EvaluationResult] = []
         model_metadata = model_metadata or {}
+        image_data = image_data or {}
         per_model = isinstance(features, dict)
 
         logger.info(
@@ -105,12 +110,14 @@ class EvaluationOrchestrator:
         ) -> EvaluationResult:
             async with semaphore:
                 model_features = features[hotkey] if per_model else features
+                model_images = image_data.get(hotkey)
                 return await self._evaluate_single_model(
                     hotkey=hotkey,
                     model_path=model_path,
                     features=model_features,
                     ground_truth=ground_truth,
                     metadata=model_metadata.get(hotkey),
+                    images=model_images,
                 )
 
         # Create tasks for all models
@@ -160,6 +167,7 @@ class EvaluationOrchestrator:
         features: np.ndarray,
         ground_truth: np.ndarray,
         metadata: ChainModelMetadata | None = None,
+        images: tuple[np.ndarray, np.ndarray] | None = None,
     ) -> EvaluationResult:
         """
         Evaluate a single model.
@@ -170,10 +178,14 @@ class EvaluationOrchestrator:
 
         try:
             # Run inference in Docker (blocking call wrapped in thread)
+            img_array = images[0] if images else None
+            img_counts = images[1] if images else None
             inference_result = await asyncio.to_thread(
                 self._docker_runner.run_inference,
                 model_path,
                 features,
+                img_array,
+                img_counts,
             )
 
             predictions = inference_result.predictions
