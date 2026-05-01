@@ -36,7 +36,9 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         if fc.image_block:
             c, h, w = fc.image_block.dim
             max_imgs = fc.image_block.max_images_per_property
-            print(f"Image input: enabled ({max_imgs} x {c}x{h}x{w}, dummy zeros for local eval)")
+            print(
+                f"Image input: enabled ({max_imgs} x {c}x{h}x{w}, dummy zeros for local eval)"
+            )
     except Exception:
         pass  # evaluate_model will report the real error
 

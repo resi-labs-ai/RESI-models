@@ -277,10 +277,13 @@ class ValidationOrchestrator:
         # ONNX input-shape mismatches before we waste time running them.
         logger.info("Running pre-flight model inspection...")
         expected_feature_counts = {
-            hk: len([
-                f for f in (feature_configs.get(hk) or default_config).features
-                if f != IMAGES_FEATURE_NAME
-            ])
+            hk: len(
+                [
+                    f
+                    for f in (feature_configs.get(hk) or default_config).features
+                    if f != IMAGES_FEATURE_NAME
+                ]
+            )
             for hk in model_paths
         }
         inspection_result = await self._model_inspector.inspect_all(
@@ -341,7 +344,9 @@ class ValidationOrchestrator:
                 shared = (decoded.images, decoded.image_counts)
 
                 for hotkey in image_hotkeys:
-                    model_max = feature_configs[hotkey].image_block.max_images_per_property
+                    model_max = feature_configs[
+                        hotkey
+                    ].image_block.max_images_per_property
                     if model_max < max_imgs:
                         # Slice image tensor, clamp counts
                         sliced_counts = np.minimum(shared[1], model_max)

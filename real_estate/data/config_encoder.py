@@ -180,7 +180,9 @@ def parse_feature_config(data: dict) -> FeatureConfig:
             max_images_per_property=MAX_IMAGES_PER_PROPERTY_V1,
         )
 
-    return FeatureConfig(version=version, features=tuple(features), image_block=image_block)
+    return FeatureConfig(
+        version=version, features=tuple(features), image_block=image_block
+    )
 
 
 def load_feature_config(path: Path) -> FeatureConfig:

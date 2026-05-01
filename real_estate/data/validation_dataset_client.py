@@ -642,9 +642,7 @@ class ValidationClient:
                     return await self.download_image_bundle(date)
 
         except ValidationDataNotFoundError:
-            logger.info(
-                f"No image bundle available{f' for {date}' if date else ''}"
-            )
+            logger.info(f"No image bundle available{f' for {date}' if date else ''}")
             return None
         except ValidationDataAuthError:
             logger.error("Image bundle auth failed — not retrying")

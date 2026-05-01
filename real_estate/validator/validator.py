@@ -633,6 +633,7 @@ class Validator:
             if self.config.test_image_bundle_path:
                 # Local test mode — load from disk
                 from real_estate.data.image_bundle import verify_bundle
+
                 bundle_path = Path(self.config.test_image_bundle_path)
                 logger.info(f"Loading test image bundle from: {bundle_path}")
                 image_bundle_manifest = verify_bundle(bundle_path)
@@ -640,13 +641,18 @@ class Validator:
             else:
                 # Production — fetch from API
                 try:
-                    bundle_path = await self.validation_client.fetch_image_bundle_with_retry()
+                    bundle_path = (
+                        await self.validation_client.fetch_image_bundle_with_retry()
+                    )
                     if bundle_path:
                         from real_estate.data.image_bundle import verify_bundle
+
                         image_bundle_manifest = verify_bundle(bundle_path)
                         image_bundle_path = bundle_path
                 except Exception as e:
-                    logger.warning(f"Image bundle fetch failed, proceeding without images: {e}")
+                    logger.warning(
+                        f"Image bundle fetch failed, proceeding without images: {e}"
+                    )
 
         logger.info(f"Running evaluation with {len(model_paths)} models")
 
@@ -655,7 +661,10 @@ class Validator:
 
         try:
             result = await self._orchestrator.run(
-                dataset, model_paths, chain_metadata, feature_configs,
+                dataset,
+                model_paths,
+                chain_metadata,
+                feature_configs,
                 image_bundle_path=image_bundle_path,
                 image_bundle_manifest=image_bundle_manifest,
             )

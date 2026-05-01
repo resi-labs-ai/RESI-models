@@ -43,7 +43,9 @@ def _load_npy(path, label, exit_code):
         load_start = time.time()
         data = np.load(path)
         load_time = (time.time() - load_start) * 1000
-        print(f"[INFO] {label} loaded: shape={data.shape}, dtype={data.dtype} ({load_time:.2f}ms)")
+        print(
+            f"[INFO] {label} loaded: shape={data.shape}, dtype={data.dtype} ({load_time:.2f}ms)"
+        )
         return data
     except Exception as e:
         print(f"[ERROR] Failed to load {label}: {e}", file=sys.stderr)
@@ -121,7 +123,10 @@ def main():
         )
     except Exception as e:
         print(f"[ERROR] Inference failed: {e}", file=sys.stderr)
-        print(f"[ERROR] Input feed shapes: {{{', '.join(f'{k}: {v.shape}' for k, v in input_feed.items())}}}", file=sys.stderr)
+        print(
+            f"[ERROR] Input feed shapes: {{{', '.join(f'{k}: {v.shape}' for k, v in input_feed.items())}}}",
+            file=sys.stderr,
+        )
         print(f"[ERROR] Traceback:\n{traceback.format_exc()}", file=sys.stderr)
         sys.exit(4)
 

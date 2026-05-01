@@ -70,7 +70,13 @@ def parse_manifest(zip_path: Path) -> ImageBundleManifest:
     if not isinstance(data, dict):
         raise ValueError("manifest.json must be a JSON object")
 
-    required = {"encoder_version", "resolution", "format", "decoded_sha256", "properties"}
+    required = {
+        "encoder_version",
+        "resolution",
+        "format",
+        "decoded_sha256",
+        "properties",
+    }
     missing = required - set(data.keys())
     if missing:
         raise ValueError(f"manifest.json missing fields: {sorted(missing)}")
@@ -181,7 +187,9 @@ def decode_for_model(
         f"tensor {images.nbytes / 1024 / 1024:.0f} MB)"
     )
 
-    return DecodedImageBundle(images=images, image_counts=image_counts, property_ids=property_ids)
+    return DecodedImageBundle(
+        images=images, image_counts=image_counts, property_ids=property_ids
+    )
 
 
 def _verify_decoded_sha256(zf: zipfile.ZipFile, manifest: ImageBundleManifest) -> None:

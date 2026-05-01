@@ -187,9 +187,7 @@ def run_inference(
             max_imgs = image_block.max_images_per_property
 
             # Generate zero-padded dummy images (simulates properties with no photos)
-            dummy_images = np.zeros(
-                (batch_size, max_imgs, c, h, w), dtype=np.uint8
-            )
+            dummy_images = np.zeros((batch_size, max_imgs, c, h, w), dtype=np.uint8)
             dummy_counts = np.zeros(batch_size, dtype=np.int32)
 
             input_feed["images"] = dummy_images
@@ -322,9 +320,9 @@ def evaluate_model(
 
     has_images = feature_config.image_block is not None
     # Numeric/boolean features only — property_images isn't a column
-    expected_features = len([
-        f for f in feature_config.features if f != IMAGES_FEATURE_NAME
-    ])
+    expected_features = len(
+        [f for f in feature_config.features if f != IMAGES_FEATURE_NAME]
+    )
 
     # Step 3: Load model
     try:
