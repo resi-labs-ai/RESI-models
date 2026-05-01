@@ -28,7 +28,7 @@ class SchedulerConfig:
     catch_up_minutes: float = 30.0  # Last 30min for catch-up
     min_delay_between_downloads_seconds: float = 5.0  # Minimum gap between downloads
     min_commitment_age_blocks: int = (
-        7200  # ~24h at 12s/block, only eval older commitments
+        216_000  # ~30 days at 12s/block, only eval older commitments
     )
 
 

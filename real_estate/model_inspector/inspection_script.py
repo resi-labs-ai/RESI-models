@@ -44,15 +44,38 @@ def find_used_initializer_names(graph) -> set[str]:
 
 
 def extract_input_dim(graph) -> int | None:
-    """Extract the feature dimension from the model's first input tensor.
+    """Extract the feature dimension from the model's numeric features input.
 
-    Returns None if the model has no inputs, multiple inputs, or a non-2D
-    input shape (e.g. dynamic, scalar, or higher-rank tensor we don't expect).
+    For single-input models: uses the only input.
+    For multi-input models: looks for an input named "features", or falls back
+    to the first 2D input.
+
+    Returns None if no suitable 2D input is found.
     """
-    if len(graph.input) != 1:
+    # Find the features input
+    candidates = list(graph.input)
+    if not candidates:
         return None
-    input_proto = graph.input[0]
-    shape = input_proto.type.tensor_type.shape.dim
+
+    # Prefer input named "features"
+    target = None
+    for inp in candidates:
+        if inp.name == "features":
+            target = inp
+            break
+
+    # Fallback: first 2D input (the numeric features input for single-input models)
+    if target is None:
+        for inp in candidates:
+            shape = inp.type.tensor_type.shape.dim
+            if len(shape) == 2:
+                target = inp
+                break
+
+    if target is None:
+        return None
+
+    shape = target.type.tensor_type.shape.dim
     if len(shape) != 2:
         return None
     feature_dim = shape[1]
@@ -70,9 +93,21 @@ def analyze_model(model_path: Path) -> dict:
     graph = model.graph
     used_names = find_used_initializer_names(graph)
 
+    # Report all model inputs for multi-input awareness
+    model_inputs = []
+    for inp in graph.input:
+        dims = []
+        for d in inp.type.tensor_type.shape.dim:
+            if d.HasField("dim_value"):
+                dims.append(int(d.dim_value))
+            else:
+                dims.append(d.dim_param or "?")
+        model_inputs.append({"name": inp.name, "shape": dims})
+
     results: dict = {
         "file_size_mb": round(model_path.stat().st_size / (1024 * 1024), 2),
         "input_dim": extract_input_dim(graph),
+        "model_inputs": model_inputs,
         "total_params": 0,
         "total_initializers": len(graph.initializer),
         "unused_initializers": 0,

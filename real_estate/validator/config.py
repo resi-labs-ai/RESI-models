@@ -119,6 +119,16 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
+        "--validation_data.image_bundle_endpoint",
+        dest="validation_data_image_bundle_endpoint",
+        type=str,
+        help="API endpoint for image bundle fetch.",
+        default=os.environ.get(
+            "VALIDATION_DATA_IMAGE_BUNDLE_ENDPOINT", "/api/auth/image-bundle"
+        ),
+    )
+
+    parser.add_argument(
         "--pylon.token",
         dest="pylon_token",
         type=str,
@@ -241,8 +251,8 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--model.min_commitment_age_blocks",
         dest="model_min_commitment_age_blocks",
         type=int,
-        help="Minimum age in blocks for commitments to be eligible (~28h = 8400 blocks at 12s/block).",
-        default=int(os.environ.get("MODEL_MIN_COMMITMENT_AGE_BLOCKS", "8400")),
+        help="Minimum age in blocks for commitments to be eligible (~30d = 216000 blocks at 12s/block).",
+        default=int(os.environ.get("MODEL_MIN_COMMITMENT_AGE_BLOCKS", "216000")),
     )
 
     parser.add_argument(
@@ -361,6 +371,14 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         type=str,
         help="Path to local JSON file with test validation data. Bypasses API fetch.",
         default=os.environ.get("TEST_DATA_PATH", ""),
+    )
+
+    parser.add_argument(
+        "--test-image-bundle-path",
+        dest="test_image_bundle_path",
+        type=str,
+        help="Path to local image bundle zip. Bypasses API fetch for images.",
+        default=os.environ.get("TEST_IMAGE_BUNDLE_PATH", ""),
     )
 
     parser.add_argument(

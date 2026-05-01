@@ -900,3 +900,201 @@ class TestSetSeed:
         orchestrator.set_seed(None)
         assert orchestrator._generalization_config.seed is None
 
+
+class TestImageBundleIntegration:
+    """Tests for decode-once-share-across-models image logic."""
+
+    @pytest.mark.asyncio
+    async def test_images_decoded_once_and_shared(
+        self,
+        orchestrator: ValidationOrchestrator,
+        mock_evaluator: AsyncMock,
+        mock_detector: MagicMock,
+        mock_selector: MagicMock,
+        mock_distributor: MagicMock,
+    ) -> None:
+        """Image bundle is decoded once and the same tensor shared to all image models."""
+        dataset = create_dataset()
+        model_paths = {"A": Path("/a.onnx"), "B": Path("/b.onnx")}
+        chain_metadata = {
+            "A": create_chain_metadata("A", 100),
+            "B": create_chain_metadata("B", 200),
+        }
+
+        # Both models opt into images
+        from real_estate.data import FeatureConfig, ImageBlockConfig, parse_feature_config
+        from real_estate.data.config_encoder import IMAGES_FEATURE_NAME
+
+        fc_with_images = parse_feature_config({
+            "version": "1.0",
+            "features": [
+                "living_area_sqft", "latitude", "longitude", "bedrooms", "bathrooms",
+                "lot_size_sqft", "year_built", "has_pool", "has_garage", "stories",
+                IMAGES_FEATURE_NAME,
+            ],
+        })
+        feature_configs = {"A": fc_with_images, "B": fc_with_images}
+
+        eval_batch = create_eval_batch([
+            create_eval_result("A", score=0.95),
+            create_eval_result("B", score=0.90),
+        ])
+        _setup_default_mocks(
+            mock_evaluator, mock_detector, mock_selector, mock_distributor,
+            eval_batch=eval_batch,
+            winner=create_winner_result("A", 0.95, 100),
+            weights=create_weights({"A": 0.99, "B": 0.01}),
+        )
+
+        # Mock decode_for_model to track calls
+        fake_images = np.zeros((10, 10, 3, 224, 224), dtype=np.uint8)
+        fake_counts = np.array([3] * 10, dtype=np.int32)
+
+        from real_estate.data.image_bundle import DecodedImageBundle
+
+        fake_decoded = DecodedImageBundle(
+            images=fake_images,
+            image_counts=fake_counts,
+            property_ids=[str(i) for i in range(10)],
+        )
+
+        with patch(
+            "real_estate.orchestration.orchestrator.decode_for_model",
+            return_value=fake_decoded,
+        ) as mock_decode:
+            fake_bundle_path = Path("/tmp/fake_bundle.zip")
+            fake_manifest = MagicMock()
+
+            await orchestrator.run(
+                dataset, model_paths, chain_metadata,
+                feature_configs=feature_configs,
+                image_bundle_path=fake_bundle_path,
+                image_bundle_manifest=fake_manifest,
+            )
+
+            # decode_for_model called exactly once
+            assert mock_decode.call_count == 1
+
+        # evaluator.evaluate_all receives image_data with both hotkeys
+        first_call_kwargs = mock_evaluator.evaluate_all.call_args_list[0].kwargs
+        image_data = first_call_kwargs["image_data"]
+        assert image_data is not None
+        assert "A" in image_data
+        assert "B" in image_data
+
+        # Both share the same underlying array (no copy)
+        assert image_data["A"][0] is image_data["B"][0]
+        assert image_data["A"][1] is image_data["B"][1]
+
+    @pytest.mark.asyncio
+    async def test_non_image_models_get_no_image_data(
+        self,
+        orchestrator: ValidationOrchestrator,
+        mock_evaluator: AsyncMock,
+        mock_detector: MagicMock,
+        mock_selector: MagicMock,
+        mock_distributor: MagicMock,
+    ) -> None:
+        """Models without property_images don't appear in image_data."""
+        dataset = create_dataset()
+        model_paths = {"A": Path("/a.onnx"), "B": Path("/b.onnx")}
+        chain_metadata = {
+            "A": create_chain_metadata("A", 100),
+            "B": create_chain_metadata("B", 200),
+        }
+
+        # Only A opts into images
+        from real_estate.data import parse_feature_config
+        from real_estate.data.config_encoder import IMAGES_FEATURE_NAME
+
+        features_base = [
+            "living_area_sqft", "latitude", "longitude", "bedrooms", "bathrooms",
+            "lot_size_sqft", "year_built", "has_pool", "has_garage", "stories",
+        ]
+        fc_with = parse_feature_config({
+            "version": "1.0",
+            "features": features_base + [IMAGES_FEATURE_NAME],
+        })
+        fc_without = parse_feature_config({
+            "version": "1.0",
+            "features": features_base,
+        })
+        feature_configs = {"A": fc_with, "B": fc_without}
+
+        eval_batch = create_eval_batch([
+            create_eval_result("A", score=0.95),
+            create_eval_result("B", score=0.90),
+        ])
+        _setup_default_mocks(
+            mock_evaluator, mock_detector, mock_selector, mock_distributor,
+            eval_batch=eval_batch,
+            winner=create_winner_result("A", 0.95, 100),
+            weights=create_weights({"A": 0.99, "B": 0.01}),
+        )
+
+        fake_images = np.zeros((10, 10, 3, 224, 224), dtype=np.uint8)
+        fake_counts = np.array([3] * 10, dtype=np.int32)
+
+        from real_estate.data.image_bundle import DecodedImageBundle
+
+        fake_decoded = DecodedImageBundle(
+            images=fake_images,
+            image_counts=fake_counts,
+            property_ids=[str(i) for i in range(10)],
+        )
+
+        with patch(
+            "real_estate.orchestration.orchestrator.decode_for_model",
+            return_value=fake_decoded,
+        ):
+            await orchestrator.run(
+                dataset, model_paths, chain_metadata,
+                feature_configs=feature_configs,
+                image_bundle_path=Path("/tmp/fake.zip"),
+                image_bundle_manifest=MagicMock(),
+            )
+
+        first_call_kwargs = mock_evaluator.evaluate_all.call_args_list[0].kwargs
+        image_data = first_call_kwargs["image_data"]
+        assert "A" in image_data
+        assert "B" not in image_data
+
+    @pytest.mark.asyncio
+    async def test_no_bundle_means_no_image_data(
+        self,
+        orchestrator: ValidationOrchestrator,
+        mock_evaluator: AsyncMock,
+        mock_detector: MagicMock,
+        mock_selector: MagicMock,
+        mock_distributor: MagicMock,
+    ) -> None:
+        """Without image_bundle_path, evaluator gets no image_data even if models want images."""
+        dataset = create_dataset()
+        model_paths = {"A": Path("/a.onnx")}
+        chain_metadata = {"A": create_chain_metadata("A", 100)}
+
+        from real_estate.data import parse_feature_config
+        from real_estate.data.config_encoder import IMAGES_FEATURE_NAME
+
+        fc = parse_feature_config({
+            "version": "1.0",
+            "features": [
+                "living_area_sqft", "latitude", "longitude", "bedrooms", "bathrooms",
+                "lot_size_sqft", "year_built", "has_pool", "has_garage", "stories",
+                IMAGES_FEATURE_NAME,
+            ],
+        })
+
+        _setup_default_mocks(
+            mock_evaluator, mock_detector, mock_selector, mock_distributor,
+        )
+
+        # No bundle path — no images
+        await orchestrator.run(
+            dataset, model_paths, chain_metadata,
+            feature_configs={"A": fc},
+        )
+
+        first_call_kwargs = mock_evaluator.evaluate_all.call_args_list[0].kwargs
+        assert first_call_kwargs["image_data"] is None
+
