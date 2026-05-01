@@ -122,24 +122,45 @@ class TestVerifierTokenPropagation:
         self, mock_chain_client: MagicMock
     ) -> None:
         """check_license passes the Authorization header to httpx."""
+        from real_estate.models.exclusive_license import (
+            EXCLUSIVE_LICENSE_HASH,
+            EXCLUSIVE_LICENSE_LINK,
+            EXCLUSIVE_LICENSE_TEXT,
+        )
+
         verifier = ModelVerifier(mock_chain_client, hf_token=HF_TOKEN)
 
         with patch("real_estate.models.verifier.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
-            mock_response = MagicMock()
-            mock_response.status_code = 200
-            mock_response.json.return_value = {"cardData": {"license": "mit"}}
-            mock_client.get = AsyncMock(return_value=mock_response)
+            # First call: _fetch_model_info (HF API)
+            mock_api_response = MagicMock()
+            mock_api_response.status_code = 200
+            mock_api_response.json.return_value = {
+                "cardData": {
+                    "license": "other",
+                    "license_name": "resi-exclusive",
+                    "license_link": EXCLUSIVE_LICENSE_LINK,
+                }
+            }
+            # Second call: LICENSE file fetch
+            mock_license_response = MagicMock()
+            mock_license_response.status_code = 200
+            mock_license_response.text = EXCLUSIVE_LICENSE_TEXT
+            mock_client.get = AsyncMock(
+                side_effect=[mock_api_response, mock_license_response]
+            )
             mock_client_cls.return_value.__aenter__ = AsyncMock(
                 return_value=mock_client
             )
             mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            await verifier.check_license("testuser/repo")
+            result = await verifier.check_license("testuser/repo")
+            assert result == "exclusive"
 
-            mock_client_cls.assert_called_once()
-            call_kwargs = mock_client_cls.call_args
-            assert call_kwargs.kwargs.get("headers") == {
+            # Verify token was passed to httpx client (first call)
+            assert mock_client_cls.call_count >= 1
+            first_call_kwargs = mock_client_cls.call_args_list[0]
+            assert first_call_kwargs.kwargs.get("headers") == {
                 "Authorization": f"Bearer {HF_TOKEN}"
             }
 

@@ -21,10 +21,13 @@ class TestFilterNeedsDownload:
         mock_chain_client: MagicMock,
         sample_commitments: list[MagicMock],
     ) -> None:
-        """Filters out models that are already cached with matching hash."""
+        """Filters out models that are already cached with matching hash and license."""
         mock_downloader = MagicMock()
-        # First model cached, second not
+        # First model cached with exclusive license, second not cached
         mock_downloader.is_cached.side_effect = [True, False]
+        cached_model = MagicMock()
+        cached_model.metadata.license_type = "exclusive"
+        mock_downloader.get_cached.return_value = cached_model
 
         scheduler = ModelDownloadScheduler(
             scheduler_config, mock_downloader, mock_chain_client
@@ -90,9 +93,12 @@ class TestFilterNeedsDownload:
         mock_chain_client: MagicMock,
         sample_commitments: list[MagicMock],
     ) -> None:
-        """Returns empty list when all models are cached."""
+        """Returns empty list when all models are cached with valid license."""
         mock_downloader = MagicMock()
         mock_downloader.is_cached.return_value = True
+        cached_model = MagicMock()
+        cached_model.metadata.license_type = "exclusive"
+        mock_downloader.get_cached.return_value = cached_model
 
         scheduler = ModelDownloadScheduler(
             scheduler_config, mock_downloader, mock_chain_client
@@ -408,8 +414,11 @@ class TestRunCatchUpWithFailedHotkeys:
     ) -> None:
         """Does not retry if model was cached successfully after initial failure."""
         mock_downloader = MagicMock()
-        # Model is now cached
+        # Model is now cached with valid license
         mock_downloader.is_cached.return_value = True
+        cached_model = MagicMock()
+        cached_model.metadata.license_type = "exclusive"
+        mock_downloader.get_cached.return_value = cached_model
 
         commitment = MagicMock()
         commitment.hotkey = "5Hotkey"
@@ -683,6 +692,9 @@ class TestRunCatchUp:
     ) -> None:
         """Returns empty dict when all commitments are already known."""
         mock_downloader = MagicMock()
+        cached_model = MagicMock()
+        cached_model.metadata.license_type = "exclusive"
+        mock_downloader.get_cached.return_value = cached_model
 
         commitment = MagicMock()
         commitment.hotkey = "5Hotkey"
@@ -973,10 +985,11 @@ class TestGetAvailableModels:
         """Returns paths for cached models that match known commitments."""
         mock_downloader = MagicMock()
 
-        # Mock cache returns a cached model
+        # Mock cache returns a cached model with exclusive license
         cached_model = MagicMock()
         cached_model.path = Path("/cache/hotkey1/model.onnx")
         cached_model.metadata.hash = "hash123"
+        cached_model.metadata.license_type = "exclusive"
         mock_downloader.get_cached.return_value = cached_model
 
         scheduler = ModelDownloadScheduler(
@@ -1073,6 +1086,7 @@ class TestGetAvailableModels:
         cached_model = MagicMock()
         cached_model.path = Path("/cache/model.onnx")
         cached_model.metadata.hash = "hash123"
+        cached_model.metadata.license_type = "exclusive"
         mock_downloader.get_cached.return_value = cached_model
 
         scheduler = ModelDownloadScheduler(
@@ -1102,6 +1116,7 @@ class TestGetAvailableModels:
         cached_model = MagicMock()
         cached_model.path = Path("/cache/model.onnx")
         cached_model.metadata.hash = "hash123"
+        cached_model.metadata.license_type = "exclusive"
         mock_downloader.get_cached.return_value = cached_model
 
         scheduler = ModelDownloadScheduler(
@@ -1131,6 +1146,7 @@ class TestGetAvailableModels:
         cached_model = MagicMock()
         cached_model.path = Path("/cache/model.onnx")
         cached_model.metadata.hash = "hash123"
+        cached_model.metadata.license_type = "exclusive"
         mock_downloader.get_cached.return_value = cached_model
 
         scheduler = ModelDownloadScheduler(

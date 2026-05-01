@@ -19,6 +19,12 @@ from .errors import (
     LicenseError,
     ModelDownloadError,
     ModelTooLargeError,
+    RepoValidationError,
+)
+from .exclusive_license import (
+    EXCLUSIVE_LICENSE_HASH,
+    EXCLUSIVE_LICENSE_LINK,
+    compute_license_hash,
 )
 from .models import ExtrinsicRecord
 
@@ -67,19 +73,28 @@ class ModelVerifier:
             return {"Authorization": f"Bearer {self._hf_token}"}
         return {}
 
-    async def check_license(self, hf_repo_id: str) -> None:
+    async def check_license(self, hf_repo_id: str) -> str:
         """
-        Check HuggingFace repo has MIT license in metadata.
+        Check HuggingFace repo has the required RESI exclusive license.
 
-        Uses HF API to check model card metadata for MIT license.
-        This is a case-insensitive check for "mit" in the license field.
+        Verifies both HF metadata fields and the actual LICENSE file content
+        (SHA-256 hash match against the canonical license text).
 
         Args:
             hf_repo_id: HuggingFace repository ID (user/repo)
 
+        Returns:
+            License type string ("exclusive")
+
         Raises:
-            LicenseError: If license missing, not MIT, or API error
+            LicenseError: If metadata check fails or repo not found
+            RepoValidationError: If LICENSE file missing or hash mismatch
         """
+        model_info = await self._fetch_model_info(hf_repo_id)
+        return await self._check_exclusive_license(hf_repo_id, model_info)
+
+    async def _fetch_model_info(self, hf_repo_id: str) -> dict:
+        """Fetch model info from HuggingFace API."""
         url = HF_API_URL.format(repo_id=hf_repo_id)
 
         async with httpx.AsyncClient(
@@ -94,24 +109,85 @@ class ModelVerifier:
                     raise LicenseError(f"Repository {hf_repo_id} not found")
 
                 response.raise_for_status()
-                model_info = response.json()
-
-                # Check license in model card metadata
-                card_data = model_info.get("cardData") or {}
-                license_value = card_data.get("license") or ""
-
-                if "mit" in license_value.lower():
-                    logger.debug(f"MIT license verified for {hf_repo_id}")
-                    return
-
-                raise LicenseError(
-                    f"MIT license required for {hf_repo_id}, found: {license_value or 'none'}"
-                )
+                return response.json()
 
             except httpx.HTTPError as e:
                 raise LicenseError(
                     f"Failed to check license for {hf_repo_id}: {e}"
                 ) from e
+
+    async def _check_exclusive_license(self, hf_repo_id: str, model_info: dict) -> str:
+        """Verify the RESI exclusive license on a HuggingFace repo.
+
+        Checks:
+        1. cardData.license == "other"
+        2. cardData.license_name == "resi-exclusive"
+        3. cardData.license_link matches canonical URL
+        4. LICENSE file exists and its SHA-256 matches the canonical hash
+
+        Returns:
+            "exclusive" on success
+
+        Raises:
+            LicenseError: If metadata fields are wrong
+            RepoValidationError: If LICENSE file missing or hash mismatch
+        """
+        card_data = model_info.get("cardData") or {}
+
+        license_value = (card_data.get("license") or "").lower()
+        if license_value != "other":
+            raise LicenseError(
+                f"RESI exclusive license required for {hf_repo_id}. "
+                f"Expected license='other', found: '{license_value or 'none'}'"
+            )
+
+        license_name = (card_data.get("license_name") or "").lower()
+        if license_name != "resi-exclusive":
+            raise LicenseError(
+                f"RESI exclusive license required for {hf_repo_id}. "
+                f"Expected license_name='resi-exclusive', found: '{license_name or 'none'}'"
+            )
+
+        license_link = card_data.get("license_link") or ""
+        if license_link != EXCLUSIVE_LICENSE_LINK:
+            raise LicenseError(
+                f"RESI exclusive license required for {hf_repo_id}. "
+                f"Expected license_link='{EXCLUSIVE_LICENSE_LINK}', "
+                f"found: '{license_link or 'none'}'"
+            )
+
+        # Fetch and hash-verify the actual LICENSE file
+        license_url = HF_RAW_URL.format(repo_id=hf_repo_id, filename="LICENSE")
+
+        async with httpx.AsyncClient(
+            timeout=self._http_timeout,
+            follow_redirects=True,
+            headers=self._http_headers,
+        ) as client:
+            try:
+                response = await client.get(license_url)
+
+                if response.status_code == 404:
+                    raise RepoValidationError(f"LICENSE file not found in {hf_repo_id}")
+
+                response.raise_for_status()
+                license_content = response.text
+
+            except httpx.HTTPError as e:
+                raise RepoValidationError(
+                    f"Failed to fetch LICENSE file from {hf_repo_id}: {e}"
+                ) from e
+
+        content_hash = compute_license_hash(license_content)
+        if content_hash != EXCLUSIVE_LICENSE_HASH:
+            raise RepoValidationError(
+                f"LICENSE file hash mismatch for {hf_repo_id}. "
+                f"Expected {EXCLUSIVE_LICENSE_HASH[:16]}..., "
+                f"got {content_hash[:16]}..."
+            )
+
+        logger.debug(f"Exclusive license verified for {hf_repo_id}")
+        return "exclusive"
 
     async def _fetch_repo_tree(self, hf_repo_id: str) -> list[dict]:
         """Fetch the file listing from a HuggingFace repository.
