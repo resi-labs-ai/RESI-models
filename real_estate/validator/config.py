@@ -251,8 +251,8 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         "--model.min_commitment_age_blocks",
         dest="model_min_commitment_age_blocks",
         type=int,
-        help="Minimum age in blocks for commitments to be eligible (~28h = 8400 blocks at 12s/block).",
-        default=int(os.environ.get("MODEL_MIN_COMMITMENT_AGE_BLOCKS", "8400")),
+        help="Minimum age in blocks for commitments to be eligible (~30d = 216000 blocks at 12s/block).",
+        default=int(os.environ.get("MODEL_MIN_COMMITMENT_AGE_BLOCKS", "216000")),
     )
 
     parser.add_argument(

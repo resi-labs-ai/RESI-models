@@ -374,7 +374,7 @@ Validators perform these checks before scoring your model:
 
 ### Evaluation Schedule
 
-Evaluation runs **daily at 18:00 UTC** against the last 24 hours of real sales data. (time to be adjusted in future)
+Evaluation runs **daily at 18:00 UTC** against properties both listed and sold within the last 30 days.
 
 ### Non-Disclosure States
 
@@ -396,7 +396,19 @@ For example, a model with 8.5% average error scores 0.915.
 
 1. **Winner set**: All models scoring within **1% (0.01)** of the best score are grouped into a winner set.
 2. **Earliest commit wins**: Within the winner set, the model with the **earliest on-chain commitment** (lowest block number) wins. This means a newcomer must beat the existing leader by more than 1% to take the top spot.
-3. **Commitment age**: Models must be committed on-chain **~31 hours before evaluation**  to be eligible.
+3. **Commitment age**: Models must be committed on-chain **~30 days before evaluation** to be eligible.
+
+### Deregistration and the 30-Day Window
+
+The subnet's immunity period is shorter than the 30-day submission window. This means your hotkey may get deregistered before your model becomes eligible for evaluation. This is expected and by design — the 30-day window ensures models cannot memorize recent listing data.
+
+If your hotkey gets deregistered during the waiting period:
+
+1. **Re-register** your hotkey on the subnet once your commitment is old enough (30+ days)
+2. **Your original commitment stays on-chain** — you do not need to re-submit
+3. Validators will pick up your model at the next evaluation cycle after re-registration
+
+This is a one-time cost per model submission. Once your model is being evaluated and earning emissions, it stays registered.
 
 ### Emission Distribution
 
