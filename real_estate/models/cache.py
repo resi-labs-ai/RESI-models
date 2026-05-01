@@ -91,6 +91,7 @@ class ModelCache:
         size_bytes: int,
         commit_block: int,
         feature_config: dict | None = None,
+        license_type: str | None = None,
     ) -> Path:
         """
         Store model in cache (atomic move from temp).
@@ -102,6 +103,7 @@ class ModelCache:
             size_bytes: Size of model file
             commit_block: Block number when committed (from Pylon)
             feature_config: Raw JSON dict from feature_config.json (optional)
+            license_type: Verified license type (e.g. "exclusive")
 
         Returns:
             Path to cached model
@@ -121,6 +123,7 @@ class ModelCache:
             size_bytes=size_bytes,
             commit_block=commit_block,
             feature_config=feature_config,
+            license_type=license_type,
         )
         with open(metadata_path, "w") as f:
             json.dump(metadata.to_dict(), f)

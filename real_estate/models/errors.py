@@ -99,6 +99,18 @@ class FeatureConfigValidationError(ModelError):
     pass
 
 
+class RepoValidationError(ModelError):
+    """
+    Raised when HuggingFace repository fails LICENSE file validation.
+
+    This can happen when:
+    - LICENSE file is missing from the repository
+    - LICENSE file content does not match the required exclusive license hash
+    """
+
+    pass
+
+
 class ModelCorruptedError(ModelError):
     """
     Raised when model file is corrupted or not valid ONNX.

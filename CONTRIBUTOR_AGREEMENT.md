@@ -1,8 +1,8 @@
 # RESI Model Contributor Agreement
 
-**Version 1.1**
-**Effective Date:** February 1, 2026
-**Last Updated:** January 28, 2026
+**Version 2.0**
+**Effective Date:** May 1, 2026
+**Last Updated:** April 22, 2026
 
 ---
 
@@ -10,9 +10,7 @@
 
 This Model Contributor Agreement ("Agreement") governs your submission of AI models, model weights, architectures, training code, evaluation code, datasets, or related materials (collectively, "Submitted Materials") to RESI for use in Bittensor Subnet 46.
 
-**⚠️ Important:** By submitting materials to Subnet 46, you agree to be bound by this Agreement. Please read it carefully.
-
-**MIT License Requirement:** All models submitted to Subnet 46 must be licensed under the MIT License. See Section 5 for details.
+**Exclusive License Requirement:** All models submitted to Subnet 46 must be licensed under the RESI Proprietary Model License. See Section 5 for details and [MODEL_LICENSE.md](MODEL_LICENSE.md) for the full license text.
 
 **Legal Review Notice:** RESI recommends that contributors consult with their own legal counsel before submitting materials.
 
@@ -21,7 +19,7 @@ This Model Contributor Agreement ("Agreement") governs your submission of AI mod
 ## Table of Contents
 
 1. [Definitions](#1-definitions)
-2. [MIT License and Rights](#2-mit-license-and-rights)
+2. [Exclusive License and Rights](#2-exclusive-license-and-rights)
 3. [Representations and Warranties](#3-representations-and-warranties)
 4. [Base Model and License Disclosure](#4-base-model-and-license-disclosure)
 5. [Required License for Submitted Models](#5-required-license-for-submitted-models)
@@ -41,7 +39,7 @@ This Model Contributor Agreement ("Agreement") governs your submission of AI mod
 
 **1.1 "Contributor"** or **"You"** means the individual or legal entity submitting Submitted Materials to RESI.
 
-**1.2 "RESI"** means RESI and its affiliates, subsidiaries, successors, and assigns.
+**1.2 "RESI"** means RESI Inc. and its affiliates, subsidiaries, successors, and assigns.
 
 **1.3 "Submitted Materials"** means any and all AI models, neural network weights, model architectures, training scripts, evaluation code, datasets, documentation, or related materials that You submit to RESI through Subnet 46 or any related platform.
 
@@ -51,52 +49,56 @@ This Model Contributor Agreement ("Agreement") governs your submission of AI mod
 
 **1.6 "Base Model"** means any pre-trained AI model that Your Submitted Materials are based upon, derived from, fine-tuned from, or otherwise incorporate.
 
+**1.7 "Proprietary Model License"** means the RESI Proprietary Model License Agreement for Subnet 46, the full text of which is available in [MODEL_LICENSE.md](MODEL_LICENSE.md).
+
+**1.8 "Authorized Resi Gateways"** means the official Resi Inc. Chutes infrastructure, Resi OpenRouter endpoints, and the Resi Model Portal.
+
 ---
 
-## 2. MIT License and Rights
+## 2. Exclusive License and Rights
 
-### 2.1 MIT License Requirement
+### 2.1 Exclusive License Requirement
 
-All models submitted to Subnet 46 must be licensed under the **MIT License**. By requiring MIT licensing, Your Submitted Materials are openly available under permissive terms.
+All models submitted to Subnet 46 must be licensed under the **Proprietary Model License**. By submitting Your model and including the Proprietary Model License in Your HuggingFace repository, You grant RESI a worldwide, exclusive, perpetual, irrevocable, and royalty-free license to use, host, store, reproduce, modify, create derivative works, communicate, publish, publicly perform, publicly display, and distribute Your Submitted Materials for any commercial or non-commercial purpose.
 
-### 2.2 What MIT License Means
+### 2.2 What the Exclusive License Means
 
-The MIT License grants everyone (including RESI, validators, other miners, and the public) the following rights:
+The Proprietary Model License grants RESI the following **exclusive** rights:
 
-- **Use:** Use the Submitted Materials for any purpose, including commercial use
-- **Copy:** Make copies of the Submitted Materials
-- **Modify:** Modify and create derivative works
-- **Distribute:** Distribute the original or modified versions
-- **Sublicense:** Grant these same rights to others
-- **Sell:** Sell copies or services based on the Submitted Materials
+- **Host and Serve:** RESI has the exclusive right to host and serve The Model through Authorized Resi Gateways
+- **Commercialize:** RESI may commercialize, sublicense, and profit from The Model
+- **Modify:** RESI may modify and create derivative works
+- **Distribute:** RESI controls all distribution of The Model
 
-### 2.3 Your Rights as Author
+Third parties may only access The Model through Authorized Resi Gateways. Validators are granted a limited sub-license solely for network verification and scoring.
 
-You retain:
+### 2.3 Your Rights After Submission
 
-- **Ownership:** You remain the copyright holder of Your original work
-- **Attribution:** The MIT License requires attribution to You as the original author
-- **Full Usage Rights:** You may use, modify, distribute, and commercialize Your own work without restriction
-- **No Exclusivity:** You are free to submit the same or similar models to other platforms, subnets, or competitions
+Upon submission under the Proprietary Model License:
 
-### 2.4 RESI's Rights
+- **No Retention of Distribution Rights:** You may not distribute, sublicense, or make The Model available to third parties
+- **No Competing Use:** You may not submit substantially similar model weights or architecture to competing AI networks or commercial entities
+- **Work Made for Hire:** To the extent permitted by law, The Model is treated as a "work made for hire" for the benefit of RESI
+- **Moral Rights Waiver:** You waive all moral rights and proprietary claims upon submission
 
-Under the MIT License, RESI has the same rights as any other recipient:
+### 2.4 RESI's Exclusive Rights
 
-- Use Your Submitted Materials in Subnet 46 operations
+Under the Proprietary Model License, RESI has **exclusive** rights to:
+
+- Use Your Submitted Materials in Subnet 46 operations and beyond
 - Evaluate, benchmark, and score Your models
+- Commercialize, sublicense, and distribute Your models
 - Create derivative works or improvements
-- Use for commercial purposes
-
-RESI does not claim any exclusive rights to MIT-licensed Submitted Materials.
+- Enforce intellectual property rights against unauthorized use
 
 ### 2.5 Acknowledgment
 
-By submitting MIT-licensed materials to Subnet 46, You acknowledge that:
+By submitting materials to Subnet 46 under the Proprietary Model License, You acknowledge that:
 
-- Anyone may use Your Submitted Materials under MIT terms
-- RESI operates Subnet 46 infrastructure but does not own exclusive rights to submitted models
-- Other participants may study, learn from, or build upon Your work (with attribution)
+- RESI holds exclusive rights to Your Submitted Materials
+- You may not make Your Submitted Materials available on other platforms or networks
+- The opportunity to earn rewards (Alpha) via the Bittensor Network constitutes full consideration for this grant of rights
+- Validators may temporarily access Your model solely for verification purposes
 
 ---
 
@@ -106,13 +108,15 @@ By submitting MIT-licensed materials to Subnet 46, You acknowledge that:
 
 You represent and warrant that:
 
-a) **Authority:** You have the full legal authority to enter into this Agreement and license Your Submitted Materials under the MIT License. If You are entering this Agreement on behalf of an organization, You represent that You have authority to bind that organization;
+a) **Authority:** You have the full legal authority to enter into this Agreement and grant the exclusive license under the Proprietary Model License. If You are entering this Agreement on behalf of an organization, You represent that You have authority to bind that organization;
 
 b) **Ownership or Rights:** You either:
    - Are the sole and original author of the Submitted Materials, OR
-   - Have obtained all necessary rights, permissions, and licenses from third parties to submit the materials under the MIT License;
+   - Have obtained all necessary rights, permissions, and licenses from third parties to grant an exclusive license;
 
-c) **Original Work:** To the best of Your knowledge, the Submitted Materials are Your original work or You have properly licensed all components from authorized sources.
+c) **Original Work:** To the best of Your knowledge, the Submitted Materials are Your original work or You have properly licensed all components from authorized sources;
+
+d) **No Conflicting Obligations:** You have not previously granted any rights in the Submitted Materials that would conflict with the exclusive license granted to RESI.
 
 ### 3.2 No Infringement
 
@@ -153,14 +157,9 @@ c) Your submission does not violate export control or sanctions regulations;
 
 d) You have the legal right to receive cryptocurrency rewards in Your jurisdiction.
 
-### 3.5 Accuracy of Disclosures
+### 3.5 No Copyleft Components
 
-You represent and warrant that all information provided in connection with Your submission is accurate and complete, including:
-
-- Base model disclosures (Section 4)
-- License compliance attestations
-- Performance metrics and benchmarks
-- Model architecture descriptions
+You represent and warrant that Your Submitted Materials do not incorporate any "Copyleft" or open-source components (e.g., GPL, AGPL) that would require RESI to disclose its proprietary downstream code or that would be incompatible with the exclusive license grant.
 
 ---
 
@@ -182,78 +181,70 @@ e) Any datasets used for training or fine-tuning, including their licenses;
 
 f) Any restrictions imposed by the Base Model license (e.g., attribution requirements, commercial use limitations).
 
-### 4.2 License Compliance
+### 4.2 License Compatibility
 
 You warrant that:
 
 a) Your use of any Base Model complies with all applicable license terms;
 
 b) You have verified that the Base Model license permits:
-   - Commercial use (if applicable)
+   - Commercial use
    - Derivative works
-   - Redistribution
-   - Sublicensing under MIT License terms
+   - Granting an exclusive license to a third party (RESI)
 
 c) If the Base Model license requires attribution, You will provide appropriate attribution information.
 
-### 4.3 Common Base Model Examples
+### 4.3 Disclosure Method
 
-For reference, here are examples of common base models and their license considerations:
-
-| Base Model | License | Commercial Use | Key Restrictions |
-|------------|---------|----------------|------------------|
-| Llama 2 | Llama 2 Community License | ✅ Yes | Usage restrictions if >700M MAU |
-| Mistral 7B | Apache 2.0 | ✅ Yes | Attribution required |
-| Falcon | Apache 2.0 | ✅ Yes | Attribution required |
-| GPT-J | Apache 2.0 | ✅ Yes | Attribution required |
-| GPT-3/4 | OpenAI Terms | ❌ No redistribution | Cannot redistribute model weights |
-| Claude | Anthropic Terms | ❌ No redistribution | Cannot extract or redistribute |
-
-**⚠️ Warning:** Submitting unauthorized derivatives of closed-source models (GPT, Claude, PaLM, etc.) is a violation of this Agreement and may result in immediate termination and legal liability.
-
-### 4.4 Disclosure Method
-
-Base model and license information must be provided:
-
-- During the submission process through the designated disclosure fields
-- In a `model_card.md` file accompanying Your submission
-- In model metadata following the Hugging Face Model Card format
+Base model and license information must be provided in model metadata following the Hugging Face Model Card format.
 
 ---
 
 ## 5. Required License for Submitted Models
 
-### 5.1 MIT License Requirement
+### 5.1 Proprietary Model License Requirement
 
-All models submitted to Subnet 46 MUST be licensed under the **MIT License**. The validator automatically verifies this by checking the HuggingFace model card metadata.
+All models submitted to Subnet 46 MUST include the **Proprietary Model License** (see [MODEL_LICENSE.md](MODEL_LICENSE.md)). The validator automatically verifies this by checking:
+
+1. HuggingFace model card metadata fields
+2. The LICENSE file content in the repository (SHA-256 hash verification)
 
 ### 5.2 License Setup on HuggingFace
 
 When hosting Your Submitted Materials on HuggingFace, You MUST:
 
-a) **Set License:** Select **MIT** from the license dropdown when creating your model repository.
+a) **Set License Metadata:** In your model card (README.md), set:
+   - `license: other`
+   - `license_name: resi-exclusive`
+   - `license_link: https://huggingface.co/resi-ai/model-license/blob/main/LICENSE`
 
-b) **Optional LICENSE File:** You may also include a LICENSE file with the standard MIT license text, but the model card metadata is what the validator checks.
+b) **Include LICENSE File:** Copy the exact text from [MODEL_LICENSE.md](MODEL_LICENSE.md) into a `LICENSE` file in your repository root. The validator verifies this file by SHA-256 hash - any modification will cause rejection.
 
 ### 5.3 Verification Process
 
 The validator performs automated license verification:
-- Fetches model card metadata from the HuggingFace API
-- Performs a case-insensitive check for "mit" in the license field
-- Rejects models with `LicenseError` if MIT license is not detected
 
-### 5.4 Why MIT License?
+1. Fetches model card metadata from the HuggingFace API
+2. Checks `license`, `license_name`, and `license_link` fields
+3. Fetches the `LICENSE` file from the repository
+4. Computes SHA-256 hash of the file content
+5. Compares against the canonical license hash
+6. Rejects models that fail any of these checks
 
-The MIT License requirement ensures:
-- Models can be freely used, modified, and distributed
-- Clear and simple terms for all participants
-- Compatibility with the open-source Bittensor ecosystem
-- No ambiguity about usage rights
+### 5.4 Why Exclusive License?
+
+The Proprietary Model License requirement ensures:
+
+- RESI can commercialize models through Authorized Resi Gateways
+- Model IP is protected against unauthorized distribution and forking
+- Clear and enforceable terms for all participants
+- Submitters are fairly compensated through the Bittensor incentive mechanism
 
 ### 5.5 Compliance Verification
 
 RESI reserves the right to:
-- Verify that Your HuggingFace repositories contain the correct license metadata
+
+- Verify that Your HuggingFace repositories contain the correct license metadata and LICENSE file
 - Request You update or correct licensing information within 7 days
 - Remove Your models from Subnet 46 if licensing is incorrect or missing
 - Terminate Your account for repeated licensing violations
@@ -262,7 +253,7 @@ RESI reserves the right to:
 
 ## 6. Indemnification
 
-### 5.1 Your Indemnification Obligation
+### 6.1 Your Indemnification Obligation
 
 You agree to indemnify, defend, and hold harmless RESI, its affiliates, officers, directors, employees, agents, contractors, and successors (collectively, "RESI Parties") from and against any and all:
 
@@ -279,9 +270,11 @@ c) **License Violations:** Your violation of any third-party license terms appli
 
 d) **Illegal Content:** Any claim arising from illegal, harmful, or privacy-violating content in Your Submitted Materials;
 
-e) **Regulatory Violations:** Any claim arising from Your violation of applicable laws or regulations.
+e) **Regulatory Violations:** Any claim arising from Your violation of applicable laws or regulations;
 
-### 5.2 Indemnification Process
+f) **Conflicting Grants:** Any claim arising from Your having previously granted rights that conflict with the exclusive license granted to RESI.
+
+### 6.2 Indemnification Process
 
 a) **Notice:** RESI will promptly notify You in writing of any claim for which indemnification is sought;
 
@@ -293,7 +286,7 @@ c) **Cooperation:** RESI will reasonably cooperate with You in the defense of an
 
 d) **RESI's Right:** If You fail to assume the defense within 30 days of notice, RESI may defend the claim at Your expense.
 
-### 5.3 Exceptions
+### 6.3 Exceptions
 
 Your indemnification obligation does not apply to claims arising solely from:
 
@@ -305,7 +298,7 @@ Your indemnification obligation does not apply to claims arising solely from:
 
 ## 7. Rewards and Compensation
 
-### 6.1 Reward Structure
+### 7.1 Reward Structure
 
 Rewards for Submitted Materials are distributed according to Subnet 46's incentive mechanism, which:
 
@@ -317,7 +310,11 @@ c) **Variable:** Reward amounts and criteria may change over time as the subnet 
 
 d) **Distributed in TAO:** Rewards are paid in TAO tokens (the native cryptocurrency of the Bittensor network) or such other form as RESI may determine.
 
-### 6.2 No Employment or Contractor Relationship
+### 7.2 Consideration for Exclusive License
+
+You acknowledge that the opportunity to earn rewards (Alpha) via the Bittensor Network, subject to the terms and conditions of the Resi Subnet 46 codebase, constitutes full and sufficient legal consideration for the exclusive license grant in Section 2.
+
+### 7.3 No Employment or Contractor Relationship
 
 **Important:** This Agreement does NOT create:
 
@@ -329,7 +326,7 @@ d) **Distributed in TAO:** Rewards are paid in TAO tokens (the native cryptocurr
 
 You are participating in Subnet 46 voluntarily. Rewards are incentive payments, not wages or fees for services.
 
-### 6.3 Tax Responsibilities
+### 7.4 Tax Responsibilities
 
 **You are solely responsible for:**
 
@@ -341,49 +338,7 @@ c) Maintaining records of all Reward transactions;
 
 d) Complying with tax laws in Your jurisdiction.
 
-**RESI may:**
-
-- Issue tax forms (e.g., IRS Form 1099-MISC) if required by law
-- Withhold amounts if required by law
-- Request additional information for tax compliance purposes
-
-**RESI does not:**
-
-- Provide tax advice
-- Determine Your tax obligations
-- Guarantee the tax treatment of Rewards in any jurisdiction
-
-### 6.4 Reward Calculation and Disputes
-
-a) **Methodology:** RESI determines reward amounts based on proprietary evaluation methodology, which may include:
-   - Model accuracy and performance metrics
-   - Model efficiency and resource usage
-   - Community feedback and adoption
-   - Contribution to subnet objectives
-
-b) **Final Determination:** RESI's determination of reward amounts is final and binding, except in cases of clear technical error;
-
-c) **Dispute Process:** If You believe there is a technical error in reward calculation:
-   - Submit a detailed written explanation to support@resilabs.ai within 30 days
-   - Include specific evidence of the error
-   - RESI will investigate and respond within reasonable time
-   - RESI's decision after investigation is final
-
-d) **No Interest:** Rewards do not accrue interest.
-
-### 6.5 Payment and Wallet Requirements
-
-a) **Valid Wallet:** You must maintain a valid Bittensor wallet address registered with Your account;
-
-b) **Your Responsibility:** You are responsible for the security of Your wallet and private keys;
-
-c) **Lost Access:** RESI is not responsible if You lose access to Your wallet;
-
-d) **Minimum Threshold:** Rewards below 1 TAO may be accumulated until the threshold is reached to minimize transaction costs;
-
-e) **Unclaimed Rewards:** Rewards that remain unclaimed for 12 months may be forfeited.
-
-### 6.6 Reward Adjustments
+### 7.5 Reward Adjustments
 
 RESI reserves the right to:
 
@@ -395,27 +350,21 @@ RESI reserves the right to:
 
 ## 8. Intellectual Property Rights
 
-### 8.1 Ownership
+### 8.1 Exclusive License Grant
 
-**You retain ownership** of Your Submitted Materials. This Agreement is a license grant, not a transfer of ownership.
+Your Submitted Materials are licensed to RESI under the Proprietary Model License on an **exclusive** basis.
 
-### 8.2 Rights Under MIT License
+### 8.2 Rights Under Proprietary Model License
 
-Your Submitted Materials are licensed under MIT, which means:
-
-a) **Open Access:** Anyone (including RESI) may use, modify, distribute, and commercialize the Submitted Materials under MIT terms;
+a) **Exclusive Access:** RESI holds exclusive rights to use, commercialize, and distribute the Submitted Materials;
 
 b) **Platform Operation:** RESI may use Submitted Materials to operate Subnet 46, including evaluation, scoring, and display of results;
 
-c) **No Exclusive Rights:** RESI does not claim exclusive rights to MIT-licensed Submitted Materials;
+c) **Commercial Exploitation:** RESI may commercialize the Submitted Materials through Authorized Resi Gateways and other channels;
 
-d) **Attribution:** Users of Your Submitted Materials must include the MIT license notice and copyright attribution.
+d) **Derivative Works:** RESI may create derivative works, improvements, and modifications;
 
-**You retain:**
-- Full copyright ownership
-- Right to use, modify, and commercialize Your own work
-- Right to submit to other platforms or competitions
-- Attribution rights under MIT License
+e) **Enforcement:** RESI may enforce the exclusive license against unauthorized use by third parties.
 
 ### 8.3 RESI's Platform Intellectual Property
 
@@ -429,8 +378,6 @@ All RESI intellectual property remains the exclusive property of RESI, including
 
 ### 8.4 Feedback and Suggestions
 
-### 8.3 Feedback and Suggestions
-
 If You provide RESI with suggestions, feedback, or ideas about Subnet 46 or the platform ("Feedback"):
 
 - RESI may use the Feedback freely without obligation to You
@@ -441,11 +388,11 @@ If You provide RESI with suggestions, feedback, or ideas about Subnet 46 or the 
 
 ## 9. Disclaimers
 
-### 8.1 No Warranty on Submitted Materials
+### 9.1 No Warranty on Submitted Materials
 
 YOUR SUBMITTED MATERIALS ARE PROVIDED ON AN "AS IS" BASIS WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, OR NON-INFRINGEMENT.
 
-### 8.2 No Guarantee of Acceptance or Use
+### 9.2 No Guarantee of Acceptance or Use
 
 RESI DOES NOT WARRANT OR GUARANTEE THAT:
 
@@ -459,7 +406,7 @@ d) Your Submitted Materials will function as expected or be error-free;
 
 e) Subnet 46 will continue to operate indefinitely.
 
-### 8.3 RESI's Evaluation Rights
+### 9.3 RESI's Evaluation Rights
 
 RESI reserves the right to:
 
@@ -469,16 +416,7 @@ RESI reserves the right to:
 - Update evaluation criteria and scoring algorithms without notice
 - Discontinue Subnet 46 or change its structure
 
-### 8.4 No Warranty on Platform
-
-THE SUBNET 46 PLATFORM IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. RESI DISCLAIMS ALL WARRANTIES INCLUDING:
-
-- Availability, reliability, or uptime
-- Security or freedom from vulnerabilities
-- Compatibility with Your systems
-- Accuracy of metrics or evaluations
-
-### 8.5 Cryptocurrency Risks
+### 9.4 Cryptocurrency Risks
 
 YOU ACKNOWLEDGE AND ACCEPT THE RISKS ASSOCIATED WITH CRYPTOCURRENCY, INCLUDING:
 
@@ -493,69 +431,33 @@ RESI MAKES NO REPRESENTATIONS ABOUT THE VALUE OR FUTURE VALUE OF TAO TOKENS.
 
 ## 10. Removal and Takedown
 
-### 9.1 RESI's Right to Remove
+### 10.1 RESI's Right to Remove
 
 RESI may immediately remove, disable, or suspend access to any Submitted Materials, without prior notice, if:
 
 a) The materials violate this Agreement;
 
-b) RESI receives a valid intellectual property infringement claim (DMCA notice, patent claim, etc.);
+b) RESI receives a valid intellectual property infringement claim;
 
 c) The materials contain malicious code or security vulnerabilities;
 
 d) The materials cause technical problems or harm to the platform;
 
-e) The materials receive credible reports of illegal content or privacy violations;
+e) Removal is required by law, court order, or legal process;
 
-f) Removal is required by law, court order, or legal process;
+f) RESI determines, in its sole discretion, that removal is necessary to protect RESI or third parties.
 
-g) RESI determines, in its sole discretion, that removal is necessary to protect RESI or third parties.
+### 10.2 Notice of Removal
 
-### 9.2 Notice of Removal
-
-RESI will make reasonable efforts to notify You of removal and the reason, except:
-
-- In cases of urgent security threats
-- When notice is prohibited by law
-- When Your contact information is invalid
-
-### 9.3 DMCA Counter-Notice Process
-
-If Your Submitted Materials were removed due to a copyright infringement claim (DMCA takedown) and You believe the removal was erroneous:
-
-a) **Submit a Counter-Notice** to legal@resilabs.ai containing:
-   - Your name, address, phone number, and email
-   - Identification of the removed material and its prior location
-   - A statement under penalty of perjury that You have a good faith belief the material was removed due to mistake or misidentification
-   - A statement that You consent to jurisdiction of the federal district court for Your judicial district (or if outside the US, for any judicial district in which RESI is located)
-   - Your physical or electronic signature
-
-b) **RESI's Process:**
-   - RESI will forward Your counter-notice to the complaining party
-   - If the complaining party does not file a court action within 10-14 business days, RESI may restore the material at its discretion
-
-c) **False Claims:** Filing false or fraudulent counter-notices may result in legal liability under DMCA 512(f).
-
-### 9.4 Repeat Infringer Policy
-
-RESI maintains a policy of terminating accounts of Contributors who are repeat infringers. If You receive:
-
-- **Two (2) valid infringement claims:** Warning and temporary suspension
-- **Three (3) or more valid infringement claims:** Permanent account termination
+RESI will make reasonable efforts to notify You of removal and the reason, except in cases of urgent security threats, when notice is prohibited by law, or when Your contact information is invalid.
 
 ---
 
 ## 11. Confidentiality
 
-### 10.1 RESI's Confidential Information
+### 11.1 RESI's Confidential Information
 
-During Your participation in Subnet 46, You may have access to RESI's confidential information, including:
-
-- Proprietary evaluation algorithms and scoring methodologies
-- Non-public technical specifications and architecture
-- Other Contributors' Submitted Materials
-- Business strategies and plans
-- Security measures and vulnerabilities
+During Your participation in Subnet 46, You may have access to RESI's confidential information, including proprietary evaluation algorithms, scoring methodologies, and non-public technical specifications.
 
 **You agree to:**
 
@@ -565,42 +467,9 @@ b) Not disclose it to third parties without RESI's prior written consent;
 
 c) Use it only for the purpose of participating in Subnet 46;
 
-d) Protect it with at least the same degree of care You use for Your own confidential information, but no less than reasonable care.
+d) Protect it with at least reasonable care.
 
-### 10.2 Your Confidential Information
-
-RESI will treat Your Submitted Materials as confidential, except:
-
-a) When You have made the materials publicly available elsewhere;
-
-b) When disclosure is required by law or legal process;
-
-c) When disclosure is necessary for Subnet 46 operation (e.g., providing access to validators);
-
-d) When aggregating anonymized metrics or statistics;
-
-e) With Your prior written consent.
-
-**Transparency Options:**
-
-You may choose to:
-- Make Your submissions public and open source
-- Keep Your model weights private but share performance metrics
-- Opt for full confidentiality (if supported by the platform)
-
-### 10.3 Exceptions
-
-Confidentiality obligations do not apply to information that:
-
-a) Is or becomes publicly available through no breach of this Agreement;
-
-b) Was rightfully known to the receiving party prior to disclosure;
-
-c) Is independently developed without use of or reference to the confidential information;
-
-d) Is rightfully received from a third party without confidentiality obligations.
-
-### 10.4 Duration
+### 11.2 Duration
 
 Confidentiality obligations survive for **three (3) years** after the date of disclosure or termination of this Agreement, whichever is later, except for trade secrets which remain confidential for as long as they qualify as trade secrets under applicable law.
 
@@ -608,11 +477,11 @@ Confidentiality obligations survive for **three (3) years** after the date of di
 
 ## 12. Term and Termination
 
-### 11.1 Term
+### 12.1 Term
 
 This Agreement begins when You first submit materials to Subnet 46 and continues until terminated.
 
-### 11.2 Your Right to Terminate
+### 12.2 Your Right to Terminate
 
 You may terminate this Agreement at any time by:
 
@@ -620,285 +489,90 @@ a) Ceasing all submissions to Subnet 46;
 
 b) Sending written notice to legal@resilabs.ai;
 
-c) Closing Your Subnet 46 account (if applicable).
-
 Upon Your termination:
 - You will receive any Rewards earned but not yet distributed (subject to verification)
 - You must cease accessing RESI's confidential information
-- Previously submitted MIT-licensed materials remain available under MIT License terms
+- The exclusive license granted to RESI under the Proprietary Model License **survives termination** and remains in effect for previously submitted materials
 
-### 11.3 RESI's Right to Terminate
+### 12.3 RESI's Right to Terminate
 
 RESI may terminate Your participation and this Agreement immediately if:
 
 a) You breach any material term of this Agreement;
 
-b) You violate the Terms of Service;
+b) You engage in fraudulent activity, manipulation, or abuse;
 
-c) You engage in fraudulent activity, manipulation, or abuse;
+c) You pose a security risk to the platform;
 
-d) You pose a security risk to the platform;
-
-e) Required by law or legal process;
-
-f) Your account is inactive for 12 months;
-
-g) You are subject to sanctions or in a prohibited jurisdiction.
+d) Required by law or legal process.
 
 Upon RESI's termination:
 - Your access to Subnet 46 is immediately revoked
 - Unpaid Rewards may be forfeited if termination was for cause
-- Previously submitted MIT-licensed materials remain available under MIT License terms
+- The exclusive license granted under the Proprietary Model License **survives termination**
 
-### 11.4 Effect of Termination
+### 12.4 Effect of Termination
 
 Upon termination of this Agreement:
 
-a) **MIT License Survives:** The MIT License on previously submitted materials survives termination and remains in effect;
+a) **Exclusive License Survives:** The Proprietary Model License on previously submitted materials survives termination and remains in effect permanently;
 
-b) **Confidentiality Survives:** Confidentiality obligations in Section 10 survive for the duration specified;
+b) **Historical MIT Submissions:** Materials previously submitted under the MIT License (prior to the introduction of the Proprietary Model License requirement) remain available under MIT License terms;
 
-c) **Indemnification Survives:** Your indemnification obligations in Section 5 survive termination;
+c) **Confidentiality Survives:** Confidentiality obligations in Section 11 survive for the duration specified;
 
-d) **Disclaimers Survive:** Sections 8 (Disclaimers), 12 (Dispute Resolution), and 13 (General Provisions) survive;
+d) **Indemnification Survives:** Your indemnification obligations in Section 6 survive termination;
 
-e) **Your Access Ends:** You must immediately cease accessing Subnet 46 and RESI's platform;
-
-f) **Outstanding Obligations:** Any outstanding payment obligations or liabilities survive.
-
-### 11.5 Suspension
-
-RESI may suspend (rather than terminate) Your access during investigations of alleged violations. Suspension does not affect RESI's rights to the licenses previously granted.
+e) **Disclaimers Survive:** Sections 9 (Disclaimers), 13 (Dispute Resolution), and 14 (General Provisions) survive.
 
 ---
 
 ## 13. Dispute Resolution
 
-### 12.1 Informal Resolution Requirement
+### 13.1 Informal Resolution Requirement
 
 Before initiating any legal action, You agree to:
 
 a) Contact RESI at legal@resilabs.ai with a detailed written description of the dispute;
 
-b) Include all relevant facts, documents, and proposed resolution;
+b) Engage in good faith negotiations with RESI for at least **thirty (30) days**.
 
-c) Engage in good faith negotiations with RESI for at least **thirty (30) days**;
+### 13.2 Binding Arbitration
 
-d) Work with RESI to explore mediation or other alternative dispute resolution.
+If informal resolution fails, any dispute arising from or relating to this Agreement shall be resolved by binding arbitration under the Commercial Arbitration Rules of the American Arbitration Association (AAA) or JAMS, at RESI's election, in Sheridan, Wyoming.
 
-Compliance with this informal resolution process is a **condition precedent** to filing any legal action.
+### 13.3 Class Action Waiver
 
-### 12.2 Binding Arbitration
+YOU AND RESI AGREE THAT EACH MAY BRING CLAIMS AGAINST THE OTHER ONLY IN AN INDIVIDUAL CAPACITY, AND NOT AS A PLAINTIFF OR CLASS MEMBER IN ANY PURPORTED CLASS, COLLECTIVE, OR REPRESENTATIVE ACTION.
 
-If informal resolution fails, **any dispute arising from or relating to this Agreement shall be resolved by binding arbitration**, rather than in court, except as provided in Section 12.5.
-
-**Arbitration Terms:**
-
-a) **Rules:** Arbitration shall be conducted under the Commercial Arbitration Rules of the American Arbitration Association (AAA) or JAMS, at RESI's election;
-
-b) **Location:** Sheridan, Wyoming;
-
-c) **Arbitrator:** One neutral arbitrator mutually agreed upon by the parties, or if no agreement, selected according to AAA/JAMS procedures;
-
-d) **Language:** English;
-
-e) **Discovery:** Limited discovery as determined by the arbitrator;
-
-f) **Hearing:** Unless both parties agree otherwise, any hearing will be conducted in person;
-
-g) **Award:** The arbitrator's decision is final and binding, and may be entered as a judgment in any court of competent jurisdiction;
-
-h) **Costs:**
-   - Each party pays its own attorneys' fees and costs
-   - Arbitrator fees and AAA/JAMS administrative costs are split 50/50 unless the arbitrator orders otherwise
-
-### 12.3 Class Action Waiver
-
-**YOU AND RESI AGREE THAT EACH MAY BRING CLAIMS AGAINST THE OTHER ONLY IN AN INDIVIDUAL CAPACITY, AND NOT AS A PLAINTIFF OR CLASS MEMBER IN ANY PURPORTED CLASS, COLLECTIVE, OR REPRESENTATIVE ACTION.**
-
-Unless both You and RESI agree otherwise:
-- No arbitration or proceeding will be combined with another
-- No arbitrator has authority to conduct any class or collective proceeding
-- No arbitrator has authority to make an award to any person not a party to the arbitration
-
-If this class action waiver is found unenforceable, the entire arbitration agreement is void.
-
-### 12.4 Opt-Out Right
-
-**You have the right to opt out of arbitration:**
-
-Within **thirty (30) days** of first accepting this Agreement, You may opt out by sending written notice to:
-
-**RESI Legal Department**  
-30 N Gould Street Suite R  
-Sheridan, WY 82801  
-Email: legal@resilabs.ai
-
-Your notice must include:
-- Your name and contact information
-- Your Subnet 46 account identifier
-- A clear statement that You wish to opt out of the arbitration agreement
-
-If You opt out:
-- The arbitration provisions do not apply to You
-- Disputes will be resolved in court as provided in Section 12.6
-
-### 12.5 Exceptions to Arbitration
-
-Either party may seek the following relief in court without arbitration:
-
-a) **Injunctive Relief:** Temporary restraining orders or preliminary injunctions to prevent irreparable harm;
-
-b) **Intellectual Property Claims:** Claims for trademark infringement, patent infringement, copyright infringement, or misappropriation of trade secrets;
-
-c) **Small Claims Court:** Claims that qualify for small claims court in Sheridan, Wyoming may be brought in small claims court;
-
-d) **Compliance with Law:** Actions to compel compliance with this arbitration agreement.
-
-### 12.6 Governing Law and Jurisdiction
+### 13.4 Governing Law and Jurisdiction
 
 This Agreement is governed by the laws of **Wyoming, United States**, without regard to its conflict of law provisions.
-
-If arbitration does not apply (due to opt-out or exceptions):
-- Exclusive jurisdiction and venue for any legal action shall be the state and federal courts located in Sheridan, Wyoming
-- You consent to personal jurisdiction in such courts
-- You waive any objection to venue in such courts
-
-### 12.7 Equitable Relief
-
-Nothing in this Agreement prevents RESI from seeking equitable relief (injunctions, specific performance) in any court for:
-- Breach of confidentiality obligations
-- Intellectual property infringement
-- Urgent security threats
 
 ---
 
 ## 14. General Provisions
 
-### 13.1 Entire Agreement
+### 14.1 Entire Agreement
 
-This Agreement, together with the RESI Terms of Service and Privacy Policy, constitutes the entire agreement between You and RESI regarding Submitted Materials and supersedes all prior or contemporaneous agreements, understandings, and communications, whether written or oral.
+This Agreement, together with the RESI Terms of Service, Privacy Policy, and the Proprietary Model License, constitutes the entire agreement between You and RESI regarding Submitted Materials.
 
-### 13.2 Modifications and Amendments
+### 14.2 Modifications
 
-**RESI may modify this Agreement:**
+RESI may modify this Agreement by posting an updated version and providing notice to Contributors. Changes become effective **thirty (30) days** after notice.
 
-a) **Notice:** By posting an updated version at https://www.resilabs.ai/legal/contributor-agreement and sending notice to Contributors via email or platform notification;
+### 14.3 Severability
 
-b) **Effective Date:** Changes become effective **thirty (30) days** after notice, except:
-   - Changes required by law may be effective immediately
-   - Non-material changes may be effective immediately
+If any provision is held to be invalid, the remaining provisions continue in full force and effect.
 
-c) **Acceptance:** Your continued submission of materials after the effective date constitutes acceptance of the modified Agreement;
+### 14.4 Assignment
 
-d) **Opt-Out:** If You do not agree to material changes, You may terminate this Agreement under Section 11.2.
+RESI may assign this Agreement to any successor entity. You may not assign without RESI's consent.
 
-**Version Control:**
-- Each version of this Agreement will be numbered and dated
-- Previous versions will be archived and available at https://www.resilabs.ai/legal/archive
-- The version You accepted will be noted in Your account records
+### 14.5 Survival
 
-### 13.3 Severability
-
-If any provision of this Agreement is held to be invalid, illegal, or unenforceable by a court of competent jurisdiction:
-
-a) The invalid provision will be modified to the minimum extent necessary to make it valid and enforceable;
-
-b) If modification is not possible, the provision will be severed from this Agreement;
-
-c) All remaining provisions will continue in full force and effect;
-
-d) The parties will negotiate in good faith to replace any severed provision with a valid provision that achieves the original intent.
-
-### 13.4 Waiver
-
-No waiver of any provision of this Agreement shall be deemed or shall constitute a waiver of any other provision, nor shall any waiver constitute a continuing waiver.
-
-RESI's failure to enforce any provision does not waive RESI's right to enforce that provision or any other provision at a later time.
-
-Any waiver must be in writing and signed by an authorized representative of RESI.
-
-### 13.5 Assignment
-
-**RESI's Rights:**
-RESI may assign this Agreement, in whole or in part, to any person or entity, including:
-- In connection with a merger, acquisition, or sale of substantially all assets
-- To any affiliate or subsidiary
-- To any successor entity
-
-**Your Rights:**
-You may not assign or transfer this Agreement or any rights or obligations hereunder without RESI's prior written consent. Any attempted assignment without consent is void.
-
-**Effect:**
-This Agreement binds and benefits the parties and their permitted successors and assigns.
-
-### 13.6 Force Majeure
-
-RESI shall not be liable for any failure or delay in performance due to causes beyond its reasonable control, including:
-
-- Acts of God (earthquakes, floods, fires, pandemics)
-- War, terrorism, civil unrest
-- Government actions or regulations
-- Internet, blockchain, or network failures
-- Power outages or telecommunications failures
-- Strikes or labor disputes
-- Supplier or subcontractor failures
-
-RESI's obligations are suspended during the force majeure event. If the event continues for more than ninety (90) days, either party may terminate this Agreement.
-
-### 13.7 Independent Contractors
-
-The parties are independent contractors. This Agreement does not create:
-- A partnership, joint venture, or agency relationship
-- An employer-employee relationship
-- Authority for either party to bind the other
-
-### 13.8 No Third-Party Beneficiaries
-
-This Agreement is solely between You and RESI. No third party has any right to enforce or benefit from any provision of this Agreement, except RESI's affiliates, successors, and assigns who are intended beneficiaries.
-
-### 13.9 Notices
-
-**To You:**
-Notices to You may be sent to:
-- The email address associated with Your account
-- In-platform notifications
-- Mail to Your registered address (if applicable)
-
-You are responsible for keeping Your contact information current.
-
-**To RESI:**
-Notices to RESI must be sent to:
-
-**RESI Legal Department**  
-30 N Gould Street Suite R  
-Sheridan, WY 82801  
-Email: legal@resilabs.ai
-
-Legal notices must be sent via:
-- Email with read receipt, AND
-- Certified mail, return receipt requested (for material notices)
-
-Notices are effective upon receipt.
-
-### 13.10 Interpretation
-
-a) **Headings:** Section headings are for convenience only and do not affect interpretation;
-
-b) **Definitional Terms:** Capitalized terms have the meanings assigned in Section 1 unless otherwise specified;
-
-c) **Includes:** "Including" means "including but not limited to";
-
-d) **Language:** The English language version of this Agreement controls in case of any conflict with translations;
-
-e) **Drafting:** This Agreement shall not be construed against either party as the drafter;
-
-f) **Exhibits:** Any exhibits or attachments are incorporated by reference.
-
-### 13.11 Survival
-
-The following sections survive termination of this Agreement:
-- Section 2 (MIT License and Rights)
+The following sections survive termination:
+- Section 2 (Exclusive License and Rights)
 - Section 3 (Representations and Warranties)
 - Section 6 (Indemnification)
 - Section 9 (Disclaimers)
@@ -906,83 +580,39 @@ The following sections survive termination of this Agreement:
 - Section 13 (Dispute Resolution)
 - Section 14 (General Provisions)
 
-### 13.12 Export Control Compliance
-
-You represent and warrant that:
-
-a) You are not located in, or a resident of, any country subject to U.S. trade embargo or sanctions;
-
-b) You are not on any U.S. government list of prohibited or restricted parties;
-
-c) You will comply with all applicable export control laws, including the U.S. Export Administration Regulations (EAR) and International Traffic in Arms Regulations (ITAR);
-
-d) You will not export, re-export, or transfer Submitted Materials or any RESI technology to prohibited countries or parties.
-
-### 13.13 Government Use
-
-If You are a government entity or contractor, RESI provides all materials and services as "Commercial Items" as defined at 48 C.F.R. §2.101, and government users acquire only the rights specified in this Agreement.
-
-### 13.14 Relationship to Other Agreements
-
-This Agreement operates alongside:
-- **RESI Terms of Service:** General platform usage terms
-- **RESI Privacy Policy:** Data collection and processing
-- **Subnet 46 Rules:** Technical and operational requirements
-
-In case of conflict, this Contributor Agreement takes precedence for matters specifically related to Submitted Materials.
-
-### 13.15 Counterparts and Electronic Signatures
-
-This Agreement may be executed in counterparts, each of which is deemed an original. Electronic signatures (including clicking "I Agree" or similar mechanisms) are valid and binding.
-
 ---
 
 ## Contact Information
 
 For questions about this Contributor Agreement:
 
-**Email:** legal@resilabs.ai  
-**Support:** support@resilabs.ai  
-**Address:** RESI, 30 N Gould Street Suite R, Sheridan, WY 82801
-
-For reporting intellectual property infringement:
-
-**DMCA Agent:** legal@resilabs.ai  
-**Address:** RESI, 30 N Gould Street Suite R, Sheridan, WY 82801
-
-For privacy-related inquiries:
-
-**Privacy Officer:** support@resilabs.ai  
-**Privacy Policy:** https://www.resilabs.ai/privacy
+**Email:** legal@resilabs.ai
+**Support:** support@resilabs.ai
+**Address:** RESI Inc., 30 N Gould Street Suite R, Sheridan, WY 82801
 
 ---
 
 ## Acceptance
 
-**BY SUBMITTING MATERIALS TO SUBNET 46, YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGREE TO BE BOUND BY THIS CONTRIBUTOR AGREEMENT.**
+**BY SUBMITTING MATERIALS TO SUBNET 46, YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGREE TO BE BOUND BY THIS CONTRIBUTOR AGREEMENT AND THE PROPRIETARY MODEL LICENSE.**
 
 **If You do not agree to these terms, do not submit materials to Subnet 46.**
 
 ---
 
-**Document Version:** 1.1
-**Last Updated:** January 28, 2026
-**Effective Date:** February 1, 2026
+**Document Version:** 2.0
+**Last Updated:** April 22, 2026
+**Effective Date:** May 1, 2026
 
 ---
 
-## For RESI Internal Use
-
-**Approval:**
-- Legal Review: [ ] Completed  
-- Executive Approval: [ ]  
-- Implementation Date: [ ]
-
 **Modification Log:**
+
 | Version | Date | Changes | Approved By |
 |---------|------|---------|-------------|
 | 1.0 (Draft) | 2026-01-26 | Initial draft | Pending legal review |
-| 1.1 | 2026-01-28 | Changed to MIT license requirement, removed exclusivity | Pending legal review |
+| 1.1 | 2026-01-28 | Changed to MIT license requirement | Pending legal review |
+| 2.0 | 2026-04-22 | Changed to RESI Proprietary Model License (exclusive) | Pending legal review |
 
 ---
 

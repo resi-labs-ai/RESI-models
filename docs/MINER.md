@@ -98,8 +98,18 @@ miner-cli submit \
 
 After submitting, add these files to your HuggingFace repo:
 
-1. **LICENSE** - Must use an MIT license (required for validator download)
-2. **extrinsic_record.json** - Use values from submit output:
+1. **LICENSE** - Copy the exact text from [MODEL_LICENSE.md](../MODEL_LICENSE.md) into a `LICENSE` file in your repo root. The validator verifies this file by SHA-256 hash - any modification will cause rejection.
+
+2. **Model card metadata** - In your `README.md` front matter, set:
+   ```yaml
+   ---
+   license: other
+   license_name: resi-exclusive
+   license_link: https://huggingface.co/resi-ai/model-license/blob/main/LICENSE
+   ---
+   ```
+
+3. **extrinsic_record.json** - Use values from submit output:
 
 ```json
 {
@@ -220,8 +230,8 @@ To disable commit-reveal (not recommended): `--no-commit-reveal`
 **Example output:**
 ```
 License Notice:
-Your HuggingFace model must be MIT licensed.
-Validators verify this before evaluating your model.
+Your HuggingFace model must use the RESI Proprietary Model License.
+Validators verify metadata and LICENSE file hash before evaluating your model.
 
 Submitting model to chain...
 
@@ -238,15 +248,16 @@ Scanning for extrinsic (up to 25 blocks)...
 
 Next steps:
   1. Ensure model.onnx is uploaded to your HuggingFace repo
-  2. Add a LICENSE file to your repo
-  3. Add extrinsic_record.json to your repo with this content:
+  2. Add the RESI Proprietary Model LICENSE file to your repo (see MODEL_LICENSE.md)
+  3. Set license metadata in your README.md (license: other, license_name: resi-exclusive)
+  4. Add extrinsic_record.json to your repo with this content:
 
 {
   "extrinsic": "142858-3",
   "hotkey": "5ABC...XYZ"
 }
 
-  4. Wait for validator evaluation (~72 min after reveal)
+  5. Wait for validator evaluation (~72 min after reveal)
 ```
 
 ## HuggingFace Repository Structure
@@ -256,10 +267,13 @@ Your repo must contain:
 ```
 your-username/housing-model/
 ├── model.onnx              # Your ONNX model (required)
-└── extrinsic_record.json   # Chain commitment link (required)
+├── LICENSE                  # RESI Proprietary Model License (required, exact text)
+├── extrinsic_record.json   # Chain commitment link (required)
+└── README.md               # Model card with license metadata (required)
 ```
 
-> **Note:** Select **MIT** license when creating your HuggingFace repository.
+> **Note:** Your README.md must include the license metadata in its YAML front matter:
+> `license: other`, `license_name: resi-exclusive`, `license_link: https://huggingface.co/resi-ai/model-license/blob/main/LICENSE`
 
 ### extrinsic_record.json Format
 
@@ -286,7 +300,9 @@ The CLI only hashes your local model file - it doesn't interact with HuggingFace
 Validators perform these checks before scoring your model:
 
 **Pre-download (via HuggingFace API):**
-1. MIT license in model card metadata (`license: mit` in README.md)
+1. RESI Proprietary Model License verified:
+   - Model card metadata: `license: other`, `license_name: resi-exclusive`, `license_link` matches canonical URL
+   - LICENSE file exists and SHA-256 hash matches canonical license text
 2. model.onnx size ≤ 200MB
 3. extrinsic_record.json exists and is valid
 4. Extrinsic exists on chain and was signed by your hotkey

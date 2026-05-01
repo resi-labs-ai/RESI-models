@@ -57,6 +57,7 @@ class ModelDownloadResult:
     path: Path
     commit_block: int  # Block number from Pylon chain query (trusted source)
     feature_config: FeatureConfig | None = None  # Parsed feature config (if provided)
+    license_type: str | None = None  # Verified license type (e.g. "exclusive")
 
 
 @dataclass
@@ -147,35 +148,46 @@ class ModelDownloader:
         if self._cache.is_valid(hotkey, expected_hash):
             cached = self._cache.get(hotkey)
             if cached:
-                logger.info(f"Using cached model for {hotkey}")
-                # Restore feature_config from cache metadata if available.
-                # Parse failure here is a version-skew defense — the cache was
-                # written by an older downloader whose schema rules differ from
-                # the current one. Evict the entry and raise so the scheduler
-                # records a failure and the next retry re-downloads (since
-                # is_valid will now be False).
-                cached_feature_config = None
-                if cached.metadata.feature_config is not None:
-                    try:
-                        cached_feature_config = parse_feature_config(
-                            cached.metadata.feature_config
-                        )
-                    except FeatureConfigError as e:
-                        self._cache.remove(hotkey)
-                        raise FeatureConfigValidationError(
-                            f"Cached feature_config for {hotkey} no longer "
-                            f"validates against current schema: {e}. "
-                            "Evicted cache entry; will re-download on retry."
-                        ) from e
-                return ModelDownloadResult(
-                    path=cached.path,
-                    commit_block=cached.metadata.commit_block,
-                    feature_config=cached_feature_config,
-                )
+                # Evict cache entries without exclusive license so they
+                # get re-downloaded with full license verification.
+                if cached.metadata.license_type != "exclusive":
+                    logger.info(
+                        f"Evicting cached model for {hotkey}: "
+                        f"license_type='{cached.metadata.license_type}', "
+                        f"re-downloading to verify license"
+                    )
+                    self._cache.remove(hotkey)
+                else:
+                    logger.info(f"Using cached model for {hotkey}")
+                    # Restore feature_config from cache metadata if available.
+                    # Parse failure here is a version-skew defense — the cache
+                    # was written by an older downloader whose schema rules
+                    # differ from the current one. Evict the entry and raise so
+                    # the scheduler records a failure and the next retry
+                    # re-downloads (since is_valid will now be False).
+                    cached_feature_config = None
+                    if cached.metadata.feature_config is not None:
+                        try:
+                            cached_feature_config = parse_feature_config(
+                                cached.metadata.feature_config
+                            )
+                        except FeatureConfigError as e:
+                            self._cache.remove(hotkey)
+                            raise FeatureConfigValidationError(
+                                f"Cached feature_config for {hotkey} no longer "
+                                f"validates against current schema: {e}. "
+                                "Evicted cache entry; will re-download on retry."
+                            ) from e
+                    return ModelDownloadResult(
+                        path=cached.path,
+                        commit_block=cached.metadata.commit_block,
+                        feature_config=cached_feature_config,
+                        license_type=cached.metadata.license_type,
+                    )
 
         logger.info(f"Downloading model for {hotkey} from {hf_repo_id}")
 
-        await self._verifier.check_license(hf_repo_id)
+        license_type = await self._verifier.check_license(hf_repo_id)
 
         # Single API call to find ONNX file and feature_config.json
         onnx_filename, size, feature_config_info = await self._verifier.find_repo_files(
@@ -250,6 +262,7 @@ class ModelDownloader:
                 size_bytes=actual_size,
                 commit_block=commit_block,
                 feature_config=feature_config_raw,
+                license_type=license_type,
             )
 
             # 11. Clean up temp directory (file was moved, dir may have HF cache files)
@@ -261,6 +274,7 @@ class ModelDownloader:
                 path=cached_path,
                 commit_block=commit_block,
                 feature_config=feature_config,
+                license_type=license_type,
             )
 
         except Exception:
@@ -297,7 +311,6 @@ class ModelDownloader:
                         repo_id=hf_repo_id,
                         filename=filename,
                         local_dir=temp_dir,
-                        local_dir_use_symlinks=False,
                         token=self._hf_token,
                     ),
                     timeout=self._config.download_timeout_seconds,
@@ -392,7 +405,6 @@ class ModelDownloader:
                         repo_id=hf_repo_id,
                         allow_patterns=allow_patterns,
                         local_dir=temp_dir,
-                        local_dir_use_symlinks=False,
                         token=self._hf_token,
                     ),
                     timeout=self._config.download_timeout_seconds,

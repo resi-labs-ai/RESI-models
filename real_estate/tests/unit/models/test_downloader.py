@@ -472,6 +472,7 @@ class TestDownloadModel:
         cached_model.path = cached_path
         cached_model.metadata.commit_block = 1000  # Set commit_block for cache hit
         cached_model.metadata.feature_config = None  # No submitted feature_config
+        cached_model.metadata.license_type = "exclusive"
 
         mock_cache.is_valid.return_value = True
         mock_cache.get.return_value = cached_model
@@ -481,6 +482,7 @@ class TestDownloadModel:
 
         assert result.path == cached_path
         assert result.commit_block == 1000
+        assert result.license_type == "exclusive"
         # No network calls needed - commit_block is in cache
         mock_verifier.verify_extrinsic_record.assert_not_called()
         mock_verifier.check_license.assert_not_called()
@@ -839,6 +841,7 @@ class TestFeatureConfigFlow:
         cached_model = MagicMock()
         cached_model.path = cached_path
         cached_model.metadata.commit_block = 1000
+        cached_model.metadata.license_type = "exclusive"
         cached_model.metadata.feature_config = {
             "version": "1.0",
             "features": ["living_area_sqft", "latitude", "longitude",
