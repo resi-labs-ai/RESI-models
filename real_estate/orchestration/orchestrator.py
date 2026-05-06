@@ -108,7 +108,7 @@ class ValidationOrchestrator:
         *,
         evaluation_config: OrchestratorConfig | None = None,
         similarity_threshold: float = 1e-6,
-        score_threshold: float = 0.01,
+        score_threshold: float = 0.005,
         winner_share: float = 0.99,
         docker_timeout: int = 300,
         docker_memory: str = "2g",
