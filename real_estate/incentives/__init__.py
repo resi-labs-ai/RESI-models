@@ -13,7 +13,7 @@ Usage:
     from real_estate.incentives import WinnerSelector, IncentiveDistributor
 
     # Select winner
-    selector = WinnerSelector(score_threshold=0.005)
+    selector = WinnerSelector(score_threshold=0.003)
     winner_result = selector.select_winner(evaluation_results, chain_metadata)
 
     # Calculate weights

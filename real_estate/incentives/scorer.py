@@ -25,7 +25,7 @@ class WinnerSelector:
     3. Reward innovation: If you improve by more than threshold, you win
 
     Usage:
-        selector = WinnerSelector(score_threshold=0.005)
+        selector = WinnerSelector(score_threshold=0.003)
         result = selector.select_winner(evaluation_results, chain_metadata)
         print(f"Winner: {result.winner_hotkey}")
     """
@@ -35,7 +35,7 @@ class WinnerSelector:
         Initialize winner selector.
 
         Args:
-            score_threshold: Threshold for winner set (e.g., 0.005 = 0.5%).
+            score_threshold: Threshold for winner set (e.g., 0.003 = 0.3%).
         """
         self._threshold = score_threshold
 
