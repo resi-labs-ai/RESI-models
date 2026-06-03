@@ -181,7 +181,7 @@ class ValidationOrchestrator:
         """Slice per-model columns from a perturbed superset array.
 
         Args:
-            perturbed_superset: Full (N, 79) perturbed feature matrix.
+            perturbed_superset: Full (N, 76) perturbed feature matrix.
             superset_layout: Layout of the superset (all features).
             per_model_layouts: Per-model layouts mapping feature names to indices.
             hotkeys: Model paths dict (keys used to iterate models).

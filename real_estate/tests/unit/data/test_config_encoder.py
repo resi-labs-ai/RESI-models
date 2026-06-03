@@ -91,9 +91,9 @@ class TestParseFeatureConfig:
 
 
 class TestCreateDefaultConfig:
-    def test_returns_all_79_features(self) -> None:
+    def test_returns_all_76_features(self) -> None:
         fc = create_default_feature_config()
-        assert len(fc.features) == 79
+        assert len(fc.features) == 76
 
     def test_contains_all_required(self) -> None:
         fc = create_default_feature_config()

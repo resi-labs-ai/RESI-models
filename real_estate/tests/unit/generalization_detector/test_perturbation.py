@@ -11,7 +11,7 @@ from real_estate.generalization_detector import (
 
 
 def _make_layout(
-    n_numeric: int = 51, n_boolean: int = 28
+    n_numeric: int = 48, n_boolean: int = 28
 ) -> FeatureLayout:
     """Create a FeatureLayout for testing."""
     total = n_numeric + n_boolean
@@ -31,40 +31,40 @@ def _make_layout(
     )
 
 
-DEFAULT_LAYOUT = _make_layout(51, 28)
+DEFAULT_LAYOUT = _make_layout(48, 28)
 
 
 class TestPerturbFeatures:
     def test_returns_copy(self) -> None:
         """Perturbation returns a new array, does not modify original."""
-        features = np.ones((10, 79), dtype=np.float32)
+        features = np.ones((10, 76), dtype=np.float32)
         config = GeneralizationConfig()
         perturbed = perturb_features(features, config, DEFAULT_LAYOUT)
 
         assert perturbed is not features
-        np.testing.assert_array_equal(features, np.ones((10, 79), dtype=np.float32))
+        np.testing.assert_array_equal(features, np.ones((10, 76), dtype=np.float32))
 
     def test_numeric_columns_perturbed(self) -> None:
         """Numeric columns are modified."""
-        features = np.ones((100, 79), dtype=np.float32)
+        features = np.ones((100, 76), dtype=np.float32)
         config = GeneralizationConfig()
         perturbed = perturb_features(features, config, DEFAULT_LAYOUT)
 
         # Numeric columns should differ from original
-        numeric_diff = np.abs(perturbed[:, :51] - features[:, :51])
+        numeric_diff = np.abs(perturbed[:, :48] - features[:, :48])
         assert numeric_diff.sum() > 0
 
     def test_boolean_columns_untouched(self) -> None:
         """Boolean columns are not modified."""
-        features = np.ones((100, 79), dtype=np.float32)
+        features = np.ones((100, 76), dtype=np.float32)
         config = GeneralizationConfig()
         perturbed = perturb_features(features, config, DEFAULT_LAYOUT)
 
-        np.testing.assert_array_equal(perturbed[:, 51:], features[:, 51:])
+        np.testing.assert_array_equal(perturbed[:, 48:], features[:, 48:])
 
     def test_deterministic_with_seed(self) -> None:
         """Same seed produces same perturbation."""
-        features = np.ones((10, 79), dtype=np.float32)
+        features = np.ones((10, 76), dtype=np.float32)
         config = GeneralizationConfig(seed=123)
 
         perturbed1 = perturb_features(features, config, DEFAULT_LAYOUT)
@@ -74,7 +74,7 @@ class TestPerturbFeatures:
 
     def test_different_seeds_differ(self) -> None:
         """Different seeds produce different perturbations."""
-        features = np.ones((10, 79), dtype=np.float32)
+        features = np.ones((10, 76), dtype=np.float32)
 
         perturbed1 = perturb_features(
             features, GeneralizationConfig(seed=1), DEFAULT_LAYOUT
@@ -87,12 +87,12 @@ class TestPerturbFeatures:
 
     def test_noise_magnitude(self) -> None:
         """Noise magnitude matches configured noise_pct."""
-        features = np.ones((10000, 79), dtype=np.float32) * 100.0
+        features = np.ones((10000, 76), dtype=np.float32) * 100.0
         config = GeneralizationConfig(global_noise_pct=0.01)
         perturbed = perturb_features(features, config, DEFAULT_LAYOUT)
 
         # Relative change should be approximately ±1%
-        relative_change = (perturbed[:, :51] - features[:, :51]) / features[:, :51]
+        relative_change = (perturbed[:, :48] - features[:, :48]) / features[:, :48]
         assert abs(relative_change.std() - 0.01) < 0.002
 
     def test_non_contiguous_numeric_indices(self) -> None:
@@ -133,7 +133,7 @@ class TestPerturbFeatures:
 class TestPerturbSpatial:
     def test_spatial_noise_independent_from_global(self) -> None:
         """perturb_spatial uses a different seed than perturb_features."""
-        features = np.ones((100, 79), dtype=np.float32) * 40.0
+        features = np.ones((100, 76), dtype=np.float32) * 40.0
         config = GeneralizationConfig(seed=42)
 
         global_result = perturb_features(features, config, DEFAULT_LAYOUT)
@@ -147,7 +147,7 @@ class TestPerturbSpatial:
 
     def test_deterministic_with_seed(self) -> None:
         """Same seed produces same spatial perturbation."""
-        features = np.ones((10, 79), dtype=np.float32) * 40.0
+        features = np.ones((10, 76), dtype=np.float32) * 40.0
         config = GeneralizationConfig(seed=123)
 
         result1 = perturb_spatial(features, config, DEFAULT_LAYOUT)
@@ -173,13 +173,13 @@ class TestPerturbSpatial:
 
     def test_only_modifies_lat_lon_columns(self) -> None:
         """Only latitude and longitude columns are modified."""
-        features = np.ones((100, 79), dtype=np.float32) * 40.0
+        features = np.ones((100, 76), dtype=np.float32) * 40.0
         config = GeneralizationConfig(seed=42)
 
         result = perturb_spatial(features, config, DEFAULT_LAYOUT)
 
         # Non-lat/lon columns should be untouched
-        non_spatial = [i for i in range(79) if i not in (4, 5)]
+        non_spatial = [i for i in range(76) if i not in (4, 5)]
         np.testing.assert_array_equal(result[:, non_spatial], features[:, non_spatial])
 
         # Lat/lon should be modified

@@ -840,7 +840,7 @@ class TestPerturbOnceStrategy:
         ])
 
         # Make perturbation mocks return valid arrays
-        # The superset has 79 features (default config)
+        # The superset has 76 features (default config)
         mock_perturb_features.side_effect = lambda f, c, l: f.copy()
         mock_perturb_spatial.side_effect = lambda f, c, l: f.copy()
 
@@ -856,9 +856,9 @@ class TestPerturbOnceStrategy:
         assert mock_perturb_features.call_count == 1
         assert mock_perturb_spatial.call_count == 1
 
-        # Verify it was called with the superset (79 features), not a per-model subset
+        # Verify it was called with the superset (76 features), not a per-model subset
         superset_features = mock_perturb_features.call_args[0][0]
-        assert superset_features.shape[1] == 79
+        assert superset_features.shape[1] == 76
 
 
 class TestSetSeed:

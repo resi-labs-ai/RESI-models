@@ -52,9 +52,6 @@ numeric_fields:
   - previous_sale_price
   - years_since_last_sale
   - months_since_last_sale
-  - price_change_since_last_sale
-  - price_appreciation_rate
-  - annual_appreciation_rate
 
 # Feature transforms - computed features with custom logic
 # Note: Currently empty as API pre-computes all derived features
@@ -93,7 +90,7 @@ boolean_fields:
   - home_type_nan
 
 # Output feature order (must match what miners expect)
-# Total: 51 numeric + 28 boolean (including 6 home_type) = 79 features
+# Total: 48 numeric + 28 boolean (including 6 home_type) = 76 features
 feature_order:
   # Numeric features
   - living_area_sqft
@@ -145,9 +142,6 @@ feature_order:
   - previous_sale_price
   - years_since_last_sale
   - months_since_last_sale
-  - price_change_since_last_sale
-  - price_appreciation_rate
-  - annual_appreciation_rate
 
   # Boolean fields
   - has_basement
