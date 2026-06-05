@@ -225,7 +225,7 @@ def resolve_feature_config(
     feature_config_path: str | Path | None = None,
 ) -> FeatureConfig:
     """
-    Load feature config from path, or return default (all 79 features).
+    Load feature config from path, or return default (all 76 features).
 
     Args:
         feature_config_path: Path to feature_config.json, or None for default.

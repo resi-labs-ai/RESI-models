@@ -317,14 +317,14 @@ class TestModelInspector:
             inspector,
             paths,
             {
-                "ok": {**_CLEAN, "input_dim": 79},
+                "ok": {**_CLEAN, "input_dim": 76},
             },
         )
 
-        result = await inspector.inspect_all(paths, {"ok": 79})
+        result = await inspector.inspect_all(paths, {"ok": 76})
         assert not result.is_rejected("ok")
-        assert result.results[0].input_dim == 79
-        assert result.results[0].expected_features == 79
+        assert result.results[0].input_dim == 76
+        assert result.results[0].expected_features == 76
 
     @pytest.mark.asyncio
     async def test_shape_check_skipped_when_input_dim_unknown(
@@ -340,10 +340,10 @@ class TestModelInspector:
             },
         )
 
-        result = await inspector.inspect_all(paths, {"ok": 79})
+        result = await inspector.inspect_all(paths, {"ok": 76})
         assert not result.is_rejected("ok")
         assert result.results[0].input_dim is None
-        assert result.results[0].expected_features == 79
+        assert result.results[0].expected_features == 76
 
     @pytest.mark.asyncio
     async def test_shape_check_skipped_when_no_expected_count(

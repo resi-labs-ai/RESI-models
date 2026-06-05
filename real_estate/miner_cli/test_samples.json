@@ -1,5 +1,5 @@
 {
-  "description": "Test samples for miner CLI local evaluation. Features match feature_config.yaml order (78 features).",
+  "description": "Test samples for miner CLI local evaluation. Features match feature_config.yaml order (76 features).",
   "samples": [
     {
       "external_id": "2062240971",
@@ -53,9 +53,6 @@
         "previous_sale_price": 0.0,
         "years_since_last_sale": 12.0,
         "months_since_last_sale": 144.0,
-        "price_change_since_last_sale": 0.0,
-        "price_appreciation_rate": 0.0,
-        "annual_appreciation_rate": 0.0,
         "has_basement": 0.0,
         "has_garage": 0.0,
         "has_attached_garage": 1.0,
@@ -138,9 +135,6 @@
         "previous_sale_price": 0.0,
         "years_since_last_sale": 12.0,
         "months_since_last_sale": 144.0,
-        "price_change_since_last_sale": 0.0,
-        "price_appreciation_rate": 0.0,
-        "annual_appreciation_rate": 0.0,
         "has_basement": 0.0,
         "has_garage": 1.0,
         "has_attached_garage": 0.0,
