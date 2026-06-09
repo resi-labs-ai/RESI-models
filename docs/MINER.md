@@ -29,17 +29,17 @@ The miner CLI (`miner-cli`) helps you:
 |-------------|---------------|
 | Format | ONNX |
 | Max size | 200 MB |
-| Input shape | `(batch, 10-79)` float32 (numeric features) |
+| Input shape | `(batch, 10-76)` float32 (numeric features) |
 | Output shape | `(batch, 1)` or `(batch,)` float32 |
 | Image inputs | Optional — see [Property Images](#property-images-optional) |
 
 ### Feature Selection
 
-Your model chooses which features it uses via a `feature_config.json` file in your HuggingFace repo. You can select **10 to 79** numeric/boolean features from the available set in `real_estate/data/mappings/feature_config.yaml`.
+Your model chooses which features it uses via a `feature_config.json` file in your HuggingFace repo. You can select **10 to 76** numeric/boolean features from the available set in `real_estate/data/mappings/feature_config.yaml`.
 
 Five features are **required**: `living_area_sqft`, `latitude`, `longitude`, `bedrooms`, `bathrooms`.
 
-If you don't include a `feature_config.json`, the validator falls back to all 79 features in the default YAML order (backwards compatible).
+If you don't include a `feature_config.json`, the validator falls back to all 76 features in the default YAML order (backwards compatible).
 
 #### feature_config.json format
 
@@ -214,7 +214,7 @@ miner-cli evaluate --model.path PATH [--max-size-mb MB]
 **What it checks:**
 1. File exists and is under size limit
 2. Valid ONNX format
-3. Correct input shape (matches feature_config.json or default 79)
+3. Correct input shape (matches feature_config.json or default 76)
 4. Correct output shape
 5. No NaN or Inf in predictions
 
@@ -459,7 +459,7 @@ ERROR: Invalid ONNX format: Unable to parse proto from file...
 ```
 ERROR: Model input dimension does not match declared feature count
 ```
-**Fix:** Your ONNX model's input shape must match the number of features in your `feature_config.json` (or 79 if you don't provide one).
+**Fix:** Your ONNX model's input shape must match the number of features in your `feature_config.json` (or 76 if you don't provide one).
 
 ### Model too large
 

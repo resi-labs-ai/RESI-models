@@ -59,7 +59,7 @@ class TestPropertyImagesFeature:
         assert fc.image_block.max_images_per_property == MAX_IMAGES_PER_PROPERTY_V1
 
     def test_property_images_not_counted_in_feature_bounds(self) -> None:
-        """property_images shouldn't count toward the 10-79 numeric/boolean limit."""
+        """property_images shouldn't count toward the 10-76 numeric/boolean limit."""
         fc = parse_feature_config(_make_raw(features=MINIMAL_FEATURES + [IMAGES_FEATURE_NAME]))
         assert len(fc.features) == 11  # 10 numeric + property_images
         assert fc.image_block is not None
