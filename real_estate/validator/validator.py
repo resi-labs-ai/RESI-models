@@ -53,6 +53,7 @@ from real_estate.observability import WandbLogger, create_wandb_logger
 from real_estate.orchestration import ValidationOrchestrator
 from real_estate.randomness import DecentralizedSeedProvider, RandomnessConfig
 from real_estate.utils.misc import ttl_get_block
+from real_estate.utils.price import get_alpha_price_tao, get_tao_price_usd
 
 from .config import check_config, config_to_dict, get_config, setup_logging
 
@@ -71,6 +72,9 @@ class Validator:
     Evaluation is triggered when new validation data arrives (daily).
     The ValidationOrchestrator handles the actual evaluation logic.
     """
+
+    # Hardcoded Reward Limit ($3,000 USD/day)
+    REWARD_LIMIT_USD = 3000.0
 
     def __init__(self, config: argparse.Namespace):
         """
@@ -327,7 +331,7 @@ class Validator:
                         weights[hotkey] = float(weight)
 
         # Apply burn if configured (works even with empty weights)
-        weights = self._apply_burn(weights)
+        weights = await self._apply_burn(weights)
 
         if not weights:
             logger.warning("No weights to set (no scores and no burn configured)")
@@ -356,55 +360,50 @@ class Validator:
         epoch_length: int = self.config.epoch_length
         return elapsed > epoch_length
 
-    def _apply_burn(self, weights: dict[str, float]) -> dict[str, float]:
+    async def _apply_burn(self, weights: dict[str, float]) -> dict[str, float]:
         """
         Apply burn allocation to weights.
 
-        Burn mechanism allocates a fraction of emissions to the subnet owner UID,
-        which the protocol then burns. Remaining emissions are distributed
-        proportionally to other miners.
-
-        Example with 50% burn:
-          Before: {A: 0.6, B: 0.3, C: 0.1}
-          After:  {A: 0.3, B: 0.15, C: 0.05, burn_hotkey: 0.5}
-
-        Args:
-            weights: Original weight distribution (must sum to 1.0)
-
-        Returns:
-            Adjusted weights with burn allocation (sums to 1.0)
+        Includes a shadow "Reward Cap" calculation to limit daily distribution
+        to REWARD_LIMIT_USD.
         """
-        burn_amount: float = 0.0  # Hardcoded: 0% burn. Autoupdater picks this up.
+        # 1. Fetch current market data
+        tao_price = await get_tao_price_usd()
+        alpha_price = await get_alpha_price_tao(self.subtensor, self.config.netuid)
+
+        # 2. Calculate Total Daily Subnet Value in USD
+        # Simple sum of neuron emissions * blocks per day (7200)
+        total_alpha_emission_daily = sum(n.emission for n in self.metagraph.neurons) * 7200
+        total_usd_value_daily = total_alpha_emission_daily * alpha_price * tao_price
+
+        # 3. Calculate Dynamic Cap Burn to stay under REWARD_LIMIT_USD
+        cap_burn = 0.0
+        if total_usd_value_daily > self.REWARD_LIMIT_USD:
+            cap_burn = 1.0 - (self.REWARD_LIMIT_USD / total_usd_value_daily)
+
+        # 4. Final Burn calculation
+        manual_burn: float = 1.0  # Kept at 100%
+        burn_amount = max(cap_burn, manual_burn)
         burn_uid: int = self.config.burn_uid
 
-        # No burn configured
-        if burn_amount <= 0.0 or burn_uid < 0:
-            return weights
+        # Log details
+        logger.info(
+            f"Market: TAO=${tao_price:.2f}, Alpha={alpha_price:.4f} TAO. "
+            f"Daily Subnet Value: ${total_usd_value_daily:,.2f} USD. "
+            f"Cap Burn: {cap_burn:.1%}, Manual Burn: {manual_burn:.1%}"
+        )
 
-        # Get burn hotkey from UID
-        if burn_uid >= len(self.hotkeys):
-            logger.error(
-                f"burn_uid {burn_uid} out of range (max {len(self.hotkeys) - 1}), skipping burn"
-            )
+        if burn_amount <= 0.0 or burn_uid < 0 or burn_uid >= len(self.hotkeys):
             return weights
 
         burn_hotkey = self.hotkeys[burn_uid]
 
-        # Scale down all existing weights
+        # Scale down all existing weights and add burn allocation
         remaining_share = 1.0 - burn_amount
-        adjusted_weights = {
-            hotkey: weight * remaining_share for hotkey, weight in weights.items()
-        }
+        adjusted_weights = {hk: w * remaining_share for hk, w in weights.items()}
+        adjusted_weights[burn_hotkey] = adjusted_weights.get(burn_hotkey, 0.0) + burn_amount
 
-        # Add burn allocation (overwrite if burn_hotkey already has weight)
-        existing_burn_weight = adjusted_weights.get(burn_hotkey, 0.0)
-        adjusted_weights[burn_hotkey] = existing_burn_weight + burn_amount
-
-        logger.info(
-            f"Applied burn: {burn_amount:.1%} to UID {burn_uid} ({burn_hotkey[:8]}...), "
-            f"remaining {remaining_share:.1%} distributed to {len(weights)} miners"
-        )
-
+        logger.info(f"Applied {burn_amount:.1%} burn to UID {burn_uid}")
         return adjusted_weights
 
     def _get_next_eval_time(self) -> datetime:
