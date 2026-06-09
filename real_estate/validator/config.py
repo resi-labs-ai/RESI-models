@@ -408,13 +408,6 @@ def add_args(parser: argparse.ArgumentParser) -> None:
 
     # Burn settings (emission burning via subnet owner UID)
     parser.add_argument(
-        "--burn_amount",
-        type=float,
-        help="Fraction of emissions to burn (0.0-1.0). Allocated to burn_uid, rest distributed normally.",
-        default=float(os.environ.get("BURN_AMOUNT", "0.0")),
-    )
-
-    parser.add_argument(
         "--burn_uid",
         type=int,
         help="UID of subnet owner to receive burn allocation (protocol burns this emission).",
@@ -469,12 +462,8 @@ def check_config(config: argparse.Namespace) -> None:
             )
 
     # Validate burn settings
-    if config.burn_amount < 0.0 or config.burn_amount > 1.0:
-        raise ValueError("--burn_amount must be between 0.0 and 1.0")
-
-    if config.burn_amount > 0.0 and config.burn_uid < 0:
-        raise ValueError("--burn_uid is required when --burn_amount > 0")
-
+    if config.burn_uid < 0:
+        raise ValueError("--burn_uid is required")
 
 def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
     """Convert config to dictionary for logging."""
@@ -517,7 +506,6 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "test_data_path": config.test_data_path,
         "test_models_dir": config.test_models_dir,
         "test_mode": config.test_mode,
-        "burn_amount": config.burn_amount,
         "burn_uid": config.burn_uid,
         "ath_enabled": config.ath_enabled,
         "randomness_enabled": config.randomness_enabled,
@@ -527,7 +515,6 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "randomness_block_time_seconds": config.randomness_block_time_seconds,
         "randomness_min_quorum": config.randomness_min_quorum,
     }
-
 
 def setup_logging(level: str) -> None:
     """

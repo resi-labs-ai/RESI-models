@@ -157,7 +157,6 @@ ARG_NAME_MAP = {
     "wandb_api_key": "wandb.api_key",
     "wandb_project": "wandb.project",
     "wandb_entity": "wandb.entity",
-    "burn_amount": "burn_amount",
     "burn_uid": "burn_uid",
 }
 
@@ -301,11 +300,6 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--burn_amount",
-        dest="burn_amount",
-        type=float,
-        default=float(os.environ.get("BURN_AMOUNT", "0.0")),
-    )
-    parser.add_argument(
         "--burn_uid",
         dest="burn_uid",
         type=int,

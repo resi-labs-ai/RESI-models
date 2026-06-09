@@ -70,7 +70,6 @@ def mock_config() -> MagicMock:
     config.validation_data_download_raw = False
     config.scheduler_pre_download_hours = 3.0
     config.scheduler_catch_up_minutes = 30.0
-    config.burn_amount = 0.0
     config.burn_uid = -1
     config.randomness_enabled = False
     config.randomness_cycle_window_hours = 4.0
@@ -286,7 +285,7 @@ class TestSetWeights:
         validator.scores = np.array([1.0, 0.0, 0.0, 3.0, 0.0], dtype=np.float32)
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
 
-        # burn_uid < 0 disables burn (burn_amount is hardcoded to 1.0)
+        # burn_uid < 0 disables burn
         validator.config.burn_uid = -1
 
         mock_chain = MagicMock()
@@ -321,7 +320,7 @@ class TestSetWeights:
         mock_chain.set_weights = AsyncMock()
         validator.chain = mock_chain
 
-        # Patch the hardcoded burn_amount to simulate burn being re-enabled
+        # Simulate burn being re-enabled
         with patch.object(
             Validator, "_apply_burn", wraps=validator._apply_burn
         ) as mock_burn:
@@ -355,7 +354,6 @@ class TestSetWeights:
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
 
         # No burn configured (defaults)
-        validator.config.burn_amount = 0.0
         validator.config.burn_uid = -1
 
         mock_chain = MagicMock()
@@ -416,7 +414,7 @@ class TestSetWeights:
         mock_chain.set_weights = AsyncMock()
         validator.chain = mock_chain
 
-        # Patch the hardcoded burn_amount to simulate burn being re-enabled
+        # Simulate burn being re-enabled
         async def burn_with_50(weights):
             burn_hotkey = validator.hotkeys[2]
             adjusted = {k: v * 0.5 for k, v in weights.items()}
@@ -434,94 +432,13 @@ class TestSetWeights:
 
 
 class TestRewardCap:
-    """Tests for the $3,000 daily reward cap logic."""
-
     @pytest.mark.asyncio
-    async def test_reward_cap_calculation_triggers(self, validator: Validator):
-        """Test that burn is increased to cap rewards at $3,000."""
-        # 4 neurons * 0.1 emission = 0.4 Alpha/block total
-        # 0.4 Alpha/block * 7200 blocks/day = 2880 Alpha per day
-        validator.hotkeys = ["h1", "h2", "h3", "burn"]
-        validator.metagraph = create_mock_metagraph(validator.hotkeys)
-        # validatorfixture uses create_mock_metagraph which sets emission=0.1 by default
-        
-        # Total daily Alpha emission = 4 * 0.1 * 7200 = 2880
-        
-        # Setup Prices: TAO=$100, Alpha=0.1 TAO
-        # Total Reward Value = 2880 * 0.1 * 100 = $28,800 / day
-        # Required Cap Burn = 1 - (3000 / 28800) = 1 - 0.104166... = 0.895833...
-        
-        with patch("real_estate.validator.validator.get_tao_price_usd", new_callable=AsyncMock) as m_tao, \
-             patch("real_estate.validator.validator.get_alpha_price_tao", new_callable=AsyncMock) as m_alpha:
-            
-            m_tao.return_value = 100.0
-            m_alpha.return_value = 0.1
-            
-            weights = {"h1": 0.5, "h2": 0.5}
-            validator.config.burn_uid = 3 # "burn" hotkey
-            
-            # _apply_burn will use max(cap_burn, manual_burn)
-            # manual_burn is 1.0 (100%) as per current implementation
-            # So the result should still be 100% burn
-            adjusted = await validator._apply_burn(weights)
-            
-            assert adjusted["burn"] == pytest.approx(1.0)
-            assert adjusted.get("h1", 0.0) == 0.0
-            
-            # To test the cap logic specifically, we can temporarily set manual_burn=0 in a test patch
-            # but _apply_burn has manual_burn = 1.0 hardcoded in the method.
-            # Let's verify it calculates the correctly logged values at least.
-            # Or we can verify it doesn't crash and respects the cap if it were higher than 100% (impossible)
-            
-    @pytest.mark.asyncio
-    async def test_reward_cap_logic_math(self, validator: Validator):
-        """Test the mathematical calculation of the cap burn."""
-        # We'll mock the emission to something very high to ensure cap > 0
-        validator.hotkeys = ["h1", "burn"]
-        validator.metagraph = create_mock_metagraph(validator.hotkeys, emission=10.0)
-        # 2 neurons * 10 = 20 Alpha/block
-            
-        # 20 Alpha/block * 7200 = 144,000 Alpha/day
-        # TAO=$10, Alpha=1.0 TAO -> $1,440,000/day
-        # cap_burn = 1 - (3000 / 1440000) = 1 - 0.0020833 = 0.9979166
-        
-        with patch("real_estate.validator.validator.get_tao_price_usd", new_callable=AsyncMock) as m_tao, \
-             patch("real_estate.validator.validator.get_alpha_price_tao", new_callable=AsyncMock) as m_alpha:
-            
-            m_tao.return_value = 10.0
-            m_alpha.return_value = 1.0
-            
-            weights = {"h1": 1.0}
-            validator.config.burn_uid = 1 # "burn"
-            
-            adjusted = await validator._apply_burn(weights)
-            
-            # Since manual_burn = 1.0, it should still be 1.0
-            assert adjusted["burn"] == 1.0
-            
-    @pytest.mark.asyncio
-    async def test_reward_cap_no_trigger_when_under_limit(self, validator: Validator):
-        """Test that cap_burn is 0 when total value < $3,000."""
-        validator.hotkeys = ["h1", "burn"]
-        validator.metagraph = create_mock_metagraph(validator.hotkeys, emission=0.01)
-        # 2 * 0.01 * 7200 = 144 Alpha/day
-            
-        # 144 Alpha/day * 1 TAO/Alpha * $10/TAO = $1440 / day (Under $3000)
-        
-        with patch("real_estate.validator.validator.get_tao_price_usd", new_callable=AsyncMock) as m_tao, \
-             patch("real_estate.validator.validator.get_alpha_price_tao", new_callable=AsyncMock) as m_alpha:
-            
-            m_tao.return_value = 10.0
-            m_alpha.return_value = 1.0
-            
-            weights = {"h1": 1.0}
-            validator.config.burn_uid = 1
-            
-            adjusted = await validator._apply_burn(weights)
-            
-            # Still 1.0 because manual_burn=1.0
-            assert adjusted["burn"] == 1.0
-
+    async def test_cap_logic(self, validator):
+        validator.hotkeys=["h1","b"];validator.metagraph=create_mock_metagraph(validator.hotkeys,emission=1.0)
+        from real_estate.validator.validator import Validator
+        with patch("real_estate.validator.validator.get_tao_price_usd",new_callable=AsyncMock)as mt,patch("real_estate.validator.validator.get_alpha_price_tao",new_callable=AsyncMock)as ma,patch.object(Validator,"MANUAL_BURN",0.5):
+            mt.return_value=1.0;ma.return_value=1.0;weights={"h1":1.0};validator.config.burn_uid=1
+            adj=await validator._apply_burn(weights);assert adj["h1"]==pytest.approx(0.104166,abs=1e-5)
 
 
 class TestRunEvaluationScores:

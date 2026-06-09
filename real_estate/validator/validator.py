@@ -76,6 +76,10 @@ class Validator:
     # Hardcoded Reward Limit ($3,000 USD/day)
     REWARD_LIMIT_USD = 3000.0
 
+    # Manual burn percentage (1.0 = 100% burn)
+    # 0 if set to 0, 50% of emissions gone if set to 0.5, 100% burn if set to 1
+    MANUAL_BURN = 1.0
+
     def __init__(self, config: argparse.Namespace):
         """
         Initialize validator.
@@ -382,17 +386,21 @@ class Validator:
             cap_burn = 1.0 - (self.REWARD_LIMIT_USD / total_usd_value_daily)
 
         # 4. Final Burn calculation
-        manual_burn: float = 1.0  # Kept at 100%
-        burn_amount = max(cap_burn, manual_burn)
+        manual_burn: float = self.MANUAL_BURN
+        burn_amount = 1.0 - (1.0 - cap_burn) * (1.0 - manual_burn)
         burn_uid: int = self.config.burn_uid
 
         # Log details
         logger.info(
             f"Market: TAO=${tao_price:.2f}, Alpha={alpha_price:.4f} TAO. "
             f"Daily Subnet Value: ${total_usd_value_daily:,.2f} USD. "
-            f"Cap Burn: {cap_burn:.1%}, Manual Burn: {manual_burn:.1%}"
+            f"Cap Burn: {cap_burn:.1%}, Manual Burn: {manual_burn:.1%}, Total Burn: {burn_amount:.1%}"
         )
-
+        for hk, w in weights.items():
+            a0 = w * total_alpha_emission_daily; u0 = a0 * alpha_price * tao_price
+            ac = a0 * (1.0 - cap_burn); uc = ac * alpha_price * tao_price
+            af = a0 * (1.0 - burn_amount)
+            logger.info(f"UID {self.hotkeys.index(hk)}: Ideal {a0:.2f}α (${u0:.2f}) | Capped {ac:.2f}α (${uc:.2f}) | Final {af:.2f}α")
         if burn_amount <= 0.0 or burn_uid < 0 or burn_uid >= len(self.hotkeys):
             return weights
 
@@ -403,7 +411,7 @@ class Validator:
         adjusted_weights = {hk: w * remaining_share for hk, w in weights.items()}
         adjusted_weights[burn_hotkey] = adjusted_weights.get(burn_hotkey, 0.0) + burn_amount
 
-        logger.info(f"Applied {burn_amount:.1%} burn to UID {burn_uid}")
+        logger.info(f"Applied {burn_amount:.1%} total burn to UID {burn_uid}")
         return adjusted_weights
 
     def _get_next_eval_time(self) -> datetime:
