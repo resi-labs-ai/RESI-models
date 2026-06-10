@@ -53,6 +53,7 @@ from real_estate.observability import WandbLogger, create_wandb_logger
 from real_estate.orchestration import ValidationOrchestrator
 from real_estate.randomness import DecentralizedSeedProvider, RandomnessConfig
 from real_estate.utils.misc import ttl_get_block
+from real_estate.utils.price import get_alpha_price_tao, get_tao_price_usd
 
 from .config import check_config, config_to_dict, get_config, setup_logging
 
@@ -71,6 +72,10 @@ class Validator:
     Evaluation is triggered when new validation data arrives (daily).
     The ValidationOrchestrator handles the actual evaluation logic.
     """
+
+    # Hardcoded Reward Limit ($3,000 USD/day)
+    REWARD_LIMIT_USD = 3000.0
+    MANUAL_BURN = 1.0  # Default to 100% burn as before
 
     def __init__(self, config: argparse.Namespace):
         """
@@ -327,7 +332,7 @@ class Validator:
                         weights[hotkey] = float(weight)
 
         # Apply burn if configured (works even with empty weights)
-        weights = self._apply_burn(weights)
+        weights = await self._apply_burn(weights)
 
         if not weights:
             logger.warning("No weights to set (no scores and no burn configured)")
@@ -356,17 +361,17 @@ class Validator:
         epoch_length: int = self.config.epoch_length
         return elapsed > epoch_length
 
-    def _apply_burn(self, weights: dict[str, float]) -> dict[str, float]:
+    async def _apply_burn(self, weights: dict[str, float]) -> dict[str, float]:
         """
-        Apply burn allocation to weights.
+        Apply burn allocation to weights with dynamic $3,000 reward cap.
 
         Burn mechanism allocates a fraction of emissions to the subnet owner UID,
         which the protocol then burns. Remaining emissions are distributed
         proportionally to other miners.
 
-        Example with 50% burn:
-          Before: {A: 0.6, B: 0.3, C: 0.1}
-          After:  {A: 0.3, B: 0.15, C: 0.05, burn_hotkey: 0.5}
+        This implementation calculates a 'cap_burn' required to keep total
+        distributed miner rewards under $3,000 USD/day, based on current
+        Alpha and TAO market prices.
 
         Args:
             weights: Original weight distribution (must sum to 1.0)
@@ -374,10 +379,49 @@ class Validator:
         Returns:
             Adjusted weights with burn allocation (sums to 1.0)
         """
-        burn_amount: float = 0.0  # Hardcoded: 0% burn. Autoupdater picks this up.
         burn_uid: int = self.config.burn_uid
 
-        # No burn configured
+        # 1. Fetch current market data
+        tao_price = await get_tao_price_usd()
+        alpha_price = await get_alpha_price_tao(self.subtensor, self.config.netuid)
+
+        # 2. Calculate Total Daily Subnet Value in USD
+        # Sum of neuron emissions * blocks per day (7200)
+        # We sum all emissions for subnet value, but use only miner emissions for cap calculation
+        total_subnet_emission_daily = sum(n.emission for n in self.metagraph.neurons) * 7200
+        miner_neurons = [n for n in self.metagraph.neurons if not n.validator_permit]
+        total_miner_alpha_emission_daily = sum(n.emission for n in miner_neurons) * 7200
+
+        total_usd_value_daily = total_miner_alpha_emission_daily * alpha_price * tao_price
+        total_subnet_usd_value = total_subnet_emission_daily * alpha_price * tao_price
+
+        # 3. Calculate Dynamic Cap Burn to stay under REWARD_LIMIT_USD
+        cap_burn = 0.0
+        if total_usd_value_daily > self.REWARD_LIMIT_USD:
+            cap_burn = 1.0 - (self.REWARD_LIMIT_USD / total_usd_value_daily)
+
+        # 4. Final Burn calculation
+        manual_burn: float = self.MANUAL_BURN
+        burn_amount = 1.0 - (1.0 - cap_burn) * (1.0 - manual_burn)
+
+        # Log details
+        logger.info(
+            f"Market: TAO=${tao_price:.2f}, Alpha={alpha_price:.4f} TAO. "
+            f"Daily Miner Value: ${total_usd_value_daily:,.2f} USD (Subnet Total: ${total_subnet_usd_value:,.2f}). "
+            f"Cap Burn: {cap_burn:.1%}, Manual Burn: {manual_burn:.1%}, Total Burn: {burn_amount:.1%}"
+        )
+        for hk, w in weights.items():
+            a0 = w * total_miner_alpha_emission_daily
+            u0 = a0 * alpha_price * tao_price
+            ac = a0 * (1.0 - cap_burn)
+            uc = ac * alpha_price * tao_price
+            af = a0 * (1.0 - burn_amount)
+            logger.info(
+                f"UID {self.hotkeys.index(hk)}: Ideal {a0:.2f}α (${u0:.2f}) | "
+                f"Capped {ac:.2f}α (${uc:.2f}) | Final {af:.2f}α"
+            )
+
+        # No burn configured or burn_uid invalid
         if burn_amount <= 0.0 or burn_uid < 0:
             return weights
 
@@ -400,10 +444,7 @@ class Validator:
         existing_burn_weight = adjusted_weights.get(burn_hotkey, 0.0)
         adjusted_weights[burn_hotkey] = existing_burn_weight + burn_amount
 
-        logger.info(
-            f"Applied burn: {burn_amount:.1%} to UID {burn_uid} ({burn_hotkey[:8]}...), "
-            f"remaining {remaining_share:.1%} distributed to {len(weights)} miners"
-        )
+        logger.info(f"Applied {burn_amount:.1%} total burn to UID {burn_uid}")
 
         return adjusted_weights
 
