@@ -77,13 +77,24 @@ def get_version() -> str:
     return commit[:8]
 
 
-def pull_latest_version() -> None:
+def pull_latest_version(force: bool = False) -> None:
     """
     Pull latest version from git.
 
-    Uses `git pull --rebase --autostash` to preserve local changes.
-    Aborts rebase on conflict.
+    If force is True: uses `git fetch` and `git reset --hard origin/main`.
+    Otherwise: uses `git pull --rebase --autostash`.
     """
+    if force:
+        log.info("Performing force pull (reset --hard origin/main)...")
+        try:
+            subprocess.run(split("git fetch origin"), check=True, cwd=PROJECT_ROOT)
+            subprocess.run(
+                split("git reset --hard origin/main"), check=True, cwd=PROJECT_ROOT
+            )
+        except subprocess.CalledProcessError as exc:
+            log.error("Force pull failed: %s", exc)
+        return
+
     try:
         subprocess.run(
             split("git pull --rebase --autostash"),
@@ -94,7 +105,7 @@ def pull_latest_version() -> None:
         log.error("Failed to pull, reverting: %s", exc)
         subprocess.run(
             split("git rebase --abort"),
-            check=False, # OK to fail if no rebase to abort  
+            check=False,  # OK to fail if no rebase to abort
             cwd=PROJECT_ROOT,
         )
 
@@ -191,7 +202,12 @@ def build_args_list(
     return args_list
 
 
-def main(pm2_name: str, args_namespace: argparse.Namespace, extra_args: list[str]) -> None:
+def main(
+    pm2_name: str,
+    args_namespace: argparse.Namespace,
+    extra_args: list[str],
+    force_pull: bool = False,
+) -> None:
     """
     Main loop: run validator and auto-update on new versions.
 
@@ -209,7 +225,7 @@ def main(pm2_name: str, args_namespace: argparse.Namespace, extra_args: list[str
         while True:
             time.sleep(UPDATES_CHECK_TIME.total_seconds())
 
-            pull_latest_version()
+            pull_latest_version(force=force_pull)
             latest_version = get_version()
 
             if latest_version != current_version:
@@ -251,6 +267,11 @@ if __name__ == "__main__":
         "--pm2_name",
         default="resi_validator",
         help="PM2 process name (default: resi_validator)",
+    )
+    parser.add_argument(
+        "--force_pull",
+        action="store_true",
+        help="Force pull latest version (git reset --hard origin/main)",
     )
 
     # Validator args (forwarded to validator)
@@ -322,4 +343,4 @@ if __name__ == "__main__":
     )
 
     flags, extra_args = parser.parse_known_args()
-    main(flags.pm2_name, flags, extra_args)
+    main(flags.pm2_name, flags, extra_args, force_pull=flags.force_pull)

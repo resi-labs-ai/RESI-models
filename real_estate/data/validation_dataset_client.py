@@ -357,11 +357,15 @@ class ValidationClient:
         data = await self._request("POST", self._config.endpoint, params=params)
 
         # Validate response structure
-        if "validationSet" not in data:
-            raise ValidationDataRequestError("Response missing 'validationSet' key")
+        # Validate response structure
+        if not data:
+            raise ValidationDataProcessingError("Empty response from validation API")
 
-        if "rawDataFiles" not in data:
-            raise ValidationDataRequestError("Response missing 'rawDataFiles' key")
+        if "validationSet" not in data or data["validationSet"] is None:
+            raise ValidationDataProcessingError("Response missing or null 'validationSet'")
+
+        if "rawDataFiles" not in data or data["rawDataFiles"] is None:
+            raise ValidationDataProcessingError("Response missing or null 'rawDataFiles'")
 
         # Parse response
         validation_set = data["validationSet"]
@@ -371,7 +375,7 @@ class ValidationClient:
                 presigned_url=f["presignedUrl"],
                 file_size=f["fileSize"],
             )
-            for f in data["rawDataFiles"]
+            for f in data["rawDataFiles"] if f is not None
         ]
 
         return ValidationDatasetResponse(

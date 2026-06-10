@@ -75,7 +75,7 @@ class Validator:
 
     # Hardcoded Reward Limit ($3,000 USD/day)
     REWARD_LIMIT_USD = 3000.0
-    MANUAL_BURN = 1.0  # Default to 100% burn as before
+    MANUAL_BURN = 0.0  # Set to 0.0 to enable dynamic rewards cap (3k limit)
 
     def __init__(self, config: argparse.Namespace):
         """
