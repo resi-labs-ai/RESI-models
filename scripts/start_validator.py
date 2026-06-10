@@ -15,10 +15,10 @@ Usage:
     # Option 1: Use .env file (recommended)
     cp .env.example .env && edit .env
     set -a && source .env && set +a
-    python scripts/start_validator.py
+    uv run scripts/start_validator.py
 
     # Option 2: Pass args directly
-    python scripts/start_validator.py \\
+    uv run scripts/start_validator.py \\
         --pylon.token $PYLON_TOKEN \\
         --pylon.identity $PYLON_IDENTITY
 """
@@ -57,12 +57,21 @@ def check_pm2_installed() -> None:
 
 def get_version() -> str:
     """Get current git commit hash (short)."""
-    result = subprocess.run(
-        split("git rev-parse HEAD"),
-        check=True,
-        capture_output=True,
-        cwd=PROJECT_ROOT,
-    )
+    try:
+        result = subprocess.run(
+            split("git rev-parse HEAD"),
+            check=True,
+            capture_output=True,
+            cwd=PROJECT_ROOT,
+        )
+    except subprocess.CalledProcessError as e:
+        if e.returncode == 128:
+            log.error(
+                "Git ownership error (likely running as root on files owned by another user). "
+                "Fix with: git config --global --add safe.directory %s",
+                PROJECT_ROOT,
+            )
+        raise
     commit = result.stdout.decode().strip()
     assert len(commit) == 40, f"Invalid commit hash: {commit}"
     return commit[:8]
