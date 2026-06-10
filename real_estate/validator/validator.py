@@ -388,11 +388,15 @@ class Validator:
         # 2. Calculate Total Daily Subnet Value in USD
         # Sum of neuron emissions * blocks per day (7200)
         # We sum all emissions for subnet value, but use only miner emissions for cap calculation
-        total_subnet_emission_daily = sum(n.emission for n in self.metagraph.neurons) * 7200
+        total_subnet_emission_daily = (
+            sum(n.emission for n in self.metagraph.neurons) * 7200
+        )
         miner_neurons = [n for n in self.metagraph.neurons if not n.validator_permit]
         total_miner_alpha_emission_daily = sum(n.emission for n in miner_neurons) * 7200
 
-        total_usd_value_daily = total_miner_alpha_emission_daily * alpha_price * tao_price
+        total_usd_value_daily = (
+            total_miner_alpha_emission_daily * alpha_price * tao_price
+        )
         total_subnet_usd_value = total_subnet_emission_daily * alpha_price * tao_price
 
         # 3. Calculate Dynamic Cap Burn to stay under REWARD_LIMIT_USD
