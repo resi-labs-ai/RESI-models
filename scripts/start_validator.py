@@ -69,7 +69,7 @@ def get_version() -> str:
             log.error(
                 "Git ownership error (likely running as root on files owned by another user). "
                 "Fix with: git config --global --add safe.directory %s",
-                PROJECT_ROOT,
+                str(PROJECT_ROOT),
             )
         raise
     commit = result.stdout.decode().strip()

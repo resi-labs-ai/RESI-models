@@ -357,7 +357,6 @@ class ValidationClient:
         data = await self._request("POST", self._config.endpoint, params=params)
 
         # Validate response structure
-        # Validate response structure
         if not data:
             raise ValidationDataProcessingError("Empty response from validation API")
 

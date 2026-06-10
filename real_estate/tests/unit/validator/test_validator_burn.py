@@ -1,9 +1,7 @@
 import pytest
-import numpy as np
 from unittest.mock import AsyncMock, MagicMock, patch
 from real_estate.validator import Validator
-from real_estate.chain.models import Neuron, Metagraph
-from datetime import datetime
+from real_estate.chain.models import Neuron
 
 def create_mock_neuron(uid: int, hotkey: str, validator_permit: bool = False, emission: float = 1.0) -> Neuron:
     return Neuron(
