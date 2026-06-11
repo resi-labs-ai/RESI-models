@@ -718,7 +718,7 @@ class TestFeatureConfigFlow:
         cached_config = put_kwargs["feature_config"]
         assert "malicious_key" not in cached_config
         assert "another_extra" not in cached_config
-        assert set(cached_config.keys()) == {"version", "features"}
+        assert set(cached_config.keys()) == {"version", "features", "legacy_model"}
 
     @pytest.mark.asyncio
     async def test_feature_config_missing_falls_back_gracefully(

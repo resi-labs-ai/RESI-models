@@ -27,7 +27,11 @@ SUPPORTED_VERSION = "1.0"
 
 
 LEGACY_FEATURES = frozenset(
-    {"price_change_since_last_sale", "price_appreciation_rate", "annual_appreciation_rate"}
+    {
+        "price_change_since_last_sale",
+        "price_appreciation_rate",
+        "annual_appreciation_rate",
+    }
 )
 LEGACY_MAX_FEATURES = 79
 
