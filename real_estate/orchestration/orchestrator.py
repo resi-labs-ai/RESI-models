@@ -15,6 +15,12 @@ from real_estate.data import (
     TabularEncoder,
     create_default_feature_config,
     decode_for_model,
+    parse_feature_config,
+)
+from real_estate.data.config_encoder import (
+    LEGACY_FEATURES,
+    SUPPORTED_VERSION,
+    _get_field_sets,
 )
 from real_estate.data.image_bundle import ImageBundleManifest
 from real_estate.duplicate_detector import create_duplicate_detector
@@ -181,7 +187,7 @@ class ValidationOrchestrator:
         """Slice per-model columns from a perturbed superset array.
 
         Args:
-            perturbed_superset: Full (N, 76) perturbed feature matrix.
+            perturbed_superset: Full (N, F) perturbed feature matrix.
             superset_layout: Layout of the superset (all features).
             per_model_layouts: Per-model layouts mapping feature names to indices.
             hotkeys: Model paths dict (keys used to iterate models).
@@ -408,7 +414,33 @@ class ValidationOrchestrator:
 
         # Encode superset once, perturb once, then slice per-model columns
         logger.info("Running generalization detection (perturbed evaluation)...")
-        superset_encoder = TabularEncoder(default_config)
+
+        # Determine if we need to include legacy features in the superset
+        any_legacy = any(
+            config.legacy_model
+            for hk, config in feature_configs.items()
+            if hk in perturbed_model_paths and config
+        )
+
+        if any_legacy:
+            _, _, default_order = _get_field_sets()
+            superset_features_list = list(default_order)
+            # Add legacy features that are not already in the list
+            for feat in LEGACY_FEATURES:
+                if feat not in superset_features_list:
+                    superset_features_list.append(feat)
+
+            superset_config = parse_feature_config(
+                {
+                    "version": SUPPORTED_VERSION,
+                    "features": superset_features_list,
+                    "legacy_model": True,
+                }
+            )
+        else:
+            superset_config = default_config
+
+        superset_encoder = TabularEncoder(superset_config)
         superset_features = superset_encoder.encode(dataset.properties)
         superset_layout = superset_encoder.layout
 
