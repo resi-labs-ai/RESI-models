@@ -235,6 +235,7 @@ class ModelDownloader:
             feature_config_raw = {
                 "version": feature_config_raw.get("version"),
                 "features": feature_config_raw.get("features"),
+                "legacy_model": feature_config_raw.get("legacy_model", False),
             }
             logger.info(
                 f"Feature config validated for {hotkey}: "
