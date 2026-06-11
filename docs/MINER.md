@@ -29,7 +29,7 @@ The miner CLI (`miner-cli`) helps you:
 |-------------|---------------|
 | Format | ONNX |
 | Max size | 200 MB |
-| Input shape | `(batch, 10-76)` float32 (numeric features) |
+| Input shape | `(batch, 10-76)` float32 (numeric features). Up to 79 if `legacy_model: true`. |
 | Output shape | `(batch, 1)` or `(batch,)` float32 |
 | Image inputs | Optional — see [Property Images](#property-images-optional) |
 
@@ -40,6 +40,28 @@ Your model chooses which features it uses via a `feature_config.json` file in yo
 Five features are **required**: `living_area_sqft`, `latitude`, `longitude`, `bedrooms`, `bathrooms`.
 
 If you don't include a `feature_config.json`, the validator falls back to all 76 features in the default YAML order (backwards compatible).
+
+#### Legacy Model Support (79 features)
+
+If you have a previously aged model that expects the old **79-feature** set (which included three leaked columns), you can maintain your 30-day window by adding `"legacy_model": true` to your `feature_config.json`.
+
+When this flag is enabled:
+- The maximum allowed numeric/boolean features increases to **79**.
+- You can include the following legacy features in your list: `price_change_since_last_sale`, `price_appreciation_rate`, and `annual_appreciation_rate`.
+- **Note:** Validators explicitly **zero out** these legacy features during evaluation to prevent data leakage. Your model will receive 79 inputs, but those three columns will always be constant `0.0`.
+
+```json
+{
+  "version": "1.0",
+  "legacy_model": true,
+  "features": [
+     "... (76 current features) ...",
+     "price_change_since_last_sale",
+     "price_appreciation_rate",
+     "annual_appreciation_rate"
+  ]
+}
+```
 
 #### feature_config.json format
 
@@ -214,7 +236,7 @@ miner-cli evaluate --model.path PATH [--max-size-mb MB]
 **What it checks:**
 1. File exists and is under size limit
 2. Valid ONNX format
-3. Correct input shape (matches feature_config.json or default 76)
+3. Correct input shape (matches feature_config.json or default)
 4. Correct output shape
 5. No NaN or Inf in predictions
 
@@ -459,7 +481,7 @@ ERROR: Invalid ONNX format: Unable to parse proto from file...
 ```
 ERROR: Model input dimension does not match declared feature count
 ```
-**Fix:** Your ONNX model's input shape must match the number of features in your `feature_config.json` (or 76 if you don't provide one).
+**Fix:** Your ONNX model's input shape must match the number of features in your `feature_config.json` (or default features if you don't provide one).
 
 ### Model too large
 
