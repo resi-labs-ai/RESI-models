@@ -1098,3 +1098,66 @@ class TestImageBundleIntegration:
         first_call_kwargs = mock_evaluator.evaluate_all.call_args_list[0].kwargs
         assert first_call_kwargs["image_data"] is None
 
+    @pytest.mark.asyncio
+    async def test_run_with_legacy_models(
+        self,
+        orchestrator: ValidationOrchestrator,
+        mock_evaluator: AsyncMock,
+        mock_detector: MagicMock,
+        mock_selector: MagicMock,
+        mock_distributor: MagicMock,
+    ) -> None:
+        """Test complete pipeline with mixed legacy and modern models."""
+        dataset = create_dataset()
+        model_paths = {"A": Path("/a.onnx"), "B": Path("/b.onnx")}
+        chain_metadata = {
+            "A": create_chain_metadata("A", 100),
+            "B": create_chain_metadata("B", 200),
+        }
+
+        from real_estate.data import parse_feature_config
+        from real_estate.data.config_encoder import LEGACY_FEATURES
+
+        features_base = [
+            "living_area_sqft", "latitude", "longitude", "bedrooms", "bathrooms",
+            "lot_size_sqft", "year_built", "has_pool", "has_garage", "stories",
+        ]
+        # A is legacy
+        fc_legacy = parse_feature_config({
+            "version": "1.0",
+            "features": features_base + list(LEGACY_FEATURES),
+            "legacy_model": True,
+        })
+        # B is modern
+        fc_modern = parse_feature_config({
+            "version": "1.0",
+            "features": features_base,
+            "legacy_model": False,
+        })
+        feature_configs = {"A": fc_legacy, "B": fc_modern}
+
+        _setup_default_mocks(
+            mock_evaluator, mock_detector, mock_selector, mock_distributor,
+            eval_batch=create_eval_batch([
+                create_eval_result("A", score=0.95),
+                create_eval_result("B", score=0.90),
+            ]),
+        )
+
+        await orchestrator.run(
+            dataset, model_paths, chain_metadata,
+            feature_configs=feature_configs,
+        )
+
+        # Verify that evaluate_all was called for perturbed evaluation
+        assert mock_evaluator.evaluate_all.call_count == 3
+
+        # Check features in perturbed evaluation (2nd call)
+        perturbed_features = mock_evaluator.evaluate_all.call_args_list[1].kwargs["features"]
+        assert "A" in perturbed_features
+        assert "B" in perturbed_features
+
+        # A's features should include legacy ones
+        assert perturbed_features["A"].shape[1] == len(features_base) + len(LEGACY_FEATURES)
+        # B's features should only include base
+        assert perturbed_features["B"].shape[1] == len(features_base)
