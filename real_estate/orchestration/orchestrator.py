@@ -229,7 +229,11 @@ class ValidationOrchestrator:
                 encoder = TabularEncoder(config)
                 features[hotkey] = encoder.encode(properties)
                 layouts[hotkey] = encoder.layout
-                logger.debug(f"Encoded {hotkey}: {features[hotkey].shape} features")
+
+                if config.legacy_model:
+                    logger.info(f"Encoded legacy model {hotkey}: {features[hotkey].shape} features (zero-filled)")
+                else:
+                    logger.debug(f"Encoded {hotkey}: {features[hotkey].shape} features")
             except Exception as e:
                 logger.warning(f"Feature encoding failed for {hotkey}: {e}, skipping")
                 failures.append(hotkey)
