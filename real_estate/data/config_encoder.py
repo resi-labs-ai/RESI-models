@@ -160,6 +160,8 @@ def parse_feature_config(data: dict) -> FeatureConfig:
     numeric_boolean_features = [f for f in features if f != IMAGES_FEATURE_NAME]
 
     legacy_model = bool(data.get("legacy_model", False))
+    if legacy_model:
+        logger.info("Parsing legacy feature config (79 features enabled)")
     max_features = LEGACY_MAX_FEATURES if legacy_model else MAX_FEATURES
 
     # Count bounds apply to numeric/boolean features only
@@ -261,6 +263,10 @@ class TabularEncoder:
             f for f in feature_config.features if f != IMAGES_FEATURE_NAME
         )
         self._layout = self._compute_layout(self._feature_names)
+
+        legacy_found = [f for f in self._feature_names if f in LEGACY_FEATURES]
+        if legacy_found:
+            logger.debug(f"Encoder initialized with legacy zero-fill features: {legacy_found}")
 
     @staticmethod
     def _compute_layout(feature_names: tuple[str, ...]) -> FeatureLayout:
