@@ -244,7 +244,9 @@ class TestRemove:
         model_path.write_bytes(b"model content")
 
         metadata_path = hotkey_dir / "metadata.json"
-        metadata_path.write_text('{"hash": "abc", "size_bytes": 13, "commit_block": 1000}')
+        metadata_path.write_text(
+            '{"hash": "abc", "size_bytes": 13, "commit_block": 1000}'
+        )
 
         result = cache.remove(hotkey)
 
@@ -270,7 +272,9 @@ class TestCleanupCorrupted:
 
         # Only create metadata, no model
         metadata_path = hotkey_dir / "metadata.json"
-        metadata_path.write_text('{"hash": "abc", "size_bytes": 13, "commit_block": 1000}')
+        metadata_path.write_text(
+            '{"hash": "abc", "size_bytes": 13, "commit_block": 1000}'
+        )
 
         removed = cache.cleanup_corrupted()
 
@@ -323,7 +327,9 @@ class TestCleanupCorrupted:
         model_path.write_bytes(b"model content")
 
         metadata_path = hotkey_dir / "metadata.json"
-        metadata_path.write_text('{"hash": "abc12345", "size_bytes": 13, "commit_block": 1000}')
+        metadata_path.write_text(
+            '{"hash": "abc12345", "size_bytes": 13, "commit_block": 1000}'
+        )
 
         removed = cache.cleanup_corrupted()
 
@@ -469,3 +475,62 @@ class TestCleanupStale:
         removed = cache.cleanup_stale(active_hotkeys)
 
         assert removed == []
+
+
+class TestUpdateFeatureConfig:
+    """Tests for ModelCache.update_feature_config method."""
+
+    def _seed_entry(
+        self, temp_cache_dir: Path, hotkey: str, feature_config: dict | None
+    ) -> None:
+        hotkey_dir = temp_cache_dir / hotkey
+        hotkey_dir.mkdir()
+        (hotkey_dir / "model.onnx").write_bytes(b"model content")
+        metadata = {
+            "hash": "abc12345",
+            "size_bytes": 13,
+            "commit_block": 1000,
+            "license_type": "exclusive",
+        }
+        if feature_config is not None:
+            metadata["feature_config"] = feature_config
+        (hotkey_dir / "metadata.json").write_text(json.dumps(metadata))
+
+    def test_updates_config_in_place(
+        self, cache: ModelCache, temp_cache_dir: Path
+    ) -> None:
+        """Rewrites only feature_config, leaving hash and model untouched."""
+        old = {"version": "1.0", "features": ["bedrooms"], "legacy_model": False}
+        new = {
+            "version": "1.0",
+            "features": ["bedrooms", "bathrooms"],
+            "legacy_model": True,
+        }
+        self._seed_entry(temp_cache_dir, "hk1", old)
+
+        result = cache.update_feature_config("hk1", new)
+
+        assert result is True
+        cached = cache.get("hk1")
+        assert cached is not None
+        assert cached.metadata.feature_config == new
+        # Hash / model file untouched
+        assert cached.metadata.hash == "abc12345"
+        assert (temp_cache_dir / "hk1" / "model.onnx").read_bytes() == b"model content"
+
+    def test_can_clear_config_to_none(
+        self, cache: ModelCache, temp_cache_dir: Path
+    ) -> None:
+        """Setting config to None (miner removed it) drops it from metadata."""
+        old = {"version": "1.0", "features": ["bedrooms"], "legacy_model": False}
+        self._seed_entry(temp_cache_dir, "hk1", old)
+
+        assert cache.update_feature_config("hk1", None) is True
+
+        cached = cache.get("hk1")
+        assert cached is not None
+        assert cached.metadata.feature_config is None
+
+    def test_returns_false_when_not_cached(self, cache: ModelCache) -> None:
+        """No-op returning False when there is no cache entry."""
+        assert cache.update_feature_config("missing", {"version": "1.0"}) is False

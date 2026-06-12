@@ -239,11 +239,19 @@ class ModelDownloadScheduler:
             result = await self._download_single(commitment)
             results[commitment.hotkey] = result
 
-        # Include already-cached models in results
+        # Include already-cached models in results. Re-fetch their feature_config
+        # so a miner who edited it while keeping the ONNX (and its hash) identical
+        # is picked up; a refresh failure is non-fatal (model keeps its old config).
         for commitment in commitments:
             if commitment.hotkey not in results:
                 cached = self._downloader.get_cached(commitment.hotkey)
                 if cached and cached.metadata.hash == commitment.model_hash:
+                    try:
+                        await self._downloader.refresh_feature_config(commitment)
+                    except Exception as e:
+                        logger.warning(
+                            f"Config refresh failed for {commitment.hotkey}: {e}"
+                        )
                     results[commitment.hotkey] = DownloadResult(
                         hotkey=commitment.hotkey,
                         success=True,

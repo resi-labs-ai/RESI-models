@@ -283,6 +283,38 @@ class ModelDownloader:
             self._cleanup_temp_dir(str(temp_path.parent))
             raise
 
+    async def refresh_feature_config(self, commitment: ChainModelMetadata) -> None:
+        """Re-fetch feature_config.json for an already-cached model and update the
+        sidecar if it changed. Model bytes (and the cache key) are untouched, so a
+        miner who edits their config while keeping the ONNX byte-identical is picked
+        up. Raises on fetch/validation failure; the caller keeps the old config.
+        """
+        cached = self._cache.get(commitment.hotkey)
+        if cached is None:
+            return
+
+        config_temp_dir = await self._download_with_retry_batch(
+            commitment.hf_repo_id, ["feature_config.json"]
+        )
+        try:
+            config_path = config_temp_dir / "feature_config.json"
+            if config_path.exists():
+                raw = json.loads(config_path.read_text())
+                self._verifier.validate_feature_config(raw)  # raises if invalid
+                new_raw: dict | None = {
+                    "version": raw.get("version"),
+                    "features": raw.get("features"),
+                    "legacy_model": raw.get("legacy_model", False),
+                }
+            else:
+                new_raw = None
+        finally:
+            self._cleanup_temp_dir(str(config_temp_dir))
+
+        if new_raw != cached.metadata.feature_config:
+            self._cache.update_feature_config(commitment.hotkey, new_raw)
+            logger.info(f"Refreshed feature_config for {commitment.hotkey} (changed)")
+
     async def _download_with_retry(self, hf_repo_id: str, filename: str) -> Path:
         """
         Download ONNX model with exponential backoff retry.

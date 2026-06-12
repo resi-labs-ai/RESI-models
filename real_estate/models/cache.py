@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 from .models import CachedModel, CachedModelMetadata
@@ -130,6 +131,21 @@ class ModelCache:
 
         logger.info(f"Cached model for {hotkey} ({size_bytes} bytes)")
         return model_path
+
+    def update_feature_config(self, hotkey: str, feature_config: dict | None) -> bool:
+        """Rewrite only the feature_config in a cached entry's metadata, leaving the
+        model file and its hash (the cache key) untouched. Returns False if absent."""
+        cached = self.get(hotkey)
+        if cached is None:
+            return False
+
+        new_metadata = replace(cached.metadata, feature_config=feature_config)
+        metadata_path = self._cache_dir / hotkey / METADATA_FILENAME
+        with open(metadata_path, "w") as f:
+            json.dump(new_metadata.to_dict(), f)
+
+        logger.info(f"Updated cached feature_config for {hotkey}")
+        return True
 
     def remove(self, hotkey: str) -> bool:
         """
