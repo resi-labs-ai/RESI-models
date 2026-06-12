@@ -26,6 +26,16 @@ MAX_FEATURES = 76
 SUPPORTED_VERSION = "1.0"
 
 
+LEGACY_FEATURES = frozenset(
+    {
+        "price_change_since_last_sale",
+        "price_appreciation_rate",
+        "annual_appreciation_rate",
+    }
+)
+LEGACY_MAX_FEATURES = 79
+
+
 IMAGES_FEATURE_NAME = "property_images"
 """Reserved feature name. Including this in the features list opts the model into
 receiving property image tensors alongside numeric features."""
@@ -57,6 +67,7 @@ class FeatureConfig:
     version: str
     features: tuple[str, ...]
     image_block: ImageBlockConfig | None = None
+    legacy_model: bool = False
 
 
 @dataclass(frozen=True)
@@ -148,19 +159,27 @@ def parse_feature_config(data: dict) -> FeatureConfig:
     has_images = IMAGES_FEATURE_NAME in features
     numeric_boolean_features = [f for f in features if f != IMAGES_FEATURE_NAME]
 
+    legacy_model = bool(data.get("legacy_model", False))
+    if legacy_model:
+        logger.info("Parsing legacy feature config (79 features enabled)")
+    max_features = LEGACY_MAX_FEATURES if legacy_model else MAX_FEATURES
+
     # Count bounds apply to numeric/boolean features only
     if len(numeric_boolean_features) < MIN_FEATURES:
         raise FeatureConfigError(
             f"Too few features: {len(numeric_boolean_features)}, minimum is {MIN_FEATURES}"
         )
-    if len(numeric_boolean_features) > MAX_FEATURES:
+    if len(numeric_boolean_features) > max_features:
         raise FeatureConfigError(
-            f"Too many features: {len(numeric_boolean_features)}, maximum is {MAX_FEATURES}"
+            f"Too many features: {len(numeric_boolean_features)}, maximum is {max_features}"
         )
 
     # Check all numeric/boolean names exist in data contract
     numeric_fields, boolean_fields, _ = _get_field_sets()
     all_known = numeric_fields | boolean_fields
+    if legacy_model:
+        all_known |= LEGACY_FEATURES
+
     unknown = set(numeric_boolean_features) - all_known
     if unknown:
         raise FeatureConfigError(f"Unknown feature names: {sorted(unknown)}")
@@ -181,7 +200,10 @@ def parse_feature_config(data: dict) -> FeatureConfig:
         )
 
     return FeatureConfig(
-        version=version, features=tuple(features), image_block=image_block
+        version=version,
+        features=tuple(features),
+        image_block=image_block,
+        legacy_model=legacy_model,
     )
 
 
@@ -242,6 +264,12 @@ class TabularEncoder:
         )
         self._layout = self._compute_layout(self._feature_names)
 
+        legacy_found = [f for f in self._feature_names if f in LEGACY_FEATURES]
+        if legacy_found:
+            logger.debug(
+                f"Encoder initialized with legacy zero-fill features: {legacy_found}"
+            )
+
     @staticmethod
     def _compute_layout(feature_names: tuple[str, ...]) -> FeatureLayout:
         """Compute feature layout from feature names and YAML data contract."""
@@ -253,7 +281,7 @@ class TabularEncoder:
         lon_index = -1
 
         for i, name in enumerate(feature_names):
-            if name in numeric_fields:
+            if name in numeric_fields or name in LEGACY_FEATURES:
                 numeric_indices.append(i)
             elif name in boolean_fields:
                 boolean_indices.append(i)
@@ -286,6 +314,10 @@ class TabularEncoder:
         for prop in properties:
             row: list[float] = []
             for name in self._feature_names:
+                if name in LEGACY_FEATURES:
+                    row.append(0.0)
+                    continue
+
                 value = prop.get(name, 0.0)
                 if name in boolean_fields:
                     row.append(1.0 if value else 0.0)

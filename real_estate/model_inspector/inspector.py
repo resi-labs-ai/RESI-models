@@ -85,7 +85,7 @@ class ModelInspector:
         Args:
             model_paths: Mapping of hotkey -> path to ONNX model file.
             expected_feature_counts: Optional mapping of hotkey -> declared
-                feature count (from feature_config or default 76). Models
+                feature count (from feature_config or default). Models
                 whose ONNX input dim doesn't match are rejected with
                 SHAPE_MISMATCH. If None, the shape check is skipped.
 
