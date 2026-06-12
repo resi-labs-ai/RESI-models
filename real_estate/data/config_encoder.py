@@ -266,7 +266,9 @@ class TabularEncoder:
 
         legacy_found = [f for f in self._feature_names if f in LEGACY_FEATURES]
         if legacy_found:
-            logger.debug(f"Encoder initialized with legacy zero-fill features: {legacy_found}")
+            logger.debug(
+                f"Encoder initialized with legacy zero-fill features: {legacy_found}"
+            )
 
     @staticmethod
     def _compute_layout(feature_names: tuple[str, ...]) -> FeatureLayout:

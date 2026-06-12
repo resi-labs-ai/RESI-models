@@ -231,7 +231,9 @@ class ValidationOrchestrator:
                 layouts[hotkey] = encoder.layout
 
                 if config.legacy_model:
-                    logger.info(f"Encoded legacy model {hotkey}: {features[hotkey].shape} features (zero-filled)")
+                    logger.info(
+                        f"Encoded legacy model {hotkey}: {features[hotkey].shape} features (zero-filled)"
+                    )
                 else:
                     logger.debug(f"Encoded {hotkey}: {features[hotkey].shape} features")
             except Exception as e:
