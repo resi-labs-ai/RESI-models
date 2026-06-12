@@ -356,6 +356,9 @@ class ValidationClient:
         params = {"date": date} if date else {}
         data = await self._request("POST", self._config.endpoint, params=params)
 
+        if data is None:
+            raise ValidationDataRequestError("Empty response from dashboard API")
+
         # Validate response structure
         if "validationSet" not in data:
             raise ValidationDataRequestError("Response missing 'validationSet' key")
