@@ -553,12 +553,10 @@ class Validator:
         """Callback when new validation data is fetched."""
         if validation_data is None:
             logger.warning("Validation data fetch returned None")
-            self.scores.fill(0.0)
             return
 
         if len(validation_data) == 0:
             logger.warning("Validation data is empty, skipping evaluation")
-            self.scores.fill(0.0)
             return
 
         self.validation_data = validation_data
