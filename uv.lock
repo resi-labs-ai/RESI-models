@@ -250,7 +250,7 @@ wheels = [
 
 [[package]]
 name = "bittensor-pylon-client"
-version = "1.9.0"
+version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "apscheduler" },
@@ -260,9 +260,9 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5a/80/56f239dafdaaa4a9bcd9c4d4ae20eec8fd347a80f2332642aa86929ffb19/bittensor_pylon_client-1.9.0.tar.gz", hash = "sha256:840ee5f514e0ec0c0b9b1c5f6f24313d96a4ad979a64f135cc4637bc2eefd129", size = 24937, upload-time = "2026-04-13T09:09:43.093Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/fb/1c554f69b1dbcba91428882369133b9c19e01353dbfa6e01f11bae3ba5f5/bittensor_pylon_client-2.2.0.tar.gz", hash = "sha256:8513b253d775212186a3f828c18666659188b78c279ef3fdd914649e1a3c71af", size = 27402, upload-time = "2026-06-09T02:32:02.072Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bc/db/44b969cbc937138ca6897bfb8e2daf4710e4da5d67f74b8d223775e3a685/bittensor_pylon_client-1.9.0-py3-none-any.whl", hash = "sha256:176ce1f66e3d4535082ca5b580e2cb29d78171d13f6c66446dcb7b7598f0de7b", size = 51594, upload-time = "2026-04-13T09:09:41.701Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/44/2d37669b51169983b10ecff473a1d257c5ad824bc9d835f612ddd6e53bb7/bittensor_pylon_client-2.2.0-py3-none-any.whl", hash = "sha256:1a6747e1994d7695a8bcf384b0823356698f99d24e43aadeac8a54c6a27fae2e", size = 54651, upload-time = "2026-06-09T02:32:00.622Z" },
 ]
 
 [[package]]
@@ -1843,6 +1843,7 @@ dependencies = [
     { name = "bittensor" },
     { name = "bittensor-pylon-client" },
     { name = "bittensor-wallet" },
+    { name = "coloredlogs" },
     { name = "httpx" },
     { name = "huggingface-hub" },
     { name = "numpy" },
@@ -1870,8 +1871,9 @@ dev = [
 requires-dist = [
     { name = "apscheduler", specifier = ">=3.11.1" },
     { name = "bittensor", specifier = "==9.12.2" },
-    { name = "bittensor-pylon-client", specifier = ">=1.9.0,<2.0.0" },
+    { name = "bittensor-pylon-client", specifier = ">=2.2.0,<3.0.0" },
     { name = "bittensor-wallet", specifier = "==4.0.1" },
+    { name = "coloredlogs", specifier = ">=15.0.1" },
     { name = "httpx", specifier = ">=0.26.0" },
     { name = "huggingface-hub", specifier = ">=0.20.0" },
     { name = "numpy", specifier = ">=1" },
