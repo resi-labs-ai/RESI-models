@@ -1164,3 +1164,50 @@ class TestGetAvailableModels:
         assert result == {"5Hotkey1": Path("/cache/model.onnx")}
 
 
+class TestRunPreDownloadRefresh:
+    """run_pre_download refreshes configs for already-cached models."""
+
+    @pytest.mark.asyncio
+    async def test_cached_model_is_refreshed_not_downloaded(
+        self,
+        mock_chain_client: MagicMock,
+    ) -> None:
+        """An eligible cached model triggers a config refresh, not a re-download."""
+        config = SchedulerConfig(
+            pre_download_hours=3.0,
+            catch_up_minutes=30.0,
+            min_delay_between_downloads_seconds=0,
+            min_commitment_age_blocks=0,
+        )
+        mock_downloader = MagicMock()
+        # Model is already cached with an exclusive license -> refresh path
+        mock_downloader.is_cached.return_value = True
+        cached = MagicMock()
+        cached.metadata.license_type = "exclusive"
+        cached.metadata.hash = "hash"
+        cached.path = Path("/cache/hk/model.onnx")
+        mock_downloader.get_cached.return_value = cached
+        mock_downloader.refresh_feature_config = AsyncMock(return_value=None)
+        mock_downloader.download_model = AsyncMock()
+        mock_downloader.cleanup_stale_cache = MagicMock()
+
+        commitment = MagicMock(hotkey="5Hotkey", block_number=1000, model_hash="hash")
+        mock_chain_client.get_all_commitments = AsyncMock(return_value=[commitment])
+        mock_chain_client.get_metagraph = AsyncMock(return_value=MagicMock(block=10000))
+
+        scheduler = ModelDownloadScheduler(config, mock_downloader, mock_chain_client)
+
+        now = datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC)
+        eval_time = now + timedelta(hours=5)
+
+        with (
+            patch("real_estate.models.scheduler.datetime") as mock_datetime,
+            patch("real_estate.models.scheduler.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            mock_datetime.now.return_value = now
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+            await scheduler.run_pre_download(eval_time)
+
+        mock_downloader.refresh_feature_config.assert_awaited_once()
+        mock_downloader.download_model.assert_not_called()

@@ -498,7 +498,9 @@ class TestDownloadModel:
     ) -> None:
         """Calls all verification steps in correct order."""
         mock_cache.is_valid.return_value = False
-        mock_verifier.find_repo_files = AsyncMock(return_value=("model.onnx", 1000, None))
+        mock_verifier.find_repo_files = AsyncMock(
+            return_value=("model.onnx", 1000, None)
+        )
 
         cached_path = tmp_path / "cached" / "model.onnx"
         mock_cache.put.return_value = cached_path
@@ -533,7 +535,9 @@ class TestDownloadModel:
     ) -> None:
         """Passes commit_block from Pylon to cache.put() for new downloads."""
         mock_cache.is_valid.return_value = False
-        mock_verifier.find_repo_files = AsyncMock(return_value=("model.onnx", 1000, None))
+        mock_verifier.find_repo_files = AsyncMock(
+            return_value=("model.onnx", 1000, None)
+        )
         mock_verifier.verify_extrinsic_record = AsyncMock(return_value=7500)
 
         cached_path = tmp_path / "cached" / "model.onnx"
@@ -565,7 +569,9 @@ class TestDownloadModel:
         from real_estate.models import HashMismatchError
 
         mock_cache.is_valid.return_value = False
-        mock_verifier.find_repo_files = AsyncMock(return_value=("model.onnx", 1000, None))
+        mock_verifier.find_repo_files = AsyncMock(
+            return_value=("model.onnx", 1000, None)
+        )
 
         # Make hash verification fail
         mock_verifier.verify_hash.side_effect = HashMismatchError(
@@ -580,7 +586,8 @@ class TestDownloadModel:
 
         with (
             patch(
-                "tempfile.mkdtemp", return_value=str(temp_dir),
+                "tempfile.mkdtemp",
+                return_value=str(temp_dir),
             ),
             patch(
                 "real_estate.models.downloader.snapshot_download",
@@ -661,10 +668,12 @@ class TestFeatureConfigFlow:
 
         with patch(
             "real_estate.models.downloader.snapshot_download",
-            side_effect=_mock_snapshot_download({
-                "model.onnx": b"model content",
-                "feature_config.json": json.dumps(config_data),
-            }),
+            side_effect=_mock_snapshot_download(
+                {
+                    "model.onnx": b"model content",
+                    "feature_config.json": json.dumps(config_data),
+                }
+            ),
         ):
             result = await downloader.download_model(sample_commitment)
 
@@ -707,10 +716,12 @@ class TestFeatureConfigFlow:
 
         with patch(
             "real_estate.models.downloader.snapshot_download",
-            side_effect=_mock_snapshot_download({
-                "model.onnx": b"model content",
-                "feature_config.json": json.dumps(config_data),
-            }),
+            side_effect=_mock_snapshot_download(
+                {
+                    "model.onnx": b"model content",
+                    "feature_config.json": json.dumps(config_data),
+                }
+            ),
         ):
             await downloader.download_model(sample_commitment)
 
@@ -776,15 +787,19 @@ class TestFeatureConfigFlow:
 
         downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
 
-        with patch(
-            "real_estate.models.downloader.snapshot_download",
-            side_effect=_mock_snapshot_download({
-                "model.onnx": b"model content",
-                "feature_config.json": "not valid json {{{",
-            }),
+        with (
+            patch(
+                "real_estate.models.downloader.snapshot_download",
+                side_effect=_mock_snapshot_download(
+                    {
+                        "model.onnx": b"model content",
+                        "feature_config.json": "not valid json {{{",
+                    }
+                ),
+            ),
+            pytest.raises(FeatureConfigValidationError),
         ):
-            with pytest.raises(FeatureConfigValidationError):
-                await downloader.download_model(sample_commitment)
+            await downloader.download_model(sample_commitment)
 
         # Model must NOT have been cached
         mock_cache.put.assert_not_called()
@@ -813,17 +828,21 @@ class TestFeatureConfigFlow:
 
         downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
 
-        with patch(
-            "real_estate.models.downloader.snapshot_download",
-            side_effect=_mock_snapshot_download({
-                "model.onnx": b"model content",
-                "feature_config.json": json.dumps(
-                    {"version": "1.0", "features": ["bedrooms"]}
+        with (
+            patch(
+                "real_estate.models.downloader.snapshot_download",
+                side_effect=_mock_snapshot_download(
+                    {
+                        "model.onnx": b"model content",
+                        "feature_config.json": json.dumps(
+                            {"version": "1.0", "features": ["bedrooms"]}
+                        ),
+                    }
                 ),
-            }),
+            ),
+            pytest.raises(FeatureConfigValidationError),
         ):
-            with pytest.raises(FeatureConfigValidationError):
-                await downloader.download_model(sample_commitment)
+            await downloader.download_model(sample_commitment)
 
         mock_cache.put.assert_not_called()
 
@@ -844,9 +863,18 @@ class TestFeatureConfigFlow:
         cached_model.metadata.license_type = "exclusive"
         cached_model.metadata.feature_config = {
             "version": "1.0",
-            "features": ["living_area_sqft", "latitude", "longitude",
-                         "bedrooms", "bathrooms", "lot_size_sqft",
-                         "year_built", "has_pool", "has_garage", "stories"],
+            "features": [
+                "living_area_sqft",
+                "latitude",
+                "longitude",
+                "bedrooms",
+                "bathrooms",
+                "lot_size_sqft",
+                "year_built",
+                "has_pool",
+                "has_garage",
+                "stories",
+            ],
         }
 
         mock_cache.is_valid.return_value = True
@@ -890,3 +918,108 @@ class TestIsCached:
         result = downloader.is_cached("test_hotkey", "expected_hash")
 
         assert result is False
+
+
+class TestRefreshFeatureConfig:
+    """Tests for ModelDownloader.refresh_feature_config (config-only re-pull)."""
+
+    def _cached(self, feature_config: dict | None) -> MagicMock:
+        cached = MagicMock()
+        cached.metadata.hash = "abc12345"
+        cached.metadata.feature_config = feature_config
+        return cached
+
+    @pytest.mark.asyncio
+    async def test_updates_cache_when_config_changed(
+        self,
+        download_config: DownloadConfig,
+        mock_cache: MagicMock,
+        mock_verifier: MagicMock,
+        sample_commitment: MagicMock,
+    ) -> None:
+        """A changed feature_config is re-validated and written to the sidecar."""
+        old = {"version": "1.0", "features": ["bedrooms"], "legacy_model": False}
+        mock_cache.get.return_value = self._cached(old)
+        new_config = {
+            "version": "1.0",
+            "features": ["bedrooms", "bathrooms"],
+            "legacy_model": True,
+        }
+        mock_verifier.validate_feature_config.return_value = MagicMock()
+
+        downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
+
+        with patch(
+            "real_estate.models.downloader.snapshot_download",
+            side_effect=_mock_snapshot_download(
+                {"feature_config.json": json.dumps(new_config)}
+            ),
+        ):
+            await downloader.refresh_feature_config(sample_commitment)
+
+        mock_cache.update_feature_config.assert_called_once_with(
+            sample_commitment.hotkey, new_config
+        )
+        # Model bytes are never re-downloaded.
+        assert not mock_verifier.verify_extrinsic_record.called
+
+    @pytest.mark.asyncio
+    async def test_unchanged_config_does_not_rewrite_cache(
+        self,
+        download_config: DownloadConfig,
+        mock_cache: MagicMock,
+        mock_verifier: MagicMock,
+        sample_commitment: MagicMock,
+    ) -> None:
+        """When the fetched config matches the cached one, the cache is untouched."""
+        same = {"version": "1.0", "features": ["bedrooms"], "legacy_model": False}
+        mock_cache.get.return_value = self._cached(same)
+        mock_verifier.validate_feature_config.return_value = MagicMock()
+
+        downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
+
+        with patch(
+            "real_estate.models.downloader.snapshot_download",
+            side_effect=_mock_snapshot_download(
+                {"feature_config.json": json.dumps(same)}
+            ),
+        ):
+            await downloader.refresh_feature_config(sample_commitment)
+
+        mock_cache.update_feature_config.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_invalid_new_config_leaves_cache_untouched(
+        self,
+        download_config: DownloadConfig,
+        mock_cache: MagicMock,
+        mock_verifier: MagicMock,
+        sample_commitment: MagicMock,
+    ) -> None:
+        """A config that fails current-schema validation is not cached."""
+        from real_estate.models.errors import FeatureConfigValidationError
+
+        old = {"version": "1.0", "features": ["bedrooms"], "legacy_model": False}
+        mock_cache.get.return_value = self._cached(old)
+        mock_verifier.validate_feature_config.side_effect = (
+            FeatureConfigValidationError("too many features")
+        )
+
+        downloader = ModelDownloader(download_config, mock_cache, mock_verifier)
+
+        with (
+            patch(
+                "real_estate.models.downloader.snapshot_download",
+                side_effect=_mock_snapshot_download(
+                    {
+                        "feature_config.json": json.dumps(
+                            {"version": "1.0", "features": []}
+                        )
+                    }
+                ),
+            ),
+            pytest.raises(FeatureConfigValidationError),
+        ):
+            await downloader.refresh_feature_config(sample_commitment)
+
+        mock_cache.update_feature_config.assert_not_called()

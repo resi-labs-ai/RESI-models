@@ -181,3 +181,4 @@ wandb*
 /data_runs
 /test_model_cache
 /model_cache
+/CLAUDE.md
