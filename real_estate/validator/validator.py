@@ -385,14 +385,22 @@ class Validator:
         tao_price = await get_tao_price_usd()
         alpha_price = await get_alpha_price_tao(self.subtensor, self.config.netuid)
 
-        # 2. Calculate Total Daily Subnet Value in USD
-        # Sum of neuron emissions * blocks per day (7200)
+        # 2. Calculate Total Daily Subnet Value in USD.
+        # Metagraph `emission` is per-tempo (~tempo blocks), so annualize with
+        # tempos-per-day = blocks_per_day / tempo, NOT blocks-per-day directly.
+        try:
+            tempo = int(self.subtensor.tempo(self.config.netuid)) or 360
+        except Exception:
+            tempo = 360
+        steps_per_day = 7200 / tempo
         # We sum all emissions for subnet value, but use only miner emissions for cap calculation
         total_subnet_emission_daily = (
-            sum(n.emission for n in self.metagraph.neurons) * 7200
+            sum(n.emission for n in self.metagraph.neurons) * steps_per_day
         )
         miner_neurons = [n for n in self.metagraph.neurons if not n.validator_permit]
-        total_miner_alpha_emission_daily = sum(n.emission for n in miner_neurons) * 7200
+        total_miner_alpha_emission_daily = (
+            sum(n.emission for n in miner_neurons) * steps_per_day
+        )
 
         total_usd_value_daily = (
             total_miner_alpha_emission_daily * alpha_price * tao_price
@@ -410,7 +418,7 @@ class Validator:
 
         # Log details
         logger.info(
-            f"Market: TAO=${tao_price:.2f}, Alpha={alpha_price:.4f} TAO. "
+            f"Market: TAO=${tao_price:.2f}, Alpha={alpha_price:.4f} TAO, tempo={tempo}. "
             f"Daily Miner Value: ${total_usd_value_daily:,.2f} USD (Subnet Total: ${total_subnet_usd_value:,.2f}). "
             f"Cap Burn: {cap_burn:.1%}, Manual Burn: {manual_burn:.1%}, Total Burn: {burn_amount:.1%}"
         )
