@@ -73,17 +73,19 @@ def validator(mock_config):
         mock_wallet.return_value.hotkey.ss58_address = "our_hotkey"
         v = Validator(mock_config)
         v.hotkeys = ["hk0", "hk1", "hk2", "hk3"]
+        # Metagraph emission is per-tempo; burn annualizes by 7200 / tempo.
+        v.subtensor.tempo.return_value = 360  # -> steps_per_day = 20
         return v
 
 @pytest.mark.asyncio
 async def test_apply_burn_below_limit(validator):
     # Setup: 10 Alpha/day * $200 TAO * 0.01 TAO/Alpha = $20 USD/day (Below $3000)
-    # Emission = 10 / 7200 per block
-    emission_per_block = 10.0 / 7200.0
+    # Emission is per-tempo; steps_per_day = 7200 / 360 = 20, so 10/day = 10/20 per tempo
+    emission_per_tempo = 10.0 / 20.0
     validator.metagraph = MagicMock()
     validator.metagraph.neurons = [
-        create_mock_neuron(0, "hk0", emission=emission_per_block),
-        create_mock_neuron(1, "hk1", emission=emission_per_block),
+        create_mock_neuron(0, "hk0", emission=emission_per_tempo),
+        create_mock_neuron(1, "hk1", emission=emission_per_tempo),
         create_mock_neuron(2, "hk2", emission=0.0), # Burn UID
     ]
     
@@ -108,11 +110,12 @@ async def test_apply_burn_below_limit(validator):
 @pytest.mark.asyncio
 async def test_apply_burn_above_limit(validator):
     # Setup: 1,000,000 Alpha/day * $200 TAO * 0.01 TAO/Alpha = $2,000,000 USD/day (Above $3000)
-    emission_per_block = 1_000_000.0 / 7200.0
+    # Emission is per-tempo; steps_per_day = 20.
+    emission_per_tempo = 1_000_000.0 / 20.0
     validator.metagraph = MagicMock()
     validator.metagraph.neurons = [
-        create_mock_neuron(0, "hk0", emission=emission_per_block),
-        create_mock_neuron(1, "hk1", emission=emission_per_block),
+        create_mock_neuron(0, "hk0", emission=emission_per_tempo),
+        create_mock_neuron(1, "hk1", emission=emission_per_tempo),
         create_mock_neuron(2, "hk2", emission=0.0), # Burn UID
     ]
     
@@ -140,10 +143,10 @@ async def test_apply_burn_above_limit(validator):
 @pytest.mark.asyncio
 async def test_apply_burn_manual_100_percent(validator):
     # Even if below limit, if MANUAL_BURN is 1.0, it should be 100% burn
-    emission_per_block = 10.0 / 7200.0
+    emission_per_tempo = 10.0 / 20.0
     validator.metagraph = MagicMock()
     validator.metagraph.neurons = [
-        create_mock_neuron(0, "hk0", emission=emission_per_block),
+        create_mock_neuron(0, "hk0", emission=emission_per_tempo),
     ]
     weights = {"hk0": 1.0}
     
