@@ -94,6 +94,25 @@ class TestDecentralizedSeedProviderCommit:
         )
         assert provider.commit() is None
 
+    def test_commit_treats_temporarily_banned_as_success(self) -> None:
+        """A resubmit 'temporarily banned' (Custom 1012) error means the
+        extrinsic already landed, so commit() must succeed — not fall back to
+        a non-deterministic seed — and must not keep resubmitting."""
+        subtensor = MagicMock()
+        subtensor.set_reveal_commitment.side_effect = RuntimeError(
+            "Subtensor returned `Custom type(1012)` error. "
+            "This means: `Transaction is temporarily banned`."
+        )
+
+        provider = DecentralizedSeedProvider(
+            subtensor=subtensor, wallet=MagicMock(), netuid=46,
+        )
+        result = provider.commit()
+
+        assert result is not None  # success, not the None fallback
+        # Ban is caught on the first attempt — no resubmit storm.
+        assert subtensor.set_reveal_commitment.call_count == 1
+
     def test_commit_uses_config_blocks(self) -> None:
         """Commit uses blocks_until_reveal from config."""
         subtensor = MagicMock()

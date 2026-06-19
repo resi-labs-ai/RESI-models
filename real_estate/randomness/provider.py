@@ -31,6 +31,19 @@ _subtensor_retry = retry(
 )
 
 
+def _is_already_submitted(exc: BaseException) -> bool:
+    """True if the error means our extrinsic is already in the mempool.
+
+    Substrate returns Custom error 1012 ("Transaction is temporarily banned")
+    when an identical extrinsic is resubmitted — which means the original
+    submission actually landed. We must treat that as success, not failure:
+    failing here drops the validator to a non-deterministic seed and breaks
+    cross-validator alignment of the memorizer check.
+    """
+    msg = str(exc).lower()
+    return "temporarily banned" in msg or "1012" in msg
+
+
 def combine_reveals(reveals: dict[str, str], modulus: int) -> int:
     """
     Deterministic combination of all validator reveals into a seed.
@@ -182,13 +195,30 @@ class DecentralizedSeedProvider:
         """Submit commitment to chain with retries.
 
         Separated from commit() so retries reuse the same random value.
+
+        A retry must never resubmit an extrinsic that already landed: the first
+        attempt can put the timelocked commitment in the mempool even if the
+        call then raises (e.g. a finalization timeout). Resubmitting the
+        identical extrinsic is rejected as "temporarily banned" (Custom 1012),
+        which actually confirms the original is in-flight — so we treat that as
+        success rather than letting the cycle fall back to a random seed.
+        Genuine transient errors still propagate and are retried.
         """
-        return self._subtensor.set_reveal_commitment(
-            wallet=self._wallet,
-            netuid=self._netuid,
-            data=value,
-            blocks_until_reveal=self._config.blocks_until_reveal,
-        )
+        try:
+            return self._subtensor.set_reveal_commitment(
+                wallet=self._wallet,
+                netuid=self._netuid,
+                data=value,
+                blocks_until_reveal=self._config.blocks_until_reveal,
+            )
+        except Exception as e:
+            if _is_already_submitted(e):
+                logger.warning(
+                    "Commitment already in mempool (chain reports it "
+                    "temporarily banned on resubmit); treating as submitted."
+                )
+                return True, 0
+            raise
 
     @_subtensor_retry
     def _query_epoch_info(self) -> tuple[int | None, int]:
