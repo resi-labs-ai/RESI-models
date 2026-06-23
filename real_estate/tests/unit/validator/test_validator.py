@@ -64,7 +64,6 @@ def mock_config() -> MagicMock:
     config.validation_data_download_raw = False
     config.scheduler_pre_download_hours = 3.0
     config.scheduler_catch_up_minutes = 30.0
-    config.burn_amount = 0.0
     config.burn_uid = -1
     config.randomness_enabled = False
     config.randomness_cycle_window_hours = 4.0
@@ -280,7 +279,7 @@ class TestSetWeights:
         validator.scores = np.array([1.0, 0.0, 0.0, 3.0, 0.0], dtype=np.float32)
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
 
-        # burn_uid < 0 disables burn (burn_amount is hardcoded to 1.0)
+        # burn_uid < 0 disables burn
         validator.config.burn_uid = -1
 
         mock_chain = MagicMock()
@@ -315,7 +314,7 @@ class TestSetWeights:
         mock_chain.set_weights = AsyncMock()
         validator.chain = mock_chain
 
-        # Patch the hardcoded burn_amount to simulate burn being re-enabled
+        # Patch _apply_burn to simulate a 50% burn
         with patch.object(
             Validator, "_apply_burn", wraps=validator._apply_burn
         ) as mock_burn:
@@ -343,13 +342,12 @@ class TestSetWeights:
     async def test_set_weights_no_burn_when_zero(
         self, validator: Validator
     ) -> None:
-        """Test no burn applied when burn_amount is 0."""
+        """Test no burn applied when burn_uid is disabled (< 0)."""
         validator.hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey"]
         validator.scores = np.array([1.0, 3.0, 0.0], dtype=np.float32)
         validator.metagraph = create_mock_metagraph(validator.hotkeys)
 
-        # No burn configured (defaults)
-        validator.config.burn_amount = 0.0
+        # No burn target configured (burn_uid < 0)
         validator.config.burn_uid = -1
 
         mock_chain = MagicMock()
@@ -410,7 +408,7 @@ class TestSetWeights:
         mock_chain.set_weights = AsyncMock()
         validator.chain = mock_chain
 
-        # Patch the hardcoded burn_amount to simulate burn being re-enabled
+        # Patch _apply_burn to simulate a 50% burn
         def burn_with_50(weights):
             burn_hotkey = validator.hotkeys[2]
             adjusted = {k: v * 0.5 for k, v in weights.items()}
