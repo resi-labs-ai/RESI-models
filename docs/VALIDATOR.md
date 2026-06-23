@@ -374,7 +374,6 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | `VALIDATION_DATA_MAX_RETRIES` | `24` | Retry attempts if data not ready (~2 hours) |
 | `VALIDATION_DATA_RETRY_DELAY` | `300` | Seconds between retries |
 | **Burn Configuration** | | |
-| `BURN_AMOUNT` | `0.0` | Fraction of emissions to burn (0.0-1.0) |
 | `BURN_UID` | `238` | UID receiving burn allocation (subnet owner) |
 | **HuggingFace** | | |
 | `HF_TOKEN` | | HuggingFace API token (higher rate limits) |
@@ -402,6 +401,8 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | `WANDB_ENTITY` | `resi-labs` | WandB team/entity |
 | `WANDB_OFF` | `true` | Disable WandB logging |
 | `WANDB_OFFLINE` | `false` | Run WandB in offline mode (logs saved locally) |
+
+> **Emission taper:** the burn fraction is not configurable. It is driven by a hardcoded Reward Cap taper — $3,000/day on the day-0 anchor (`2026-06-24`), decrementing $100 per evaluation cycle to $0 at day 30 — in preparation for the Zipco V2 launch. The schedule is baked into the validator so all validators taper identically; it changes only via a code release (autoupdater).
 
 ## Network Configuration
 
