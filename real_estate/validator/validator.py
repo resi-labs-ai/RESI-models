@@ -13,7 +13,7 @@ import json
 import logging
 import os
 import tempfile
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -73,9 +73,50 @@ class Validator:
     The ValidationOrchestrator handles the actual evaluation logic.
     """
 
-    # Hardcoded Reward Limit ($3,000 USD/day)
-    REWARD_LIMIT_USD = 3000.0
-    MANUAL_BURN = 0.0  # Burn off
+    # Reward Cap taper: start at $3,000 USD/day and decrement $100 per
+    # evaluation cycle, reaching $0 at day 30 (in preparation for Zipco V2).
+    # See docs/adr/0001-taper-miner-reward-cap-to-zero.md.
+    REWARD_LIMIT_USD = 3000.0  # day-0 starting cap
+    TAPER_STEP_USD = 100.0  # decrement per evaluation cycle
+    # Day-0 anchor. Hardcoded (not operator-configurable) so every validator on
+    # a given release tapers identically — a per-operator override would let
+    # validators diverge onto different taper days and emit different burns.
+    # Move the date via a code release + autoupdater, the repo's burn convention.
+    TAPER_START_DATE = date(2026, 6, 24)
+    # Daily boundary at which the taper steps, in UTC. Hardcoded (NOT the
+    # operator-configurable validation_data_schedule_hour) so every validator
+    # crosses the boundary at the same instant and stays in lockstep. 18:00 UTC
+    # matches the canonical daily evaluation time.
+    TAPER_ANCHOR_HOUR_UTC = 18
+
+    @staticmethod
+    def _reward_cap_for_day(day: int) -> float:
+        """Tapered miner-reward USD cap for a given taper day (floored at $0)."""
+        return max(0.0, Validator.REWARD_LIMIT_USD - Validator.TAPER_STEP_USD * day)
+
+    def _current_taper_day(self, now: datetime | None = None) -> int:
+        """Evaluation cycles elapsed since the taper start date.
+
+        Wall-clock aligned to a hardcoded daily boundary (``TAPER_ANCHOR_HOUR_UTC``),
+        deliberately independent of the operator-configurable eval schedule so
+        all validators step in lockstep. Advances with the calendar regardless
+        of validator uptime, and clamps to 0 before the start date (leaving the
+        cap at its day-0 value).
+        """
+        now = now or datetime.now(UTC)
+        start = self.TAPER_START_DATE
+        anchor = datetime(
+            start.year,
+            start.month,
+            start.day,
+            self.TAPER_ANCHOR_HOUR_UTC,
+            tzinfo=UTC,
+        )
+        return max(0, (now - anchor).days)
+
+    def _current_reward_cap_usd(self, now: datetime | None = None) -> float:
+        """Current tapered miner-reward USD cap for the active evaluation cycle."""
+        return self._reward_cap_for_day(self._current_taper_day(now))
 
     def __init__(self, config: argparse.Namespace):
         """
@@ -407,20 +448,29 @@ class Validator:
         )
         total_subnet_usd_value = total_subnet_emission_daily * alpha_price * tao_price
 
-        # 3. Calculate Dynamic Cap Burn to stay under REWARD_LIMIT_USD
-        cap_burn = 0.0
-        if total_usd_value_daily > self.REWARD_LIMIT_USD:
-            cap_burn = 1.0 - (self.REWARD_LIMIT_USD / total_usd_value_daily)
+        # 3. Determine the (tapered) Reward Cap and the Cap Burn needed to keep
+        #    miner reward USD/day at or below it.
+        reward_cap = self._current_reward_cap_usd()
+        if reward_cap <= 0.0:
+            # At the $0 floor, everything is burned unconditionally. This must
+            # not depend on the price feed: a price-API outage makes
+            # total_usd_value_daily fall to 0 and would otherwise re-enable
+            # full miner payouts at the exact point we want everything burned.
+            cap_burn = 1.0
+        elif total_usd_value_daily > reward_cap:
+            cap_burn = 1.0 - (reward_cap / total_usd_value_daily)
+        else:
+            cap_burn = 0.0
 
-        # 4. Final Burn calculation
-        manual_burn: float = self.MANUAL_BURN
-        burn_amount = 1.0 - (1.0 - cap_burn) * (1.0 - manual_burn)
+        # 4. The Cap Burn (taper) is the sole burn authority.
+        burn_amount = cap_burn
 
         # Log details
         logger.info(
             f"Market: TAO=${tao_price:.2f}, Alpha={alpha_price:.4f} TAO, tempo={tempo}. "
             f"Daily Miner Value: ${total_usd_value_daily:,.2f} USD (Subnet Total: ${total_subnet_usd_value:,.2f}). "
-            f"Cap Burn: {cap_burn:.1%}, Manual Burn: {manual_burn:.1%}, Total Burn: {burn_amount:.1%}"
+            f"Reward Cap: ${reward_cap:,.2f} (taper day {self._current_taper_day()}). "
+            f"Cap Burn / Total Burn: {burn_amount:.1%}"
         )
         for hk, w in weights.items():
             a0 = w * total_miner_alpha_emission_daily
