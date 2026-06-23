@@ -406,20 +406,19 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         default=os.environ.get("ATH_ENABLED", "false").lower() == "true",
     )
 
-    # Burn settings (emission burning via subnet owner UID)
-    parser.add_argument(
-        "--burn_amount",
-        type=float,
-        help="Fraction of emissions to burn (0.0-1.0). Allocated to burn_uid, rest distributed normally.",
-        default=float(os.environ.get("BURN_AMOUNT", "0.0")),
-    )
-
+    # Burn settings (emission burning via subnet owner UID).
+    # The burn fraction is not configurable: it is driven entirely by the
+    # tapered Reward Cap (see Validator._apply_burn / the taper settings below).
     parser.add_argument(
         "--burn_uid",
         type=int,
         help="UID of subnet owner to receive burn allocation (protocol burns this emission).",
         default=int(os.environ.get("BURN_UID", "238")),
     )
+    # Note: the Reward Cap taper (day 0 = $3,000, -$100 per evaluation cycle,
+    # $0 at day 30) is NOT configurable here. Its anchor and curve are hardcoded
+    # in Validator (TAPER_START_DATE / REWARD_LIMIT_USD / TAPER_STEP_USD) so all
+    # validators on a release taper identically.
 
 
 def get_config() -> argparse.Namespace:
@@ -468,13 +467,6 @@ def check_config(config: argparse.Namespace) -> None:
                 "--pylon.identity is required (or set PYLON_IDENTITY env var)"
             )
 
-    # Validate burn settings
-    if config.burn_amount < 0.0 or config.burn_amount > 1.0:
-        raise ValueError("--burn_amount must be between 0.0 and 1.0")
-
-    if config.burn_amount > 0.0 and config.burn_uid < 0:
-        raise ValueError("--burn_uid is required when --burn_amount > 0")
-
 
 def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
     """Convert config to dictionary for logging."""
@@ -517,7 +509,6 @@ def config_to_dict(config: argparse.Namespace) -> dict[str, Any]:
         "test_data_path": config.test_data_path,
         "test_models_dir": config.test_models_dir,
         "test_mode": config.test_mode,
-        "burn_amount": config.burn_amount,
         "burn_uid": config.burn_uid,
         "ath_enabled": config.ath_enabled,
         "randomness_enabled": config.randomness_enabled,
