@@ -76,6 +76,7 @@ class Validator:
     # Hardcoded Reward Limit ($3,000 USD/day)
     REWARD_LIMIT_USD = 3000.0
     MANUAL_BURN = 0.0  # Burn off
+    PRICE_WINDOW_SAMPLES = 20  # ~1 day of weight-setting cycles at tempo 360
 
     def __init__(self, config: argparse.Namespace):
         """
@@ -189,6 +190,12 @@ class Validator:
 
         # Block tracker for weight setting
         self._last_weight_set_block: int = 0
+
+        # Rolling window of recent alpha/USD prices. The burn is priced off the
+        # window's average (not spot), so the burn fraction moves slowly instead of
+        # yo-yoing with intraday price swings. Persisted so a restart keeps it.
+        self._price_window: list[float] = []
+        self._price_window_loaded: bool = False
 
         # Event to signal new validation data needs evaluation
         self._evaluation_event: asyncio.Event = asyncio.Event()
@@ -363,102 +370,96 @@ class Validator:
 
     async def _apply_burn(self, weights: dict[str, float]) -> dict[str, float]:
         """
-        Apply burn allocation to weights with dynamic $3,000 reward cap.
-
-        Burn mechanism allocates a fraction of emissions to the subnet owner UID,
-        which the protocol then burns. Remaining emissions are distributed
-        proportionally to other miners.
-
-        This implementation calculates a 'cap_burn' required to keep total
-        distributed miner rewards under $3,000 USD/day, based on current
-        Alpha and TAO market prices.
-
-        Args:
-            weights: Original weight distribution (must sum to 1.0)
-
-        Returns:
-            Adjusted weights with burn allocation (sums to 1.0)
+        Cap miner rewards near REWARD_LIMIT_USD/day by redirecting the overshoot to
+        the burn UID. The miner alpha emission rate is priced with a rolling
+        daily-average alpha/USD price (not spot) so the burn fraction moves slowly.
+        MANUAL_BURN stacks on top. Returns weights (summing to 1.0).
         """
         burn_uid: int = self.config.burn_uid
 
-        # 1. Fetch current market data
+        # 1. Price the alpha, averaged over the rolling window to smooth swings.
         tao_price = await get_tao_price_usd()
         alpha_price = await get_alpha_price_tao(self.subtensor, self.config.netuid)
+        spot_alpha_usd = alpha_price * tao_price
+        avg_alpha_usd = self._avg_alpha_usd(spot_alpha_usd)
 
-        # 2. Calculate Total Daily Subnet Value in USD.
-        # Metagraph `emission` is per-tempo (~tempo blocks), so annualize with
-        # tempos-per-day = blocks_per_day / tempo, NOT blocks-per-day directly.
+        # 2. Miner alpha emission rate. `emission` is per-tempo, so annualize by
+        # tempos/day. Miners are neurons that earn INCENTIVE — NOT
+        # `not validator_permit`: a winning miner accrues enough alpha to enter the
+        # top-64 and gain a validator_permit, which would then wrongly exclude it
+        # and read miner rewards as ~$0. Pure validators have incentive == 0.
         try:
             tempo = int(self.subtensor.tempo(self.config.netuid)) or 360
         except Exception:
             tempo = 360
         steps_per_day = 7200 / tempo
-        # We sum all emissions for subnet value, but use only miner emissions for cap calculation
-        total_subnet_emission_daily = (
-            sum(n.emission for n in self.metagraph.neurons) * steps_per_day
-        )
-        miner_neurons = [n for n in self.metagraph.neurons if not n.validator_permit]
-        total_miner_alpha_emission_daily = (
-            sum(n.emission for n in miner_neurons) * steps_per_day
+        miner_alpha_daily = (
+            sum(n.emission for n in self.metagraph.neurons if n.incentive > 0)
+            * steps_per_day
         )
 
-        total_usd_value_daily = (
-            total_miner_alpha_emission_daily * alpha_price * tao_price
-        )
-        total_subnet_usd_value = total_subnet_emission_daily * alpha_price * tao_price
+        # 3. Burn the overshoot above the limit, then stack the manual burn.
+        cap_burn = self._cap_burn(miner_alpha_daily, avg_alpha_usd)
+        burn_amount = 1.0 - (1.0 - cap_burn) * (1.0 - self.MANUAL_BURN)
 
-        # 3. Calculate Dynamic Cap Burn to stay under REWARD_LIMIT_USD
-        cap_burn = 0.0
-        if total_usd_value_daily > self.REWARD_LIMIT_USD:
-            cap_burn = 1.0 - (self.REWARD_LIMIT_USD / total_usd_value_daily)
-
-        # 4. Final Burn calculation
-        manual_burn: float = self.MANUAL_BURN
-        burn_amount = 1.0 - (1.0 - cap_burn) * (1.0 - manual_burn)
-
-        # Log details
         logger.info(
-            f"Market: TAO=${tao_price:.2f}, Alpha={alpha_price:.4f} TAO, tempo={tempo}. "
-            f"Daily Miner Value: ${total_usd_value_daily:,.2f} USD (Subnet Total: ${total_subnet_usd_value:,.2f}). "
-            f"Cap Burn: {cap_burn:.1%}, Manual Burn: {manual_burn:.1%}, Total Burn: {burn_amount:.1%}"
+            f"Burn: miners {miner_alpha_daily:,.0f}α/day @ avg ${avg_alpha_usd:.4f} "
+            f"(spot ${spot_alpha_usd:.4f}, n={len(self._price_window)}) = "
+            f"${miner_alpha_daily * avg_alpha_usd:,.0f}/day. Cap {cap_burn:.1%} + "
+            f"manual {self.MANUAL_BURN:.1%} = {burn_amount:.1%} to UID {burn_uid}."
         )
-        for hk, w in weights.items():
-            a0 = w * total_miner_alpha_emission_daily
-            u0 = a0 * alpha_price * tao_price
-            ac = a0 * (1.0 - cap_burn)
-            uc = ac * alpha_price * tao_price
-            af = a0 * (1.0 - burn_amount)
-            logger.info(
-                f"UID {self.hotkeys.index(hk)}: Ideal {a0:.2f}α (${u0:.2f}) | "
-                f"Capped {ac:.2f}α (${uc:.2f}) | Final {af:.2f}α"
-            )
 
-        # No burn configured or burn_uid invalid
         if burn_amount <= 0.0 or burn_uid < 0:
             return weights
-
-        # Get burn hotkey from UID
         if burn_uid >= len(self.hotkeys):
             logger.error(
-                f"burn_uid {burn_uid} out of range (max {len(self.hotkeys) - 1}), skipping burn"
+                f"burn_uid {burn_uid} out of range (max {len(self.hotkeys) - 1})"
             )
             return weights
 
+        # Scale existing weights down and hand the freed share to the burn UID.
         burn_hotkey = self.hotkeys[burn_uid]
+        adjusted = {hk: w * (1.0 - burn_amount) for hk, w in weights.items()}
+        adjusted[burn_hotkey] = adjusted.get(burn_hotkey, 0.0) + burn_amount
+        return adjusted
 
-        # Scale down all existing weights
-        remaining_share = 1.0 - burn_amount
-        adjusted_weights = {
-            hotkey: weight * remaining_share for hotkey, weight in weights.items()
-        }
+    def _cap_burn(self, miner_alpha_daily: float, alpha_usd: float) -> float:
+        """Fraction to burn so miner rewards land at REWARD_LIMIT_USD/day (0 if
+        already under). Returns a value in [0.0, 1.0)."""
+        projected_usd = miner_alpha_daily * alpha_usd
+        if projected_usd <= self.REWARD_LIMIT_USD:
+            return 0.0
+        return 1.0 - self.REWARD_LIMIT_USD / projected_usd
 
-        # Add burn allocation (overwrite if burn_hotkey already has weight)
-        existing_burn_weight = adjusted_weights.get(burn_hotkey, 0.0)
-        adjusted_weights[burn_hotkey] = existing_burn_weight + burn_amount
+    def _avg_alpha_usd(self, spot_alpha_usd: float) -> float:
+        """Append the spot price to the rolling window and return its mean."""
+        if not self._price_window_loaded:
+            self._load_price_window()
+            self._price_window_loaded = True
+        self._price_window = (self._price_window + [spot_alpha_usd])[
+            -self.PRICE_WINDOW_SAMPLES :
+        ]
+        self._save_price_window()
+        return sum(self._price_window) / len(self._price_window)
 
-        logger.info(f"Applied {burn_amount:.1%} total burn to UID {burn_uid}")
+    def _price_window_path(self) -> Path:
+        return Path(self.config.model_cache_path) / "burn_price_window.json"
 
-        return adjusted_weights
+    def _load_price_window(self) -> None:
+        try:
+            self._price_window = [
+                float(p) for p in json.loads(self._price_window_path().read_text())
+            ]
+        except FileNotFoundError:
+            pass
+        except Exception as e:  # noqa: BLE001 — never let state I/O block weights
+            logger.warning(f"Could not load burn price window: {e}")
+
+    def _save_price_window(self) -> None:
+        try:
+            self._price_window_path().write_text(json.dumps(self._price_window))
+        except Exception as e:  # noqa: BLE001 — never let state I/O block weights
+            logger.warning(f"Could not save burn price window: {e}")
 
     def _get_next_eval_time(self) -> datetime:
         """Calculate next scheduled evaluation time based on config."""
