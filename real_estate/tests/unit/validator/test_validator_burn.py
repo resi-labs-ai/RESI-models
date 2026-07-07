@@ -1,11 +1,18 @@
-import pytest
-import numpy as np
 from unittest.mock import AsyncMock, MagicMock, patch
-from real_estate.validator import Validator
-from real_estate.chain.models import Neuron, Metagraph
-from datetime import datetime
 
-def create_mock_neuron(uid: int, hotkey: str, validator_permit: bool = False, emission: float = 1.0) -> Neuron:
+import pytest
+
+from real_estate.chain.models import Neuron
+from real_estate.validator import Validator
+
+
+def create_mock_neuron(
+    uid: int,
+    hotkey: str,
+    validator_permit: bool = False,
+    emission: float = 1.0,
+    incentive: float = 0.1,
+) -> Neuron:
     return Neuron(
         uid=uid,
         hotkey=hotkey,
@@ -13,15 +20,16 @@ def create_mock_neuron(uid: int, hotkey: str, validator_permit: bool = False, em
         stake=100.0,
         trust=0.5,
         consensus=0.5,
-        incentive=0.1,
+        incentive=incentive,
         dividends=0.1,
         emission=emission,
         is_active=True,
         validator_permit=validator_permit,
     )
 
+
 @pytest.fixture
-def mock_config() -> MagicMock:
+def mock_config(tmp_path) -> MagicMock:
     config = MagicMock()
     config.netuid = 46
     config.burn_uid = 2
@@ -59,7 +67,10 @@ def mock_config() -> MagicMock:
     config.wandb_predictions_top_n = 10
     config.disable_set_weights = False
     config.epoch_length = 100
+    # Price-window state persists here; a temp dir keeps tests isolated + on disk.
+    config.model_cache_path = tmp_path
     return config
+
 
 @pytest.fixture
 def validator(mock_config):
@@ -75,89 +86,151 @@ def validator(mock_config):
         v.hotkeys = ["hk0", "hk1", "hk2", "hk3"]
         # Metagraph emission is per-tempo; burn annualizes by 7200 / tempo.
         v.subtensor.tempo.return_value = 360  # -> steps_per_day = 20
+        # Skip the on-disk price window so each test controls state directly.
+        v._price_window_loaded = True
         return v
 
-@pytest.mark.asyncio
-async def test_apply_burn_below_limit(validator):
-    # Setup: 10 Alpha/day * $200 TAO * 0.01 TAO/Alpha = $20 USD/day (Below $3000)
-    # Emission is per-tempo; steps_per_day = 7200 / 360 = 20, so 10/day = 10/20 per tempo
-    emission_per_tempo = 10.0 / 20.0
-    validator.metagraph = MagicMock()
-    validator.metagraph.neurons = [
-        create_mock_neuron(0, "hk0", emission=emission_per_tempo),
-        create_mock_neuron(1, "hk1", emission=emission_per_tempo),
-        create_mock_neuron(2, "hk2", emission=0.0), # Burn UID
+
+def _set_neurons(
+    validator, emission_per_tempo: float, n_miners: int = 2, winner_permit: bool = False
+) -> None:
+    """Two miners with incentive, plus a pure-validator burn UID (incentive=0).
+
+    `winner_permit=True` gives the miners a validator_permit to prove they are
+    still counted as miners (they earn incentive) despite holding the permit.
+    """
+    neurons = [
+        create_mock_neuron(
+            i,
+            f"hk{i}",
+            emission=emission_per_tempo,
+            incentive=0.5,
+            validator_permit=winner_permit,
+        )
+        for i in range(n_miners)
     ]
-    
+    # burn UID: a pure validator — has a permit, earns no incentive.
+    neurons.append(
+        create_mock_neuron(2, "hk2", emission=0.0, incentive=0.0, validator_permit=True)
+    )
+    validator.metagraph = MagicMock()
+    validator.metagraph.neurons = neurons
+
+
+def _price_patches():
+    return (
+        patch(
+            "real_estate.validator.validator.get_tao_price_usd",
+            new_callable=AsyncMock,
+            return_value=200.0,
+        ),
+        patch(
+            "real_estate.validator.validator.get_alpha_price_tao",
+            new_callable=AsyncMock,
+            return_value=0.01,
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_under_limit_no_cap_burn(validator):
+    """A modest miner rate stays under $3k → no cap burn (manual burn only)."""
+    # 2 * 0.5 * 20 = 20 alpha/day * (0.01 * 200 = $2) = $40/day — far under limit.
+    _set_neurons(validator, emission_per_tempo=10.0 / 20.0)
     weights = {"hk0": 0.5, "hk1": 0.5}
-    
-    with (
-        patch("real_estate.validator.validator.get_tao_price_usd", new_callable=AsyncMock) as mock_tao,
-        patch("real_estate.validator.validator.get_alpha_price_tao", new_callable=AsyncMock) as mock_alpha,
-    ):
-        mock_tao.return_value = 200.0
-        mock_alpha.return_value = 0.01
-        # Set MANUAL_BURN to 0.1 for testing
+    p_tao, p_alpha = _price_patches()
+    with p_tao, p_alpha:
         validator.MANUAL_BURN = 0.1
         adjusted = await validator._apply_burn(weights)
-        
-        # cap_burn should be 0.0
-        # burn_amount = 1.0 - (1.0 - 0.0) * (1.0 - 0.1) = 0.1
-        assert adjusted["hk2"] == pytest.approx(0.1)
-        assert adjusted["hk0"] == pytest.approx(0.5 * 0.9)
-        assert adjusted["hk1"] == pytest.approx(0.5 * 0.9)
+
+    # cap_burn = 0 → burn_amount = 1 - (1)(1-0.1) = 0.1
+    assert adjusted["hk2"] == pytest.approx(0.1)
+    assert adjusted["hk0"] == pytest.approx(0.5 * 0.9)
+
 
 @pytest.mark.asyncio
-async def test_apply_burn_above_limit(validator):
-    # Setup: 1,000,000 Alpha/day * $200 TAO * 0.01 TAO/Alpha = $2,000,000 USD/day (Above $3000)
-    # Emission is per-tempo; steps_per_day = 20.
-    emission_per_tempo = 1_000_000.0 / 20.0
-    validator.metagraph = MagicMock()
-    validator.metagraph.neurons = [
-        create_mock_neuron(0, "hk0", emission=emission_per_tempo),
-        create_mock_neuron(1, "hk1", emission=emission_per_tempo),
-        create_mock_neuron(2, "hk2", emission=0.0), # Burn UID
-    ]
-    
+async def test_winner_with_validator_permit_still_counted(validator):
+    """A miner that gained a validator_permit is still measured as a miner.
+
+    This is the bug the redesign fixes: filtering on `not validator_permit` would
+    exclude the winner and read miner rewards as ~$0, so nothing gets burned.
+    """
+    # Big rate that SHOULD trip the cap: 2 * 50000 * 20 = 2,000,000 alpha/day
+    # * $2 = $4,000,000/day. The miners carry a validator_permit here.
+    _set_neurons(validator, emission_per_tempo=50_000.0, winner_permit=True)
     weights = {"hk0": 0.5, "hk1": 0.5}
-    
-    with (
-        patch("real_estate.validator.validator.get_tao_price_usd", new_callable=AsyncMock) as mock_tao,
-        patch("real_estate.validator.validator.get_alpha_price_tao", new_callable=AsyncMock) as mock_alpha,
-    ):
-        mock_tao.return_value = 200.0
-        mock_alpha.return_value = 0.01
-        validator.MANUAL_BURN = 0.0 # Only cap burn
-        # Daily value = (2,000,000 / 7200) * 7200 * 0.01 * 200 = 2,000,000 * 2 = 4,000,000 USD?
-        # Wait. emission is per block. sum(emissions) = 2 * (1M/7200)
-        # total_miner_alpha_emission_daily = (2M / 7200) * 7200 = 2M Alpha
-        # value = 2M * 0.01 * 200 = 4,000,000 USD.
-        # cap_burn = 1.0 - (3000 / 4,000,000) = 1.0 - 0.00075 = 0.99925
-        
+    p_tao, p_alpha = _price_patches()
+    with p_tao, p_alpha:
+        validator.MANUAL_BURN = 0.0
         adjusted = await validator._apply_burn(weights)
-        
-        expected_burn = 1.0 - (3000.0 / 4000000.0)
-        assert adjusted["hk2"] == pytest.approx(expected_burn)
-        assert adjusted["hk0"] == pytest.approx(0.5 * (1.0 - expected_burn))
+
+    # Because the permit-holding miners are still counted, the cap fires.
+    assert adjusted["hk2"] > 0.99  # nearly everything burned
+
 
 @pytest.mark.asyncio
-async def test_apply_burn_manual_100_percent(validator):
-    # Even if below limit, if MANUAL_BURN is 1.0, it should be 100% burn
-    emission_per_tempo = 10.0 / 20.0
-    validator.metagraph = MagicMock()
-    validator.metagraph.neurons = [
-        create_mock_neuron(0, "hk0", emission=emission_per_tempo),
-    ]
+async def test_partial_burn_at_overshoot(validator):
+    """Rate above the limit → burn only the overshoot down to $3k."""
+    # 2 * 50000 * 20 = 2,000,000 alpha/day * $2 = $4,000,000/day.
+    _set_neurons(validator, emission_per_tempo=50_000.0)
+    weights = {"hk0": 0.5, "hk1": 0.5}
+    p_tao, p_alpha = _price_patches()
+    with p_tao, p_alpha:
+        validator.MANUAL_BURN = 0.0
+        adjusted = await validator._apply_burn(weights)
+
+    expected_burn = 1.0 - 3000.0 / 4_000_000.0
+    assert adjusted["hk2"] == pytest.approx(expected_burn)
+    assert adjusted["hk0"] == pytest.approx(0.5 * (1.0 - expected_burn))
+
+
+@pytest.mark.asyncio
+async def test_manual_burn_overrides_everything(validator):
+    """MANUAL_BURN = 1.0 forces 100% burn regardless of rate."""
+    _set_neurons(validator, emission_per_tempo=10.0 / 20.0)
     weights = {"hk0": 1.0}
-    
-    with (
-        patch("real_estate.validator.validator.get_tao_price_usd", new_callable=AsyncMock) as mock_tao,
-        patch("real_estate.validator.validator.get_alpha_price_tao", new_callable=AsyncMock) as mock_alpha,
-    ):
-        mock_tao.return_value = 200.0
-        mock_alpha.return_value = 0.01
+    p_tao, p_alpha = _price_patches()
+    with p_tao, p_alpha:
         validator.MANUAL_BURN = 1.0
         adjusted = await validator._apply_burn(weights)
-        
-        assert adjusted["hk2"] == pytest.approx(1.0)
-        assert adjusted.get("hk0", 0.0) == 0.0
+
+    assert adjusted["hk2"] == pytest.approx(1.0)
+    assert adjusted.get("hk0", 0.0) == 0.0
+
+
+def test_cap_burn_math(validator):
+    """_cap_burn burns the overshoot and nothing when under the limit."""
+    assert validator._cap_burn(1000.0, 1.0) == 0.0  # $1000/day < $3000
+    assert validator._cap_burn(0.0, 5.0) == 0.0  # no emission
+    # $6000/day → burn half to land at $3000.
+    assert validator._cap_burn(6000.0, 1.0) == pytest.approx(0.5)
+
+
+def test_rolling_average_smooths_price(validator):
+    """The window averages spot prices, damping intraday swings."""
+    validator._price_window = []
+    assert validator._avg_alpha_usd(2.0) == pytest.approx(2.0)
+    assert validator._avg_alpha_usd(4.0) == pytest.approx(3.0)
+    assert validator._avg_alpha_usd(6.0) == pytest.approx(4.0)
+
+
+def test_window_capped_at_sample_limit(validator):
+    """The window keeps only the last PRICE_WINDOW_SAMPLES prices."""
+    validator._price_window = []
+    for _ in range(Validator.PRICE_WINDOW_SAMPLES + 5):
+        validator._avg_alpha_usd(1.0)
+    assert len(validator._price_window) == Validator.PRICE_WINDOW_SAMPLES
+
+
+def test_price_window_survives_restart(validator):
+    """Samples persist to disk and reload, so a restart keeps the window."""
+    validator._price_window = []
+    validator._avg_alpha_usd(1.5)
+    validator._avg_alpha_usd(2.5)
+
+    # Simulate a restart: wipe in-memory state, reload from disk.
+    validator._price_window = []
+    validator._price_window_loaded = False
+    validator._load_price_window()
+
+    assert validator._price_window == pytest.approx([1.5, 2.5])
