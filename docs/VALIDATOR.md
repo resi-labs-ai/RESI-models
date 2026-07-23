@@ -365,8 +365,15 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | `SUBTENSOR_NETWORK` | `finney` | Network name or `ws://` endpoint |
 | `NETUID` | `46` | Subnet UID |
 | `PYLON_URL` | `http://localhost:8000` | Pylon service URL |
-| `ARCHIVE_NETWORK` | `finney` | Archive network for Pylon historical block lookups |
+| `ARCHIVE_NETWORK` | `archive` | Archive node for Pylon historical block lookups. Must be a true (unpruned) archive node — model commitments can be months old. Name or `ws://` endpoint |
 | `ARCHIVE_BLOCKS_CUTOFF` | `256` | Blocks older than this use archive node |
+
+> **Note:** `SUBTENSOR_NETWORK` and `ARCHIVE_NETWORK` are substituted into the
+> Pylon container by docker compose **at startup**, read from a `.env` file in
+> the same directory as `docker-compose.yml` (or exported shell variables).
+> After changing them, recreate the container:
+> `docker compose up -d --force-recreate pylon` — then verify with
+> `docker exec resi_pylon env | grep -E "ARCHIVE|NETWORK"`.
 | **Validation Schedule** | | |
 | `VALIDATION_DATA_URL` | `https://resi-validator-api.vercel.app` | Validation data API URL |
 | `VALIDATION_DATA_SCHEDULE_HOUR` | `18` | Hour (UTC) for daily evaluation |
