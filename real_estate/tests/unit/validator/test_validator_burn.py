@@ -170,7 +170,7 @@ async def test_winner_with_validator_permit_still_counted(validator):
 
 @pytest.mark.asyncio
 async def test_partial_burn_at_overshoot(validator):
-    """Rate above the limit → burn only the overshoot down to $3k."""
+    """Rate above the limit → burn only the overshoot down to the limit."""
     # 2 * 50000 * 20 = 2,000,000 alpha/day * $2 = $4,000,000/day.
     _set_neurons(validator, emission_per_tempo=50_000.0)
     weights = {"hk0": 0.5, "hk1": 0.5}
@@ -179,7 +179,7 @@ async def test_partial_burn_at_overshoot(validator):
         validator.MANUAL_BURN = 0.0
         adjusted = await validator._apply_burn(weights)
 
-    expected_burn = 1.0 - 3000.0 / 4_000_000.0
+    expected_burn = 1.0 - Validator.REWARD_LIMIT_USD / 4_000_000.0
     assert adjusted["hk2"] == pytest.approx(expected_burn)
     assert adjusted["hk0"] == pytest.approx(0.5 * (1.0 - expected_burn))
 
@@ -200,10 +200,11 @@ async def test_manual_burn_overrides_everything(validator):
 
 def test_cap_burn_math(validator):
     """_cap_burn burns the overshoot and nothing when under the limit."""
-    assert validator._cap_burn(1000.0, 1.0) == 0.0  # $1000/day < $3000
+    limit = Validator.REWARD_LIMIT_USD
+    assert validator._cap_burn(limit * 0.5, 1.0) == 0.0  # under the limit
     assert validator._cap_burn(0.0, 5.0) == 0.0  # no emission
-    # $6000/day → burn half to land at $3000.
-    assert validator._cap_burn(6000.0, 1.0) == pytest.approx(0.5)
+    # 2x the limit → burn half to land back at the limit.
+    assert validator._cap_burn(limit * 2.0, 1.0) == pytest.approx(0.5)
 
 
 def test_rolling_average_smooths_price(validator):
