@@ -73,8 +73,8 @@ class Validator:
     The ValidationOrchestrator handles the actual evaluation logic.
     """
 
-    # Hardcoded Reward Limit ($3,000 USD/day)
-    REWARD_LIMIT_USD = 3000.0
+    # Hardcoded Reward Limit ($1,000 USD/day)
+    REWARD_LIMIT_USD = 1000.0
     MANUAL_BURN = 0.0  # Burn off
     PRICE_WINDOW_SAMPLES = 20  # ~1 day of weight-setting cycles at tempo 360
 
