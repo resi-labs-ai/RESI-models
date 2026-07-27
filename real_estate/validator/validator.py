@@ -381,7 +381,11 @@ class Validator:
         tao_price = await get_tao_price_usd()
         alpha_price = await get_alpha_price_tao(self.subtensor, self.config.netuid)
         spot_alpha_usd = alpha_price * tao_price
-        avg_alpha_usd = self._avg_alpha_usd(spot_alpha_usd)
+        # A failed chain price call yields alpha_price == 0.0 (unknown). We must
+        # NOT compute the cap on a bogus price — a wrong price silently over-burns
+        # and starves miners. price_ok gates the cap only; MANUAL_BURN still applies
+        # (it's a price-independent operator control).
+        price_ok = alpha_price > 0.0 and tao_price > 0.0
 
         # 2. Miner alpha emission rate. `emission` is per-tempo, so annualize by
         # tempos/day. Miners are neurons that earn INCENTIVE — NOT
@@ -398,8 +402,19 @@ class Validator:
             * steps_per_day
         )
 
-        # 3. Burn the overshoot above the limit, then stack the manual burn.
-        cap_burn = self._cap_burn(miner_alpha_daily, avg_alpha_usd)
+        # 3. Burn the overshoot above the limit, then stack the manual burn. Skip
+        # the cap (but not the manual burn) when the price is untrusted, and don't
+        # feed a bad reading into the rolling window.
+        if price_ok:
+            avg_alpha_usd = self._avg_alpha_usd(spot_alpha_usd)
+            cap_burn = self._cap_burn(miner_alpha_daily, avg_alpha_usd)
+        else:
+            avg_alpha_usd = 0.0
+            cap_burn = 0.0
+            logger.error(
+                f"Untrusted price (alpha={alpha_price} TAO, TAO=${tao_price:.2f}); "
+                "skipping cap burn — miners left uncapped until the price recovers."
+            )
         burn_amount = 1.0 - (1.0 - cap_burn) * (1.0 - self.MANUAL_BURN)
 
         logger.info(

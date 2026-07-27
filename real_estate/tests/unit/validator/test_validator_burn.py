@@ -198,6 +198,36 @@ async def test_manual_burn_overrides_everything(validator):
     assert adjusted.get("hk0", 0.0) == 0.0
 
 
+@pytest.mark.asyncio
+async def test_untrusted_price_skips_cap_but_keeps_manual_burn(validator):
+    """A 0.0 alpha price (failed chain call) must NOT burn via the cap — burning on
+    a bogus price is what starves miners — but MANUAL_BURN still applies."""
+    # A rate that WOULD trip the cap hard if it were priced.
+    _set_neurons(validator, emission_per_tempo=50_000.0)
+    weights = {"hk0": 0.5, "hk1": 0.5}
+    p_tao = patch(
+        "real_estate.validator.validator.get_tao_price_usd",
+        new_callable=AsyncMock,
+        return_value=200.0,
+    )
+    p_alpha = patch(
+        "real_estate.validator.validator.get_alpha_price_tao",
+        new_callable=AsyncMock,
+        return_value=0.0,  # chain price call failed
+    )
+    with p_tao, p_alpha:
+        validator.MANUAL_BURN = 0.0
+        adjusted = await validator._apply_burn(weights)
+    # No cap burn: weights returned unchanged, nothing routed to the burn UID.
+    assert adjusted == weights
+
+    # But a manual burn is price-independent and must still fire.
+    with p_tao, p_alpha:
+        validator.MANUAL_BURN = 1.0
+        adjusted = await validator._apply_burn(weights)
+    assert adjusted["hk2"] == pytest.approx(1.0)
+
+
 def test_cap_burn_math(validator):
     """_cap_burn burns the overshoot and nothing when under the limit."""
     limit = Validator.REWARD_LIMIT_USD

@@ -42,23 +42,42 @@ async def get_tao_price_usd() -> float:
     return _price_cache.get("tao_usd", 0.0)
 
 
+# A dTAO subnet's alpha price is a pool ratio strictly below 1 TAO. A value at or
+# above 1.0 is not a real price — this function used to hard-code 1.0 on failure,
+# which valued alpha ~166x too high and made the burn cap over-burn and starve
+# miners. Treat anything outside (0, 1) as "unknown" and return 0.0 so callers can
+# refuse to burn on it.
+_MAX_PLAUSIBLE_ALPHA_TAO = 1.0
+
+
+def _plausible_alpha(p: float) -> bool:
+    return 0.0 < p < _MAX_PLAUSIBLE_ALPHA_TAO
+
+
 async def get_alpha_price_tao(subtensor: bt.subtensor, netuid: int) -> float:
-    """Fetch Alpha price in TAO from subtensor."""
+    """Fetch Alpha price in TAO from subtensor.
+
+    Returns 0.0 when no trustworthy price is available (chain call failed or the
+    value is implausible). Callers MUST treat 0.0 as 'unknown' and NOT burn on it:
+    a bogus non-zero price silently over-burns and starves miners.
+    """
     try:
         # Standard SDK method for dTAO price
         if hasattr(subtensor, "get_subnet_price"):
             price = subtensor.get_subnet_price(netuid)
             if price:
                 p = float(price.tao)
-                if p > 0:
+                if _plausible_alpha(p):
                     _price_cache[f"alpha_{netuid}"] = p
                     return p
 
         # Fallback to info
         info = subtensor.get_subnet_info(netuid)
-        price = float(getattr(info, "price", 1.0))
-        _price_cache[f"alpha_{netuid}"] = price
-        return price
+        p = float(getattr(info, "price", 0.0) or 0.0)
+        if _plausible_alpha(p):
+            _price_cache[f"alpha_{netuid}"] = p
+            return p
     except Exception as e:
-        logger.debug(f"Alpha price fetch failed: {e}")
-        return _price_cache.get(f"alpha_{netuid}", 1.0)
+        logger.warning(f"Alpha price fetch failed: {e}")
+    # No trustworthy live value — use the last good cached price, else 0.0 (unknown).
+    return _price_cache.get(f"alpha_{netuid}", 0.0)
