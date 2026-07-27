@@ -89,6 +89,9 @@ PYLON_URL=http://localhost:8000
 # =============================================================================
 SUBTENSOR_NETWORK=finney
 NETUID=46
+# Historical lookups (model download verification). Default is fine; if you
+# run your own node it MUST be a true archive node. See "Custom Endpoints".
+# ARCHIVE_NETWORK=archive
 
 # =============================================================================
 # WandB Logging (Recommended, disabled by default)
@@ -365,8 +368,15 @@ docker logs --since 24h resi_pylon > pylon_debug.log 2>&1
 | `SUBTENSOR_NETWORK` | `finney` | Network name or `ws://` endpoint |
 | `NETUID` | `46` | Subnet UID |
 | `PYLON_URL` | `http://localhost:8000` | Pylon service URL |
-| `ARCHIVE_NETWORK` | `finney` | Archive network for Pylon historical block lookups |
+| `ARCHIVE_NETWORK` | `archive` | Archive node for Pylon historical block lookups. Must be a true (unpruned) archive node — model commitments can be months old. Name or `ws://` endpoint |
 | `ARCHIVE_BLOCKS_CUTOFF` | `256` | Blocks older than this use archive node |
+
+> **Note:** `SUBTENSOR_NETWORK` and `ARCHIVE_NETWORK` are substituted into the
+> Pylon container by docker compose **at startup**, read from a `.env` file in
+> the same directory as `docker-compose.yml` (or exported shell variables).
+> After changing them, recreate the container:
+> `docker compose up -d --force-recreate pylon` — then verify with
+> `docker exec resi_pylon env | grep -E "ARCHIVE|NETWORK"`.
 | **Validation Schedule** | | |
 | `VALIDATION_DATA_URL` | `https://resi-validator-api.vercel.app` | Validation data API URL |
 | `VALIDATION_DATA_SCHEDULE_HOUR` | `18` | Hour (UTC) for daily evaluation |
@@ -419,10 +429,40 @@ SUBTENSOR_NETWORK=test
 NETUID=428
 ```
 
-### Custom Endpoint
+### Custom Endpoints (Your Own RPC Nodes)
+
+The validator uses **two** chain endpoints, both consumed by the Pylon container:
 
 ```bash
+# Live traffic: weights, metagraph, commitments, current blocks
 SUBTENSOR_NETWORK=ws://your-node:port
+
+# Historical lookups (blocks older than ARCHIVE_BLOCKS_CUTOFF, default 256).
+# Model commitments are 30+ days old, so every model download verifies its
+# extrinsic through THIS endpoint. It must be a TRUE archive node (unpruned) —
+# a lite or pruned node will fail every download with "Extrinsic not found".
+ARCHIVE_NETWORK=ws://your-archive-node:port
+```
+
+Three rules when pointing these at your own nodes:
+
+1. **Location**: docker compose substitutes these into the Pylon container from a
+   `.env` file in the **same directory as `docker-compose.yml`** (or from
+   exported shell variables) — not from pm2's environment.
+2. **They apply at container creation.** Editing `.env` does nothing to a
+   running container. After any change:
+   ```bash
+   docker compose up -d --force-recreate pylon
+   ```
+3. **Reachability is from inside the container.** A hostname that resolves on
+   the host may not resolve in Docker. If your RPC runs on the host itself, use
+   `ws://host.docker.internal:port` (on Linux also add
+   `extra_hosts: ["host.docker.internal:host-gateway"]` to the pylon service).
+
+Verify what Pylon actually has:
+
+```bash
+docker exec resi_pylon env | grep -E "ARCHIVE|NETWORK"
 ```
 
 ## Troubleshooting
@@ -442,6 +482,27 @@ ls ~/.bittensor/wallets/$WALLET_NAME
 # Ensure port 8000 is free
 lsof -i :8000
 ```
+
+### Model Downloads Fail: "Extrinsic ... not found on chain"
+
+Every model download verifies the miner's commit extrinsic, which is always
+30+ days old (models must age `MODEL_MIN_COMMITMENT_AGE_BLOCKS` before
+download). These lookups go through Pylon's **archive** endpoint — if that
+endpoint prunes history, every download fails.
+
+```bash
+# 1. What archive endpoint is Pylon actually using?
+docker exec resi_pylon env | grep ARCHIVE
+# Expect: PYLON_BITTENSOR_ARCHIVE_NETWORK=archive (or your own ws:// URL)
+
+# 2. If it shows something else, fix .env NEXT TO docker-compose.yml, then:
+docker compose up -d --force-recreate pylon
+# (a pm2 restart does NOT update the container's environment)
+```
+
+If it still fails with the right endpoint, your archive RPC is not a true
+(unpruned) archive node, or it is unreachable from inside the container — see
+[Custom Endpoints](#custom-endpoints-your-own-rpc-nodes).
 
 ### Validator Can't Connect to Pylon
 
