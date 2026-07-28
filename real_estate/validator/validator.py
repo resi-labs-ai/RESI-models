@@ -197,6 +197,12 @@ class Validator:
         self._price_window: list[float] = []
         self._price_window_loaded: bool = False
 
+        # Last good alpha price (TAO), persisted. If a price fetch fails we hold
+        # this instead of uncapping — a missing price must never silently drop the
+        # cap or (worse) over-burn on a bogus value.
+        self._last_alpha_tao: float = 0.0
+        self._last_alpha_loaded: bool = False
+
         # Event to signal new validation data needs evaluation
         self._evaluation_event: asyncio.Event = asyncio.Event()
 
@@ -378,10 +384,17 @@ class Validator:
         burn_uid: int = self.config.burn_uid
 
         # 1. Price the alpha, averaged over the rolling window to smooth swings.
+        # On a failed fetch, hold the last-good price rather than uncapping.
         tao_price = await get_tao_price_usd()
-        alpha_price = await get_alpha_price_tao(self.subtensor, self.config.netuid)
+        alpha_price = self._resolve_alpha_price(
+            await get_alpha_price_tao(self.subtensor, self.config.netuid)
+        )
         spot_alpha_usd = alpha_price * tao_price
-        avg_alpha_usd = self._avg_alpha_usd(spot_alpha_usd)
+        # price_ok is False only when we have NO trustworthy price at all (fetch
+        # failed and no last-good). Then skip the cap rather than burn on a bogus
+        # price — a wrong price silently over-burns and starves miners. This gates
+        # the cap only; MANUAL_BURN still applies (a price-independent control).
+        price_ok = alpha_price > 0.0 and tao_price > 0.0
 
         # 2. Miner alpha emission rate. `emission` is per-tempo, so annualize by
         # tempos/day. Miners are neurons that earn INCENTIVE — NOT
@@ -398,8 +411,19 @@ class Validator:
             * steps_per_day
         )
 
-        # 3. Burn the overshoot above the limit, then stack the manual burn.
-        cap_burn = self._cap_burn(miner_alpha_daily, avg_alpha_usd)
+        # 3. Burn the overshoot above the limit, then stack the manual burn. Skip
+        # the cap (but not the manual burn) when the price is untrusted, and don't
+        # feed a bad reading into the rolling window.
+        if price_ok:
+            avg_alpha_usd = self._avg_alpha_usd(spot_alpha_usd)
+            cap_burn = self._cap_burn(miner_alpha_daily, avg_alpha_usd)
+        else:
+            avg_alpha_usd = 0.0
+            cap_burn = 0.0
+            logger.error(
+                f"Untrusted price (alpha={alpha_price} TAO, TAO=${tao_price:.2f}); "
+                "skipping cap burn — miners left uncapped until the price recovers."
+            )
         burn_amount = 1.0 - (1.0 - cap_burn) * (1.0 - self.MANUAL_BURN)
 
         logger.info(
@@ -441,6 +465,42 @@ class Validator:
         ]
         self._save_price_window()
         return sum(self._price_window) / len(self._price_window)
+
+    def _resolve_alpha_price(self, fetched: float) -> float:
+        """Return the fetched alpha price, or the persisted last-good one if the
+        fetch failed (fetched <= 0). Keeps the cap running on the previous price
+        through a transient outage instead of uncapping."""
+        if not self._last_alpha_loaded:
+            self._last_alpha_tao = self._load_last_alpha()
+            self._last_alpha_loaded = True
+        if fetched > 0.0:
+            self._last_alpha_tao = fetched
+            self._save_last_alpha(fetched)
+            return fetched
+        if self._last_alpha_tao > 0.0:
+            logger.warning(
+                f"Alpha price fetch failed; holding last-good "
+                f"{self._last_alpha_tao:.6f} TAO"
+            )
+        return self._last_alpha_tao
+
+    def _last_alpha_path(self) -> Path:
+        return Path(self.config.model_cache_path) / "burn_last_alpha_tao.json"
+
+    def _load_last_alpha(self) -> float:
+        try:
+            return float(json.loads(self._last_alpha_path().read_text()))
+        except FileNotFoundError:
+            return 0.0
+        except Exception as e:  # noqa: BLE001 — never let state I/O block weights
+            logger.warning(f"Could not load last alpha price: {e}")
+            return 0.0
+
+    def _save_last_alpha(self, price: float) -> None:
+        try:
+            self._last_alpha_path().write_text(json.dumps(price))
+        except Exception as e:  # noqa: BLE001 — never let state I/O block weights
+            logger.warning(f"Could not save last alpha price: {e}")
 
     def _price_window_path(self) -> Path:
         return Path(self.config.model_cache_path) / "burn_price_window.json"
