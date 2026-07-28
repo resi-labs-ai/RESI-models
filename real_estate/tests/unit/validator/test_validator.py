@@ -296,9 +296,7 @@ class TestSetWeights:
         assert weights["hotkey_3"] == pytest.approx(0.75)
 
     @pytest.mark.asyncio
-    async def test_set_weights_with_burn_allocation(
-        self, validator: Validator
-    ) -> None:
+    async def test_set_weights_with_burn_allocation(self, validator: Validator) -> None:
         """Test burn allocates fraction to burn_uid and scales down rest."""
         validator.hotkeys = [
             "hotkey_0",
@@ -340,9 +338,7 @@ class TestSetWeights:
         assert weights["burn_hotkey"] == pytest.approx(0.5)
 
     @pytest.mark.asyncio
-    async def test_set_weights_no_burn_when_zero(
-        self, validator: Validator
-    ) -> None:
+    async def test_set_weights_no_burn_when_zero(self, validator: Validator) -> None:
         """Test no burn applied when burn_amount is 0."""
         validator.hotkeys = ["hotkey_0", "hotkey_1", "our_hotkey"]
         validator.scores = np.array([1.0, 3.0, 0.0], dtype=np.float32)
@@ -424,7 +420,6 @@ class TestSetWeights:
         mock_chain.set_weights.assert_called_once()
         weights = mock_chain.set_weights.call_args[0][0]
         assert weights == {"burn_hotkey": 0.5}
-
 
 
 class TestRunEvaluationScores:
@@ -1105,19 +1100,19 @@ class TestWeightSettingLoopConnectionError:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise ConnectionError(
-                    "[Errno -3] Temporary failure in name resolution"
-                )
+                raise ConnectionError("[Errno -3] Temporary failure in name resolution")
             # Stop the loop on second iteration
             raise asyncio.CancelledError()
 
         validator.should_set_weights = mock_should_set_weights
 
-        with patch(
-            "real_estate.validator.validator.asyncio.sleep", new_callable=AsyncMock
+        with (
+            patch(
+                "real_estate.validator.validator.asyncio.sleep", new_callable=AsyncMock
+            ),
+            pytest.raises(asyncio.CancelledError),
         ):
-            with pytest.raises(asyncio.CancelledError):
-                await validator._weight_setting_loop()
+            await validator._weight_setting_loop()
 
         # Loop survived the ConnectionError and iterated again
         assert call_count == 2
@@ -1138,11 +1133,13 @@ class TestWeightSettingLoopConnectionError:
 
         validator.should_set_weights = mock_should_set_weights
 
-        with patch(
-            "real_estate.validator.validator.asyncio.sleep", new_callable=AsyncMock
+        with (
+            patch(
+                "real_estate.validator.validator.asyncio.sleep", new_callable=AsyncMock
+            ),
+            pytest.raises(asyncio.CancelledError),
         ):
-            with pytest.raises(asyncio.CancelledError):
-                await validator._weight_setting_loop()
+            await validator._weight_setting_loop()
 
         assert call_count == 2
 
@@ -1179,9 +1176,38 @@ class TestBootstrapWeights:
         assert validator.scores[3] == pytest.approx(0.2)
 
     @pytest.mark.asyncio
-    async def test_bootstrap_sets_weights_on_chain(
-        self, validator: Validator
-    ) -> None:
+    async def test_bootstrap_skips_burn_uid(self, validator: Validator) -> None:
+        """The burn UID's consensus incentive must NOT be copied into scores.
+
+        Its incentive IS the burn share; copying it and then applying the cap
+        burn in set_weights() burns twice, ratcheting consensus toward 100%
+        burn on every restart.
+        """
+        hotkeys = ["hotkey_0", "hotkey_1", "burn_hotkey", "hotkey_3"]
+        neurons = [
+            create_mock_neuron(0, "hotkey_0", incentive=0.005),
+            create_mock_neuron(1, "hotkey_1", incentive=0.003),
+            # Burn UID dominates consensus because it receives the burn weight.
+            create_mock_neuron(2, "burn_hotkey", incentive=0.99),
+            create_mock_neuron(3, "hotkey_3", incentive=0.002),
+        ]
+        validator.config.burn_uid = 2
+        validator.metagraph = Metagraph(
+            block=1000, neurons=neurons, timestamp=datetime.now()
+        )
+        validator.hotkeys = hotkeys
+        validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
+        validator.set_weights = AsyncMock()
+
+        await validator._bootstrap_weights()
+
+        assert validator.scores[2] == pytest.approx(0.0)  # burn UID excluded
+        assert validator.scores[0] == pytest.approx(0.005)
+        assert validator.scores[1] == pytest.approx(0.003)
+        assert validator.scores[3] == pytest.approx(0.002)
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_sets_weights_on_chain(self, validator: Validator) -> None:
         """set_weights() is called after populating scores from incentive."""
         hotkeys = ["hotkey_0", "our_hotkey"]
         neurons = [
@@ -1368,9 +1394,7 @@ class TestSetBurnWeights:
         mock_chain.set_weights.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_skips_when_burn_uid_out_of_range(
-        self, validator: Validator
-    ) -> None:
+    async def test_skips_when_burn_uid_out_of_range(self, validator: Validator) -> None:
         """No weights set when burn_uid exceeds hotkeys length."""
         validator.hotkeys = ["hotkey_0", "our_hotkey"]
         validator.config.burn_uid = 999
@@ -1554,16 +1578,18 @@ class TestBootstrapATH:
 class TestEvalATHComparison:
     """Tests for ATH comparison in _run_evaluation."""
 
-    def _setup_eval(self, validator, hotkeys, eval_weights, winner_hotkey, winner_score):
+    def _setup_eval(
+        self, validator, hotkeys, eval_weights, winner_hotkey, winner_score
+    ):
         """Common setup for evaluation tests."""
         validator.hotkeys = hotkeys
         validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
         validator.metagraph = create_mock_metagraph(hotkeys)
-        validator.download_results = {
-            hk: MagicMock(success=True) for hk in hotkeys
-        }
+        validator.download_results = {hk: MagicMock(success=True) for hk in hotkeys}
         validator._model_scheduler = MagicMock()
-        validator._model_scheduler.known_commitments = {hk: MagicMock() for hk in hotkeys}
+        validator._model_scheduler.known_commitments = {
+            hk: MagicMock() for hk in hotkeys
+        }
 
         mock_weights = MagicMock()
         mock_weights.weights = eval_weights
@@ -1607,9 +1633,11 @@ class TestEvalATHComparison:
 
         hotkeys = ["ath_hotkey", "hotkey_1", "hotkey_2"]
         self._setup_eval(
-            validator, hotkeys,
+            validator,
+            hotkeys,
             {"hotkey_1": 0.99, "hotkey_2": 0.01},
-            winner_hotkey="hotkey_1", winner_score=0.80,
+            winner_hotkey="hotkey_1",
+            winner_score=0.80,
         )
 
         ath = ATHRecord(hotkey="ath_hotkey", score=0.95, achieved_at="2025-01-15")
@@ -1624,7 +1652,9 @@ class TestEvalATHComparison:
         # Rest share 1% proportionally by score (hotkey_1=0.99, hotkey_2=0.01)
         assert validator.scores[1] == pytest.approx((0.99 / 1.0) * 0.01, abs=1e-6)
         assert validator.scores[2] == pytest.approx((0.01 / 1.0) * 0.01, abs=1e-6)
-        assert validator.scores[1] + validator.scores[2] == pytest.approx(0.01, abs=1e-6)
+        assert validator.scores[1] + validator.scores[2] == pytest.approx(
+            0.01, abs=1e-6
+        )
 
     @pytest.mark.asyncio
     async def test_eval_ath_beaten_uses_eval_weights(
@@ -1635,9 +1665,11 @@ class TestEvalATHComparison:
 
         hotkeys = ["ath_hotkey", "hotkey_1", "hotkey_2"]
         self._setup_eval(
-            validator, hotkeys,
+            validator,
+            hotkeys,
             {"hotkey_1": 0.99, "hotkey_2": 0.01},
-            winner_hotkey="hotkey_1", winner_score=0.98,
+            winner_hotkey="hotkey_1",
+            winner_score=0.98,
         )
 
         ath = ATHRecord(hotkey="ath_hotkey", score=0.95, achieved_at="2025-01-15")
@@ -1653,15 +1685,15 @@ class TestEvalATHComparison:
         assert validator.scores[2] == pytest.approx(0.01)
 
     @pytest.mark.asyncio
-    async def test_eval_no_ath_uses_eval_weights(
-        self, validator: Validator
-    ) -> None:
+    async def test_eval_no_ath_uses_eval_weights(self, validator: Validator) -> None:
         """No ATH -> standard evaluation weights."""
         hotkeys = ["hotkey_0", "hotkey_1", "hotkey_2"]
         self._setup_eval(
-            validator, hotkeys,
+            validator,
+            hotkeys,
             {"hotkey_0": 0.99, "hotkey_1": 0.01},
-            winner_hotkey="hotkey_0", winner_score=0.90,
+            winner_hotkey="hotkey_0",
+            winner_score=0.90,
         )
 
         validator.validation_client.fetch_ath = AsyncMock(return_value=None)
@@ -1684,9 +1716,11 @@ class TestEvalATHComparison:
 
         hotkeys = ["ath_hotkey", "hotkey_1", "hotkey_2"]
         self._setup_eval(
-            validator, hotkeys,
+            validator,
+            hotkeys,
             {"hotkey_1": 0.99, "hotkey_2": 0.01},
-            winner_hotkey="hotkey_1", winner_score=0.80,
+            winner_hotkey="hotkey_1",
+            winner_score=0.80,
         )
 
         ath = ATHRecord(hotkey="ath_hotkey", score=0.95, achieved_at="2025-01-15")
@@ -1711,9 +1745,7 @@ class TestEvalATHComparison:
         validator.hotkeys = hotkeys
         validator.scores = np.zeros(len(hotkeys), dtype=np.float32)
         validator.metagraph = create_mock_metagraph(hotkeys)
-        validator.download_results = {
-            hk: MagicMock(success=True) for hk in hotkeys
-        }
+        validator.download_results = {hk: MagicMock(success=True) for hk in hotkeys}
         validator._model_scheduler = MagicMock()
         validator._model_scheduler.known_commitments = {
             hk: MagicMock() for hk in hotkeys
@@ -1771,4 +1803,6 @@ class TestEvalATHComparison:
         # hotkey_1 score=0.80, hotkey_3 score=0.60, total=1.40
         assert validator.scores[1] == pytest.approx((0.80 / 1.40) * 0.01, abs=1e-6)
         assert validator.scores[3] == pytest.approx((0.60 / 1.40) * 0.01, abs=1e-6)
-        assert validator.scores[1] + validator.scores[3] == pytest.approx(0.01, abs=1e-6)
+        assert validator.scores[1] + validator.scores[3] == pytest.approx(
+            0.01, abs=1e-6
+        )
