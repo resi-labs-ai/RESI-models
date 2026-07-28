@@ -77,6 +77,7 @@ class Validator:
     REWARD_LIMIT_USD = 1000.0
     MANUAL_BURN = 0.0  # Burn off
     PRICE_WINDOW_SAMPLES = 20  # ~1 day of weight-setting cycles at tempo 360
+    PRICE_WINDOW_RESET_RATIO = 8.0  # discard the window if it's this far from spot
 
     def __init__(self, config: argparse.Namespace):
         """
@@ -456,10 +457,28 @@ class Validator:
         return 1.0 - self.REWARD_LIMIT_USD / projected_usd
 
     def _avg_alpha_usd(self, spot_alpha_usd: float) -> float:
-        """Append the spot price to the rolling window and return its mean."""
+        """Append the spot price to the rolling window and return its mean.
+
+        Self-healing: a window whose mean is orders of magnitude from the live spot
+        price is stale or was built from bad readings (e.g. a broken price feed), so
+        averaging it in would keep burning on garbage for a full window. Discard it
+        and restart from spot instead. Real market moves never clear this bar within
+        a window's span; a corrupt feed does.
+        """
         if not self._price_window_loaded:
             self._load_price_window()
             self._price_window_loaded = True
+
+        if self._price_window and spot_alpha_usd > 0:
+            mean = sum(self._price_window) / len(self._price_window)
+            ratio = max(mean / spot_alpha_usd, spot_alpha_usd / mean)
+            if ratio >= self.PRICE_WINDOW_RESET_RATIO:
+                logger.warning(
+                    f"Discarding price window: mean ${mean:.4f} is {ratio:.0f}x from "
+                    f"spot ${spot_alpha_usd:.4f} (stale or bad feed). Restarting."
+                )
+                self._price_window = []
+
         self._price_window = (self._price_window + [spot_alpha_usd])[
             -self.PRICE_WINDOW_SAMPLES :
         ]
