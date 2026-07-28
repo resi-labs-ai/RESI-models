@@ -4,7 +4,12 @@
 
 services:
   pylon:
-    image: backenddevelopersltd/bittensor-pylon:latest
+    # Pinned RESI build: upstream service-v2.3.0 plus one fix — TypeError added to
+    # RECONNECT_EXCEPTIONS so a poisoned turbobt client self-recovers instead of
+    # serving HTTP 500 until manually restarted (the 2026-07-27/28 weight-setting
+    # outages). Drop back to the upstream image once their release includes the
+    # fix (PR: backend-developers-ltd/bittensor-pylon).
+    image: ghcr.io/resi-labs-ai/bittensor-pylon:2.3.0-resi.1@sha256:95fa294a84b0170c216194e205477c9e8b212428c1269f3c228b7446a77139d0
     container_name: resi_pylon
     command: >
       pylon_service/.venv/bin/python -m uvicorn pylon_service.main:app
