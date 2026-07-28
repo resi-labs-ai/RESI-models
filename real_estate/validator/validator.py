@@ -1461,9 +1461,15 @@ class Validator:
                     f"falling back to consensus bootstrap"
                 )
 
-        # Consensus bootstrap
+        # Consensus bootstrap. Skip the burn UID: its on-chain incentive is the
+        # burn share itself, so copying it into scores and then applying the cap
+        # burn in set_weights() burns twice — every restart ratchets consensus
+        # toward 100% burn. Bootstrap the miners' relative shares only; the cap
+        # burn is applied exactly once on top.
         bootstrap_count = 0
         for neuron in self.metagraph.neurons:
+            if neuron.uid == self.config.burn_uid:
+                continue
             if neuron.uid < len(self.scores) and neuron.incentive > 0:
                 self.scores[neuron.uid] = float(neuron.incentive)
                 bootstrap_count += 1
