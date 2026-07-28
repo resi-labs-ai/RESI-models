@@ -86,8 +86,10 @@ def validator(mock_config):
         v.hotkeys = ["hk0", "hk1", "hk2", "hk3"]
         # Metagraph emission is per-tempo; burn annualizes by 7200 / tempo.
         v.subtensor.tempo.return_value = 360  # -> steps_per_day = 20
-        # Skip the on-disk price window so each test controls state directly.
+        # Skip the on-disk state so each test controls it directly.
         v._price_window_loaded = True
+        v._last_alpha_loaded = True
+        v._last_alpha_tao = 0.0
         return v
 
 
@@ -198,6 +200,60 @@ async def test_manual_burn_overrides_everything(validator):
     assert adjusted.get("hk0", 0.0) == 0.0
 
 
+@pytest.mark.asyncio
+async def test_untrusted_price_skips_cap_but_keeps_manual_burn(validator):
+    """A 0.0 alpha price (failed chain call) must NOT burn via the cap — burning on
+    a bogus price is what starves miners — but MANUAL_BURN still applies."""
+    # A rate that WOULD trip the cap hard if it were priced.
+    _set_neurons(validator, emission_per_tempo=50_000.0)
+    weights = {"hk0": 0.5, "hk1": 0.5}
+    p_tao = patch(
+        "real_estate.validator.validator.get_tao_price_usd",
+        new_callable=AsyncMock,
+        return_value=200.0,
+    )
+    p_alpha = patch(
+        "real_estate.validator.validator.get_alpha_price_tao",
+        new_callable=AsyncMock,
+        return_value=0.0,  # chain price call failed
+    )
+    with p_tao, p_alpha:
+        validator.MANUAL_BURN = 0.0
+        adjusted = await validator._apply_burn(weights)
+    # No cap burn: weights returned unchanged, nothing routed to the burn UID.
+    assert adjusted == weights
+
+    # But a manual burn is price-independent and must still fire.
+    with p_tao, p_alpha:
+        validator.MANUAL_BURN = 1.0
+        adjusted = await validator._apply_burn(weights)
+    assert adjusted["hk2"] == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
+async def test_untrusted_price_holds_last_good(validator):
+    """A failed fetch with a known last-good price keeps capping on it (no uncap)."""
+    validator._last_alpha_tao = 0.01  # last good price in TAO
+    _set_neurons(validator, emission_per_tempo=50_000.0)  # 2,000,000 α/day
+    weights = {"hk0": 0.5, "hk1": 0.5}
+    p_tao = patch(
+        "real_estate.validator.validator.get_tao_price_usd",
+        new_callable=AsyncMock,
+        return_value=200.0,
+    )
+    p_alpha = patch(
+        "real_estate.validator.validator.get_alpha_price_tao",
+        new_callable=AsyncMock,
+        return_value=0.0,  # fetch failed
+    )
+    with p_tao, p_alpha:
+        validator.MANUAL_BURN = 0.0
+        adjusted = await validator._apply_burn(weights)
+    # 2,000,000 α/day * ($0.01*200=$2) = $4,000,000/day → cap fires on last-good.
+    expected_burn = 1.0 - Validator.REWARD_LIMIT_USD / 4_000_000.0
+    assert adjusted["hk2"] == pytest.approx(expected_burn)
+
+
 def test_cap_burn_math(validator):
     """_cap_burn burns the overshoot and nothing when under the limit."""
     limit = Validator.REWARD_LIMIT_USD
@@ -213,6 +269,27 @@ def test_rolling_average_smooths_price(validator):
     assert validator._avg_alpha_usd(2.0) == pytest.approx(2.0)
     assert validator._avg_alpha_usd(4.0) == pytest.approx(3.0)
     assert validator._avg_alpha_usd(6.0) == pytest.approx(4.0)
+
+
+def test_poisoned_window_self_heals(validator):
+    """A window far from spot (bad feed) is discarded, not averaged in.
+
+    This is the live incident: a broken price feed valued alpha at 1.0 TAO, filling
+    the window with ~$187 samples. On recovery (spot ~$1.13) the window must reset
+    immediately rather than over-burning for a full window's span.
+    """
+    validator._price_window = [187.93] * Validator.PRICE_WINDOW_SAMPLES
+    avg = validator._avg_alpha_usd(1.13)
+    assert avg == pytest.approx(1.13)  # window discarded, restarted from spot
+    assert validator._price_window == pytest.approx([1.13])
+
+
+def test_normal_price_moves_do_not_reset_window(validator):
+    """Ordinary volatility keeps averaging — only absurd gaps trigger a reset."""
+    validator._price_window = [1.0] * 5
+    avg = validator._avg_alpha_usd(2.0)  # a 2x move: real, must NOT reset
+    assert len(validator._price_window) == 6
+    assert avg == pytest.approx((1.0 * 5 + 2.0) / 6)
 
 
 def test_window_capped_at_sample_limit(validator):
