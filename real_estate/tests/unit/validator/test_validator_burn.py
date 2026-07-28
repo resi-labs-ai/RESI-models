@@ -271,6 +271,27 @@ def test_rolling_average_smooths_price(validator):
     assert validator._avg_alpha_usd(6.0) == pytest.approx(4.0)
 
 
+def test_poisoned_window_self_heals(validator):
+    """A window far from spot (bad feed) is discarded, not averaged in.
+
+    This is the live incident: a broken price feed valued alpha at 1.0 TAO, filling
+    the window with ~$187 samples. On recovery (spot ~$1.13) the window must reset
+    immediately rather than over-burning for a full window's span.
+    """
+    validator._price_window = [187.93] * Validator.PRICE_WINDOW_SAMPLES
+    avg = validator._avg_alpha_usd(1.13)
+    assert avg == pytest.approx(1.13)  # window discarded, restarted from spot
+    assert validator._price_window == pytest.approx([1.13])
+
+
+def test_normal_price_moves_do_not_reset_window(validator):
+    """Ordinary volatility keeps averaging — only absurd gaps trigger a reset."""
+    validator._price_window = [1.0] * 5
+    avg = validator._avg_alpha_usd(2.0)  # a 2x move: real, must NOT reset
+    assert len(validator._price_window) == 6
+    assert avg == pytest.approx((1.0 * 5 + 2.0) / 6)
+
+
 def test_window_capped_at_sample_limit(validator):
     """The window keeps only the last PRICE_WINDOW_SAMPLES prices."""
     validator._price_window = []
