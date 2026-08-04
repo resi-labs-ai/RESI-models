@@ -75,7 +75,7 @@ class Validator:
 
     # Hardcoded Reward Limit ($1,000 USD/day)
     REWARD_LIMIT_USD = 1000.0
-    MANUAL_BURN = 0.0  # Burn off
+    MANUAL_BURN = 1.0  # Full burn: 100% of emissions to burn_uid
     PRICE_WINDOW_SAMPLES = 20  # ~1 day of weight-setting cycles at tempo 360
     PRICE_WINDOW_RESET_RATIO = 8.0  # discard the window if it's this far from spot
 
